@@ -1,0 +1,44 @@
+# ─── Agent Team Framework ───
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+._*
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs & temp
+logs/
+*.log
+*.tmp
+claude_prompt_*.txt
+
+# Claude Code
+.claude/
+
+# Reports (generated at runtime)
+reports/*/
+!reports/.gitkeep
+
+# Project structure template scaffolding (empty placeholder dirs)
+Templates/templates-projects/*/Codebase/
+Templates/templates-projects/*/Ag-Build-Tasks/
+Templates/templates-projects/*/Agent-Tasks/
+Templates/templates-projects/*/Debug-log/
+Templates/templates-projects/*/Dev-Plan/
+Templates/templates-projects/*/Notes/
+Templates/templates-projects/*/Research/
+Templates/templates-projects/*/Review-log/
