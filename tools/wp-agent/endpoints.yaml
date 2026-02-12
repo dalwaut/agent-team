@@ -1,0 +1,369 @@
+# WordPress REST API Endpoints Reference
+# Standard WordPress REST API v2 endpoints
+
+namespaces:
+  wp_v2:
+    base: "/wp-json/wp/v2"
+    description: "Core WordPress REST API"
+
+    endpoints:
+      # Posts
+      posts:
+        path: "/posts"
+        methods:
+          GET:
+            description: "List all posts"
+            params: [context, page, per_page, search, after, before, author, exclude, include, offset, order, orderby, slug, status, categories, tags]
+          POST:
+            description: "Create a new post"
+            params: [title, content, status, author, excerpt, featured_media, categories, tags, format, meta, sticky]
+        single:
+          path: "/posts/{id}"
+          methods:
+            GET: "Retrieve a post"
+            PUT: "Update a post"
+            PATCH: "Partially update a post"
+            DELETE: "Delete a post (use force=true for permanent)"
+
+      # Pages
+      pages:
+        path: "/pages"
+        methods:
+          GET:
+            description: "List all pages"
+            params: [context, page, per_page, search, after, before, author, exclude, include, offset, order, orderby, slug, status, parent]
+          POST:
+            description: "Create a new page"
+            params: [title, content, status, author, excerpt, featured_media, parent, menu_order, template, meta]
+        single:
+          path: "/pages/{id}"
+          methods:
+            GET: "Retrieve a page"
+            PUT: "Update a page"
+            PATCH: "Partially update a page"
+            DELETE: "Delete a page"
+
+      # Media
+      media:
+        path: "/media"
+        methods:
+          GET:
+            description: "List media items"
+            params: [context, page, per_page, search, after, before, author, exclude, include, offset, order, orderby, slug, status, media_type, mime_type]
+          POST:
+            description: "Upload media file"
+            params: [file, title, caption, alt_text, description]
+        single:
+          path: "/media/{id}"
+          methods:
+            GET: "Retrieve media item"
+            PUT: "Update media item metadata"
+            DELETE: "Delete media item"
+
+      # Categories
+      categories:
+        path: "/categories"
+        methods:
+          GET:
+            description: "List categories"
+            params: [context, page, per_page, search, exclude, include, order, orderby, hide_empty, parent, slug]
+          POST:
+            description: "Create a category"
+            params: [name, slug, description, parent, meta]
+        single:
+          path: "/categories/{id}"
+          methods:
+            GET: "Retrieve a category"
+            PUT: "Update a category"
+            DELETE: "Delete a category"
+
+      # Tags
+      tags:
+        path: "/tags"
+        methods:
+          GET:
+            description: "List tags"
+            params: [context, page, per_page, search, exclude, include, order, orderby, hide_empty, slug]
+          POST:
+            description: "Create a tag"
+            params: [name, slug, description, meta]
+        single:
+          path: "/tags/{id}"
+          methods:
+            GET: "Retrieve a tag"
+            PUT: "Update a tag"
+            DELETE: "Delete a tag"
+
+      # Comments
+      comments:
+        path: "/comments"
+        methods:
+          GET:
+            description: "List comments"
+            params: [context, page, per_page, search, after, before, author, author_exclude, post, offset, order, orderby, status, type]
+          POST:
+            description: "Create a comment"
+            params: [author, author_email, author_url, content, date, parent, post, status, meta]
+        single:
+          path: "/comments/{id}"
+          methods:
+            GET: "Retrieve a comment"
+            PUT: "Update a comment"
+            DELETE: "Delete a comment"
+
+      # Users
+      users:
+        path: "/users"
+        methods:
+          GET:
+            description: "List users"
+            params: [context, page, per_page, search, exclude, include, offset, order, orderby, slug, roles]
+          POST:
+            description: "Create a user"
+            params: [username, name, first_name, last_name, email, url, description, locale, nickname, slug, roles, password, meta]
+        single:
+          path: "/users/{id}"
+          methods:
+            GET: "Retrieve a user"
+            PUT: "Update a user"
+            DELETE: "Delete a user"
+        me:
+          path: "/users/me"
+          methods:
+            GET: "Retrieve current user"
+            PUT: "Update current user"
+            DELETE: "Delete current user"
+
+      # Taxonomies
+      taxonomies:
+        path: "/taxonomies"
+        methods:
+          GET:
+            description: "List taxonomies"
+            params: [context, type]
+        single:
+          path: "/taxonomies/{taxonomy}"
+          methods:
+            GET: "Retrieve a taxonomy"
+
+      # Post Types
+      types:
+        path: "/types"
+        methods:
+          GET:
+            description: "List post types"
+            params: [context]
+        single:
+          path: "/types/{type}"
+          methods:
+            GET: "Retrieve a post type"
+
+      # Post Statuses
+      statuses:
+        path: "/statuses"
+        methods:
+          GET:
+            description: "List post statuses"
+            params: [context]
+        single:
+          path: "/statuses/{status}"
+          methods:
+            GET: "Retrieve a post status"
+
+      # Settings (requires admin)
+      settings:
+        path: "/settings"
+        methods:
+          GET:
+            description: "Retrieve site settings"
+          PUT:
+            description: "Update site settings"
+            params: [title, description, timezone_string, date_format, time_format, start_of_week, language, use_smilies, default_category, default_post_format, posts_per_page]
+
+      # Search
+      search:
+        path: "/search"
+        methods:
+          GET:
+            description: "Search site content"
+            params: [context, page, per_page, search, type, subtype]
+
+      # Block Types
+      block_types:
+        path: "/block-types"
+        methods:
+          GET:
+            description: "List block types"
+        single:
+          path: "/block-types/{namespace}/{name}"
+          methods:
+            GET: "Retrieve a block type"
+
+      # Blocks (Reusable)
+      blocks:
+        path: "/blocks"
+        methods:
+          GET:
+            description: "List reusable blocks"
+          POST:
+            description: "Create a reusable block"
+        single:
+          path: "/blocks/{id}"
+          methods:
+            GET: "Retrieve a reusable block"
+            PUT: "Update a reusable block"
+            DELETE: "Delete a reusable block"
+
+      # Block Renderer
+      block_renderer:
+        path: "/block-renderer/{name}"
+        methods:
+          GET:
+            description: "Render a block"
+          POST:
+            description: "Render a block with attributes"
+
+      # Menus (if registered)
+      menus:
+        path: "/menus"
+        methods:
+          GET:
+            description: "List menus"
+          POST:
+            description: "Create a menu"
+        single:
+          path: "/menus/{id}"
+          methods:
+            GET: "Retrieve a menu"
+            PUT: "Update a menu"
+            DELETE: "Delete a menu"
+
+      # Menu Items
+      menu_items:
+        path: "/menu-items"
+        methods:
+          GET:
+            description: "List menu items"
+          POST:
+            description: "Create a menu item"
+        single:
+          path: "/menu-items/{id}"
+          methods:
+            GET: "Retrieve a menu item"
+            PUT: "Update a menu item"
+            DELETE: "Delete a menu item"
+
+      # Menu Locations
+      menu_locations:
+        path: "/menu-locations"
+        methods:
+          GET:
+            description: "List menu locations"
+        single:
+          path: "/menu-locations/{location}"
+          methods:
+            GET: "Retrieve a menu location"
+
+      # Themes
+      themes:
+        path: "/themes"
+        methods:
+          GET:
+            description: "List themes"
+        single:
+          path: "/themes/{stylesheet}"
+          methods:
+            GET: "Retrieve a theme"
+
+      # Plugins
+      plugins:
+        path: "/plugins"
+        methods:
+          GET:
+            description: "List plugins"
+          POST:
+            description: "Install a plugin"
+        single:
+          path: "/plugins/{plugin}"
+          methods:
+            GET: "Retrieve a plugin"
+            PUT: "Update/activate a plugin"
+            DELETE: "Delete a plugin"
+
+      # Application Passwords
+      application_passwords:
+        path: "/users/{user_id}/application-passwords"
+        methods:
+          GET:
+            description: "List application passwords"
+          POST:
+            description: "Create application password"
+        single:
+          path: "/users/{user_id}/application-passwords/{uuid}"
+          methods:
+            GET: "Retrieve application password"
+            DELETE: "Delete application password"
+
+      # Site Health
+      site_health:
+        path: "/site-health"
+        tests:
+          path: "/site-health/tests/background-updates"
+          methods:
+            GET: "Run background updates test"
+
+  # Common Plugin Endpoints
+  woocommerce:
+    base: "/wp-json/wc/v3"
+    description: "WooCommerce REST API (if installed)"
+    endpoints:
+      products:
+        path: "/products"
+        methods: [GET, POST, PUT, DELETE]
+      orders:
+        path: "/orders"
+        methods: [GET, POST, PUT, DELETE]
+      customers:
+        path: "/customers"
+        methods: [GET, POST, PUT, DELETE]
+      coupons:
+        path: "/coupons"
+        methods: [GET, POST, PUT, DELETE]
+
+  contact_form_7:
+    base: "/wp-json/contact-form-7/v1"
+    description: "Contact Form 7 (if installed)"
+    endpoints:
+      forms:
+        path: "/contact-forms"
+        methods: [GET]
+      submit:
+        path: "/contact-forms/{id}/feedback"
+        methods: [POST]
+
+  yoast_seo:
+    base: "/wp-json/yoast/v1"
+    description: "Yoast SEO (if installed)"
+    endpoints:
+      indexables:
+        path: "/indexables"
+        methods: [GET]
+
+  elementor:
+    base: "/wp-json/elementor/v1"
+    description: "Elementor (if installed)"
+    endpoints:
+      templates:
+        path: "/templates"
+        methods: [GET]
+
+  wpforms:
+    base: "/wp-json/wpforms/v1"
+    description: "WPForms (if installed)"
+    endpoints:
+      forms:
+        path: "/forms"
+        methods: [GET]
+      entries:
+        path: "/entries"
+        methods: [GET]

@@ -1,0 +1,64 @@
+# ============================================
+# Agent Team Framework — OPAI Branch .gitignore
+# ============================================
+
+# ── Personal / Workspace Content (not part of agent system) ──
+Obsidian/
+Clients/
+Documents/
+Research/
+gemini-scribe/
+Cursor/
+Agents/
+.obsidian/
+
+# ── Generated Output ──
+logs/
+reports/*/
+!reports/.gitkeep
+
+# ── Temp & OS Files ──
+claude_prompt_*.txt
+temp_workflows.json
+nul
+*.png
+Notes.md
+Useful Commands.md
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Node Modules (install fresh on target) ──
+node_modules/
+mcps/stitch-skills/
+
+# ── Files with broken cloud-sync attributes (copy manually to server) ──
+mcps/Hostinger/
+
+# ── IDE / Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Project Structure Templates (cloud-synced, contain placeholder files with broken attributes) ──
+# Only the markdown docs from templates-projects/ are tracked; Codebase/ scaffold dirs are excluded
+Templates/templates-projects/*/Codebase/
+Templates/templates-projects/*/Ag-Build-Tasks/
+Templates/templates-projects/*/Agent-Tasks/
+Templates/templates-projects/*/Debug-log/
+Templates/templates-projects/*/Dev-Plan/
+Templates/templates-projects/*/Notes/
+Templates/templates-projects/*/Research/
+Templates/templates-projects/*/Review-log/
+
+# ── Python ──
+__pycache__/
+*.pyc
+.venv/
+
+# ── n8n Workflows (100+ large JSON files, sync separately) ──
+Library/n8n/Workflows/
+
+# ── Claude Code ──
+.claude/

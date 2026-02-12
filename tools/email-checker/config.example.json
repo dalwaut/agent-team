@@ -1,0 +1,60 @@
+{
+  "_comment": "Copy to config.json and customize. Credentials go in .env, not here.",
+
+  "accounts": [
+    {
+      "name": "Gmail Personal",
+      "env_prefix": "",
+      "mailbox": "INBOX",
+      "max_emails": 20,
+      "watched_senders": [],
+      "watched_subjects": [],
+      "_note": "Empty watched_senders = process ALL senders. Add entries like 'client@example.com' to filter."
+    },
+    {
+      "name": "Paradise Web",
+      "env_prefix": "_PW",
+      "mailbox": "INBOX",
+      "max_emails": 20,
+      "watched_senders": [],
+      "watched_subjects": []
+    },
+    {
+      "name": "BoutaByte",
+      "env_prefix": "_BB",
+      "mailbox": "INBOX",
+      "max_emails": 20,
+      "watched_senders": [],
+      "watched_subjects": []
+    },
+    {
+      "name": "BoutaCare",
+      "env_prefix": "_BC",
+      "mailbox": "INBOX",
+      "max_emails": 20,
+      "watched_senders": [],
+      "watched_subjects": []
+    }
+  ],
+
+  "check_interval_minutes": 15,
+  "lookback_hours": 24,
+  "extract_tasks": true,
+  "classify_emails": true,
+  "draft_responses": true,
+  "voice_profile": "boutabyte-professional",
+
+  "notifications": {
+    "discord_webhook_url": "",
+    "_note": "Optional: Discord webhook URL for new-task notifications. Leave empty to disable."
+  },
+
+  "task_storage": {
+    "file": "data/email-tasks.json",
+    "group_by_sender": true
+  },
+
+  "response_storage": {
+    "file": "data/email-responses.json"
+  }
+}

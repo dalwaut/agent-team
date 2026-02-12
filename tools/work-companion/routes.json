@@ -1,0 +1,117 @@
+{
+  "type_routes": {
+    "bug_fix": {
+      "recommended_squads": ["auto_safe", "review"],
+      "recommended_agents": ["accuracy", "reviewer", "executor_safe"],
+      "default_mode": "propose",
+      "description": "Bug fix — audit + auto-fix safe changes"
+    },
+    "feature": {
+      "recommended_squads": ["plan"],
+      "recommended_agents": ["features", "integration", "researcher"],
+      "default_mode": "propose",
+      "description": "Feature — architecture planning first"
+    },
+    "research": {
+      "recommended_squads": ["plan"],
+      "recommended_agents": ["researcher"],
+      "default_mode": "auto_safe",
+      "description": "Research — investigate and report"
+    },
+    "audit": {
+      "recommended_squads": ["audit"],
+      "recommended_agents": ["accuracy", "health", "security", "ux_reviewer"],
+      "default_mode": "auto_safe",
+      "description": "Audit — full codebase health check"
+    },
+    "security": {
+      "recommended_squads": ["audit"],
+      "recommended_agents": ["security"],
+      "default_mode": "propose",
+      "description": "Security — targeted security analysis"
+    },
+    "content": {
+      "recommended_squads": ["ship"],
+      "recommended_agents": ["content_curator"],
+      "default_mode": "auto_safe",
+      "description": "Content — changelogs, docs, copy"
+    },
+    "deployment": {
+      "recommended_squads": ["ship", "release"],
+      "recommended_agents": ["github", "test_writer", "security"],
+      "default_mode": "propose",
+      "description": "Deployment — pre-release checks and publish"
+    },
+    "review": {
+      "recommended_squads": ["review"],
+      "recommended_agents": ["reviewer", "accuracy", "test_writer"],
+      "default_mode": "auto_safe",
+      "description": "Review — post-change code review"
+    },
+    "wordpress": {
+      "recommended_squads": [],
+      "specialist_templates": ["wordpress_expert", "fusion_builder", "page_designer"],
+      "default_mode": "propose",
+      "description": "WordPress — WP/Avada specialist work"
+    },
+    "admin": {
+      "recommended_squads": ["hygiene"],
+      "recommended_agents": ["workspace_steward"],
+      "default_mode": "auto_safe",
+      "description": "Admin — workspace hygiene and maintenance"
+    },
+    "onboarding": {
+      "recommended_squads": ["onboard"],
+      "recommended_agents": ["project_onboarder"],
+      "default_mode": "propose",
+      "description": "Onboarding — bring external project into OPAI"
+    },
+    "email_task": {
+      "recommended_squads": ["email"],
+      "recommended_agents": ["email_manager"],
+      "default_mode": "propose",
+      "description": "Email-derived task — review and execute"
+    },
+    "communication": {
+      "recommended_squads": ["email"],
+      "recommended_agents": ["email_manager"],
+      "default_mode": "propose",
+      "description": "Communication — email response or follow-up"
+    }
+  },
+
+  "keywords": {
+    "bug_fix": ["fix", "bug", "broken", "error", "crash", "issue", "wrong", "fail", "not working", "doesn't work", "regression"],
+    "feature": ["add", "create", "implement", "build", "new feature", "develop", "feature request", "enhance", "upgrade"],
+    "research": ["research", "investigate", "look into", "find out", "explore", "compare", "evaluate", "benchmark"],
+    "audit": ["audit", "check health", "scan", "review codebase", "assess", "health check", "code quality"],
+    "security": ["security", "vulnerability", "penetration", "owasp", "auth", "injection", "xss", "csrf"],
+    "content": ["changelog", "docs", "documentation", "readme", "blog post", "release notes", "copy", "description"],
+    "deployment": ["deploy", "release", "publish", "ship", "push to production", "version bump", "ci/cd"],
+    "review": ["review", "pull request", "pr", "code review", "changes"],
+    "wordpress": ["wordpress", "wp", "woocommerce", "avada", "fusion builder", "plugin", "theme"],
+    "admin": ["clean up", "organize", "rename", "archive", "move files", "structure", "hygiene", "maintenance"],
+    "onboarding": ["onboard", "import", "bring in", "integrate project", "add project"],
+    "email_task": ["email", "inbox", "reply to", "respond to", "forward", "send email"],
+    "communication": ["follow up", "contact", "reach out", "schedule meeting", "call", "message"]
+  },
+
+  "complexity_indicators": {
+    "trivial": ["simple", "quick", "just", "only", "small", "minor", "typo", "rename"],
+    "complex": ["redesign", "refactor", "migrate", "overhaul", "rearchitect", "entire", "all", "complete rewrite", "system-wide"]
+  },
+
+  "priority_keywords": {
+    "urgent": ["urgent", "asap", "critical", "broken", "down", "emergency", "immediately", "blocking", "production"],
+    "low": ["when you can", "low priority", "nice to have", "someday", "eventually", "backlog", "no rush"]
+  },
+
+  "known_projects": [
+    "BB Drive", "Boutabyte", "BoutaCare", "BoutaChat", "Bouta-Core", "BoutaPRD",
+    "ByteSpace", "DroneApp", "Everglades-News", "Flipper", "Hostinger App",
+    "HytaleCompanion", "icon-logo-foundry", "image-optimizer", "KitchenCraft",
+    "Lace & Pearl", "n8n-export-to-import", "NurtureNet", "PooPoint", "QR Encoder",
+    "SEO-GEO-Automator", "Supa-Tools", "ThisKitchen", "vec-article-builder",
+    "WE Code", "WE Sticker", "WE Tools", "WE WebApps", "FarmView"
+  ]
+}

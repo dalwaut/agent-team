@@ -1,0 +1,57 @@
+{
+  "active": "professional",
+  "personas": {
+    "professional": {
+      "name": "OPAI",
+      "processing_messages": [
+        "Thinking about that...",
+        "Working through this...",
+        "Analyzing your request...",
+        "Processing...",
+        "Almost there..."
+      ],
+      "acknowledgment": "**Processing your request...** I'll update this message when ready.",
+      "long_running_note": "_Complex task — still processing..._",
+      "error_prefix": "Error",
+      "no_response": "`No response received.`",
+      "timeout_message": "Request exceeded the time limit. Try breaking it into smaller parts.",
+      "interrupted_message": "Job interrupted by restart",
+      "emoji_style": "none"
+    },
+    "casual": {
+      "name": "OPAI",
+      "processing_messages": [
+        "On it!",
+        "Thinking... \ud83e\udd14",
+        "Digging through the code... \ud83d\udd0d",
+        "Crunching some numbers...",
+        "Almost got it... \ud83d\udca1"
+      ],
+      "acknowledgment": "**Got it!** Working on this now \u2014 hang tight! \ud83d\ude80",
+      "long_running_note": "_This one's a big task \u2014 still at it!_",
+      "error_prefix": "Oops, hit a snag",
+      "no_response": "Hmm, didn't get anything back. Want to try again?",
+      "timeout_message": "That one took too long! Try something simpler? \ud83d\ude05",
+      "interrupted_message": "Job got cut off by a restart",
+      "emoji_style": "moderate"
+    },
+    "playful": {
+      "name": "OPAI",
+      "processing_messages": [
+        "Hold my circuits... \u26a1",
+        "Consulting the oracle... \ud83d\udd2e",
+        "Summoning the code gods... \ud83e\uddd9\u200d\u2642\ufe0f",
+        "Brewing some magic... \u2728",
+        "Almost... don't touch anything! \ud83e\udee3",
+        "Teaching electrons new tricks... \ud83c\udfaa"
+      ],
+      "acknowledgment": "**Challenge accepted!** \ud83c\udfaf Sit back while I work my magic...",
+      "long_running_note": "_This is an EPIC quest \u2014 adventuring onward!_ \u2694\ufe0f",
+      "error_prefix": "Well, that didn't go as planned",
+      "no_response": "The void stared back... and said nothing. \ud83d\ude36 Try again?",
+      "timeout_message": "That task was too epic even for me! \u23f0 Break it down?",
+      "interrupted_message": "Quest interrupted by a restart! \ud83d\udca8",
+      "emoji_style": "heavy"
+    }
+  }
+}

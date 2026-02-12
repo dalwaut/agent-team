@@ -1,0 +1,296 @@
+{
+  "version": "1.3.0",
+  "name": "Agent Team",
+  "description": "Multi-agent orchestration framework for software development. Drop into any project.",
+
+  "config": {
+    "cli": "claude",
+    "cli_flags": "-p --output-format text",
+    "reports_dir": ".agent/reports",
+    "prompts_dir": ".agent/scripts",
+    "workflows_dir": ".agent/workflows",
+    "templates_dir": ".agent/templates",
+    "max_parallel": 4,
+    "report_min_size_bytes": 1000,
+    "rate_limit_delay_seconds": 3,
+    "timestamped_reports": true
+  },
+
+  "roles": {
+    "manager": {
+      "name": "Project Manager",
+      "emoji": "PM",
+      "description": "Reads all agent reports, consolidates findings, builds implementation plans, prioritizes work",
+      "prompt_file": "prompt_manager.txt",
+      "depends_on": ["*"],
+      "run_order": "last",
+      "category": "leadership"
+    },
+    "reviewer": {
+      "name": "Code Reviewer",
+      "emoji": "CR",
+      "description": "Reviews code changes for quality, consistency, patterns, and potential regressions",
+      "prompt_file": "prompt_reviewer.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "accuracy": {
+      "name": "Accuracy Auditor",
+      "emoji": "AC",
+      "description": "Audits calculations, data transformations, date/time logic, and statistical correctness",
+      "prompt_file": "prompt_accuracy.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "health": {
+      "name": "Codebase Health Auditor",
+      "emoji": "HL",
+      "description": "Finds performance bottlenecks, dead code, unused dependencies, and security risks",
+      "prompt_file": "prompt_health.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "security": {
+      "name": "Security Analyst",
+      "emoji": "SC",
+      "description": "Deep security audit: auth flows, API key exposure, injection vectors, OWASP top 10",
+      "prompt_file": "prompt_security.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "features": {
+      "name": "Feature Architect",
+      "emoji": "FA",
+      "description": "Plans architecture for new features with file-by-file implementation specs",
+      "prompt_file": "prompt_features.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "planning"
+    },
+    "integration": {
+      "name": "Integration Architect",
+      "emoji": "IA",
+      "description": "Plans cross-project and third-party integrations with security and data flow blueprints",
+      "prompt_file": "prompt_integration.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "planning"
+    },
+    "researcher": {
+      "name": "Technical Researcher",
+      "emoji": "RS",
+      "description": "Researches libraries, APIs, best practices, and emerging patterns relevant to the project",
+      "prompt_file": "prompt_researcher.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "research"
+    },
+    "github": {
+      "name": "GitHub Operations Manager",
+      "emoji": "GH",
+      "description": "Manages professional GitHub workflows: versioning, branching, PRs, issues, releases, repo hygiene",
+      "prompt_file": "prompt_github.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "content_curator": {
+      "name": "Content Curator",
+      "emoji": "CC",
+      "description": "Generates changelogs, app store descriptions, social posts, documentation, and marketing copy",
+      "prompt_file": "prompt_content_curator.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "content"
+    },
+    "test_writer": {
+      "name": "Test Engineer",
+      "emoji": "TE",
+      "description": "Identifies untested paths, writes test specs, and generates test scaffolding",
+      "prompt_file": "prompt_test_writer.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "ux_reviewer": {
+      "name": "UX Reviewer",
+      "emoji": "UX",
+      "description": "Audits screens for loading states, error handling, empty states, accessibility, consistency",
+      "prompt_file": "prompt_ux_reviewer.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "familiarizer": {
+      "name": "Project Familiarizer",
+      "emoji": "HI",
+      "description": "Runs once after install. Scans the project and outputs customizations for all agents.",
+      "prompt_file": "prompt_familiarizer.txt",
+      "depends_on": [],
+      "run_order": "first",
+      "category": "meta",
+      "interactive": true
+    },
+    "executor_safe": {
+      "name": "Executor (Safe Mode)",
+      "emoji": "E1",
+      "description": "Mode 1: Reads reports, applies ONLY non-breaking fixes. Dead code, unused deps, console.log cleanup.",
+      "prompt_file": "prompt_executor_safe.txt",
+      "depends_on": ["*"],
+      "run_order": "last",
+      "category": "execution"
+    },
+    "executor_full": {
+      "name": "Executor (Full Mode)",
+      "emoji": "E2",
+      "description": "Mode 2: All safe fixes PLUS structural improvements. Bug fixes, refactors, query optimization, error handling.",
+      "prompt_file": "prompt_executor_full.txt",
+      "depends_on": ["*"],
+      "run_order": "last",
+      "category": "execution"
+    },
+    "self_assessment": {
+      "name": "Team Self-Assessment",
+      "emoji": "SA",
+      "description": "Meta-agent that detects gaps in the team and proposes new agents or workflow changes",
+      "prompt_file": "prompt_self_assessment.txt",
+      "depends_on": ["*"],
+      "run_order": "last",
+      "category": "meta"
+    },
+    "notes_curator": {
+      "name": "Notes Curator",
+      "emoji": "NC",
+      "description": "Scans notes/ folder, classifies files, proposes organization operations. Report-only.",
+      "prompt_file": "prompt_notes_curator.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "library_curator": {
+      "name": "Library Curator",
+      "emoji": "LC",
+      "description": "Maintains Library/ knowledge base, indexes reusable content, identifies knowledge gaps. Report-only.",
+      "prompt_file": "prompt_library_curator.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "report_dispatcher": {
+      "name": "Report Dispatcher",
+      "emoji": "RD",
+      "description": "Reads all reports, extracts action items, generates agent instructions and HITL briefings. Orchestration brain.",
+      "prompt_file": "prompt_report_dispatcher.txt",
+      "depends_on": ["*"],
+      "run_order": "last",
+      "category": "orchestration"
+    },
+    "project_onboarder": {
+      "name": "Project Onboarder",
+      "emoji": "OB",
+      "description": "Discovers, evaluates, and onboards external projects into Obsidian/Projects/ with diamond workflow. Queues operations when resources are unavailable.",
+      "prompt_file": "prompt_project_onboarder.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "workspace_steward": {
+      "name": "Workspace Steward",
+      "emoji": "WS",
+      "description": "Structural oversight: project compliance, file hygiene, naming conventions, cross-project consistency, archival candidates. Report-only.",
+      "prompt_file": "prompt_workspace_steward.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "email_manager": {
+      "name": "Email Manager",
+      "emoji": "EM",
+      "description": "Reads email data from tools/email-checker, produces task lists grouped by sender, tracks pending response drafts, generates email management report with action items.",
+      "prompt_file": "prompt_email_manager.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    }
+  },
+
+  "squads": {
+    "familiarize": {
+      "description": "First-run onboarding: scan the project and configure agents",
+      "agents": ["familiarizer"]
+    },
+    "audit": {
+      "description": "Full codebase audit",
+      "agents": ["accuracy", "health", "security", "ux_reviewer", "manager"]
+    },
+    "plan": {
+      "description": "Feature planning and architecture",
+      "agents": ["features", "integration", "researcher", "manager"]
+    },
+    "review": {
+      "description": "Code review after changes",
+      "agents": ["reviewer", "accuracy", "test_writer", "github", "manager"]
+    },
+    "ship": {
+      "description": "Pre-release checks",
+      "agents": ["health", "security", "test_writer", "content_curator", "github", "manager"]
+    },
+    "release": {
+      "description": "Full release workflow",
+      "agents": ["github", "content_curator", "test_writer", "security", "manager"]
+    },
+    "auto_safe": {
+      "description": "Mode 1: Audit then auto-apply safe-only fixes. Use: run_auto.ps1 -Mode safe",
+      "agents": ["accuracy", "health", "security", "reviewer", "executor_safe"]
+    },
+    "auto_full": {
+      "description": "Mode 2: Audit then auto-apply all improvements. Use: run_auto.ps1 -Mode full",
+      "agents": ["accuracy", "health", "security", "reviewer", "ux_reviewer", "executor_full"]
+    },
+    "evolve": {
+      "description": "Self-improvement: assess team gaps and propose new agents",
+      "agents": ["self_assessment"]
+    },
+    "knowledge": {
+      "description": "Knowledge management: organize notes and maintain reusable library, then dispatch actions",
+      "agents": ["notes_curator", "library_curator", "report_dispatcher"]
+    },
+    "dispatch": {
+      "description": "Process all reports in latest/, generate agent instructions and HITL briefings",
+      "agents": ["report_dispatcher"]
+    },
+    "onboard": {
+      "description": "Discover, evaluate, and onboard external projects into managed workspace with diamond workflow",
+      "agents": ["project_onboarder", "report_dispatcher"]
+    },
+    "hygiene": {
+      "description": "Workspace hygiene: file cleanup, naming conventions, structure compliance",
+      "agents": ["workspace_steward", "report_dispatcher"]
+    },
+    "workspace": {
+      "description": "Complete workspace audit: notes, library, structure, hygiene, then dispatch",
+      "agents": ["notes_curator", "library_curator", "workspace_steward", "report_dispatcher"]
+    },
+    "email": {
+      "description": "Email management: check accounts, classify, extract tasks, review pending responses, then dispatch",
+      "agents": ["email_manager", "report_dispatcher"]
+    }
+  },
+
+  "specialist_templates": {
+    "_comment": "Not active agents. Copy from templates/ to scripts/ and customize per project.",
+    "available": [
+      "prompt_expo_expert.txt",
+      "prompt_supabase_expert.txt",
+      "prompt_n8n_connector.txt",
+      "prompt_wordpress_expert.txt",
+      "prompt_fusion_builder.txt",
+      "prompt_page_designer.txt",
+      "prompt_design_reviewer.txt"
+    ]
+  }
+}

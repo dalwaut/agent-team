@@ -1,0 +1,65 @@
+{
+  "_comment": "OPAI Email Manager — 4 monitored accounts. Credentials in .env, not here.",
+
+  "accounts": [
+    {
+      "name": "Gmail Personal",
+      "env_prefix": "",
+      "mailbox": "INBOX",
+      "max_emails": 20,
+      "watched_senders": [],
+      "watched_subjects": [],
+      "_note": "dalwaut@gmail.com — Empty watched_senders = process ALL senders."
+    },
+    {
+      "name": "Paradise Web",
+      "env_prefix": "_PW",
+      "mailbox": "INBOX",
+      "max_emails": 20,
+      "watched_senders": [],
+      "watched_subjects": [],
+      "_note": "dallas@paradisewebfl.com — Google Workspace"
+    },
+    {
+      "name": "BoutaByte",
+      "env_prefix": "_BB",
+      "mailbox": "INBOX",
+      "max_emails": 20,
+      "watched_senders": [],
+      "watched_subjects": [],
+      "_note": "dallas@boutabyte.com — Hostinger"
+    },
+    {
+      "name": "BoutaCare",
+      "env_prefix": "_BC",
+      "mailbox": "INBOX",
+      "max_emails": 20,
+      "watched_senders": [],
+      "watched_subjects": [],
+      "_note": "dallas@boutacare.com — Hostinger"
+    }
+  ],
+
+  "check_interval_minutes": 15,
+  "lookback_hours": 24,
+  "extract_tasks": true,
+  "classify_emails": true,
+  "draft_responses": true,
+  "save_drafts_to_account": true,
+  "apply_tags_to_account": true,
+  "voice_profile": "boutabyte-professional",
+
+  "notifications": {
+    "discord_webhook_url": "",
+    "_note": "Optional: Discord webhook URL for new-task notifications."
+  },
+
+  "task_storage": {
+    "file": "data/email-tasks.json",
+    "group_by_sender": true
+  },
+
+  "response_storage": {
+    "file": "data/email-responses.json"
+  }
+}

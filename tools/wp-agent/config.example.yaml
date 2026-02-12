@@ -1,0 +1,27 @@
+# WordPress Agent Configuration
+# Copy this file to config.yaml and fill in your site details
+# NEVER commit config.yaml — it contains credentials
+
+site:
+  name: "My WordPress Site"
+  url: "https://example.com"
+  hosting: "hostinger"  # Optional: hosting provider name
+
+auth:
+  username: "admin"
+  # Password should be set via environment variable WP_PASSWORD for security
+  # Or use WordPress Application Passwords (recommended):
+  #   WordPress Admin → Users → Your Profile → Application Passwords
+  # Set via env: export WP_PASSWORD="xxxx xxxx xxxx xxxx xxxx xxxx"
+
+api:
+  base_path: "/wp-json"
+  timeout: 30
+  retry_attempts: 3
+
+# Optional: Override default endpoints if site has custom ones
+# custom_endpoints:
+#   - namespace: "custom/v1"
+#     routes:
+#       - path: "/custom-action"
+#         methods: ["GET", "POST"]

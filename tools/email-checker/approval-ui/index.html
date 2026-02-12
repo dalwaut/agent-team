@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPAI Email Manager — Response Approval</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --text: #e4e4e7;
+      --muted: #71717a;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    .subtitle { color: var(--muted); margin-bottom: 2rem; font-size: 0.875rem; }
+    .stats {
+      display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap;
+    }
+    .stat {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1rem 1.5rem; min-width: 120px;
+    }
+    .stat-value { font-size: 1.5rem; font-weight: 700; }
+    .stat-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem;
+    }
+    .card-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;
+    }
+    .card-header h3 { font-size: 1rem; }
+    .badge {
+      font-size: 0.7rem; padding: 2px 8px; border-radius: 12px;
+      text-transform: uppercase; font-weight: 600;
+    }
+    .badge-draft { background: #3730a3; color: #c7d2fe; }
+    .badge-approved { background: #166534; color: #bbf7d0; }
+    .badge-sent { background: #1e3a5f; color: #93c5fd; }
+    .badge-cancelled { background: #7f1d1d; color: #fecaca; }
+    .meta { color: var(--muted); font-size: 0.8rem; margin-bottom: 1rem; }
+    .meta span { margin-right: 1rem; }
+    .tabs {
+      display: flex; gap: 0; margin-bottom: 1rem; border-bottom: 1px solid var(--border);
+    }
+    .tab {
+      padding: 0.5rem 1rem; cursor: pointer; font-size: 0.85rem;
+      color: var(--muted); border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .draft-text {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1rem; white-space: pre-wrap;
+      font-size: 0.9rem; line-height: 1.7; max-height: 300px; overflow-y: auto;
+    }
+    .critique-text {
+      background: #1c1917; border: 1px solid #44403c;
+      border-radius: 8px; padding: 1rem; white-space: pre-wrap;
+      font-size: 0.85rem; color: #fbbf24; max-height: 200px; overflow-y: auto;
+    }
+    .actions {
+      display: flex; gap: 0.75rem; margin-top: 1.5rem; flex-wrap: wrap;
+    }
+    button {
+      padding: 0.5rem 1.25rem; border: none; border-radius: 6px;
+      cursor: pointer; font-size: 0.85rem; font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn-approve { background: var(--success); color: #fff; }
+    .btn-approve:hover { background: #16a34a; }
+    .btn-edit { background: var(--accent); color: #fff; }
+    .btn-edit:hover { background: var(--accent-hover); }
+    .btn-reject { background: var(--danger); color: #fff; }
+    .btn-reject:hover { background: #dc2626; }
+    .btn-refresh { background: var(--border); color: var(--text); }
+    .btn-refresh:hover { background: #3a3d4a; }
+    .edit-area {
+      display: none; margin-top: 1rem;
+    }
+    .edit-area textarea {
+      width: 100%; min-height: 200px; background: var(--bg);
+      border: 1px solid var(--accent); border-radius: 8px;
+      padding: 1rem; color: var(--text); font-family: inherit;
+      font-size: 0.9rem; line-height: 1.7; resize: vertical;
+    }
+    .edit-area .actions { margin-top: 0.75rem; }
+    .empty {
+      text-align: center; color: var(--muted); padding: 3rem;
+      font-size: 1.1rem;
+    }
+    .notification {
+      position: fixed; top: 1rem; right: 1rem; padding: 1rem 1.5rem;
+      border-radius: 8px; font-weight: 600; font-size: 0.85rem;
+      z-index: 1000; transition: opacity 0.3s;
+    }
+    .notification.success { background: var(--success); color: #fff; }
+    .notification.error { background: var(--danger); color: #fff; }
+    .original-email {
+      background: #1a1a2e; border: 1px solid #2a2a4e;
+      border-radius: 8px; padding: 1rem; white-space: pre-wrap;
+      font-size: 0.85rem; color: #a0a0c0; max-height: 200px; overflow-y: auto;
+    }
+    .filter-bar {
+      display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 0.35rem 0.75rem; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); border-radius: 6px;
+      cursor: pointer; font-size: 0.8rem;
+    }
+    .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(99, 102, 241, 0.1); }
+  </style>
+</head>
+<body>
+  <h1>OPAI Email Manager</h1>
+  <p class="subtitle">Response drafts awaiting review. Approve, edit, or reject before sending.</p>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="filter-bar" id="filterBar">
+    <button class="filter-btn active" data-filter="draft">Drafts</button>
+    <button class="filter-btn" data-filter="approved">Approved</button>
+    <button class="filter-btn" data-filter="sent">Sent</button>
+    <button class="filter-btn" data-filter="all">All</button>
+    <button class="btn-refresh" onclick="loadData()" style="margin-left: auto;">Refresh</button>
+  </div>
+
+  <div id="responses"></div>
+
+  <div id="notification" class="notification" style="display: none;"></div>
+
+  <script>
+    // ── Configuration ──
+    // This UI reads/writes to local JSON files via a tiny Express API
+    // served alongside this page. If running standalone, it reads
+    // from the Supabase API instead.
+
+    const API_BASE = window.location.port ? '' : 'http://localhost:3847';
+    let currentFilter = 'draft';
+    let allResponses = {};
+    let emailData = {};
+
+    // ── Data Loading ──
+
+    async function loadData() {
+      try {
+        const [respRes, taskRes] = await Promise.all([
+          fetch(`${API_BASE}/api/responses`),
+          fetch(`${API_BASE}/api/tasks`),
+        ]);
+
+        if (respRes.ok) {
+          const data = await respRes.json();
+          allResponses = data.responses || {};
+        }
+        if (taskRes.ok) {
+          const data = await taskRes.json();
+          emailData = data.emails || {};
+        }
+      } catch (err) {
+        console.error('Failed to load data:', err);
+        notify('Failed to connect to API. Is the server running?', 'error');
+      }
+
+      renderStats();
+      renderResponses();
+    }
+
+    // ── Rendering ──
+
+    function renderStats() {
+      const entries = Object.values(allResponses);
+      const drafts = entries.filter(r => r.status === 'draft').length;
+      const approved = entries.filter(r => r.status === 'approved').length;
+      const sent = entries.filter(r => r.status === 'sent').length;
+      const cancelled = entries.filter(r => r.status === 'cancelled').length;
+
+      document.getElementById('stats').innerHTML = `
+        <div class="stat"><div class="stat-value">${drafts}</div><div class="stat-label">Pending</div></div>
+        <div class="stat"><div class="stat-value">${approved}</div><div class="stat-label">Approved</div></div>
+        <div class="stat"><div class="stat-value">${sent}</div><div class="stat-label">Sent</div></div>
+        <div class="stat"><div class="stat-value">${entries.length}</div><div class="stat-label">Total</div></div>
+      `;
+    }
+
+    function renderResponses() {
+      const container = document.getElementById('responses');
+      const entries = Object.entries(allResponses)
+        .filter(([, r]) => currentFilter === 'all' || r.status === currentFilter)
+        .sort(([, a], [, b]) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      if (entries.length === 0) {
+        container.innerHTML = `<div class="empty">No ${currentFilter === 'all' ? '' : currentFilter} responses found.</div>`;
+        return;
+      }
+
+      container.innerHTML = entries.map(([id, r]) => `
+        <div class="card" id="card-${id}">
+          <div class="card-header">
+            <h3>${escapeHtml(r.subject)}</h3>
+            <span class="badge badge-${r.status}">${r.status}</span>
+          </div>
+          <div class="meta">
+            <span>To: ${escapeHtml(r.toName || r.to)}</span>
+            <span>Account: ${escapeHtml(r.account)}</span>
+            <span>Created: ${new Date(r.createdAt).toLocaleString()}</span>
+            ${r.sentAt ? `<span>Sent: ${new Date(r.sentAt).toLocaleString()}</span>` : ''}
+          </div>
+
+          <div class="tabs" data-id="${id}">
+            <div class="tab active" data-tab="refined">Refined Draft</div>
+            <div class="tab" data-tab="initial">Initial Draft</div>
+            <div class="tab" data-tab="critique">Critique</div>
+            <div class="tab" data-tab="original">Original Email</div>
+          </div>
+
+          <div class="tab-content active" data-id="${id}" data-tab="refined">
+            <div class="draft-text">${escapeHtml(r.refinedDraft || r.initialDraft || '')}</div>
+          </div>
+          <div class="tab-content" data-id="${id}" data-tab="initial">
+            <div class="draft-text">${escapeHtml(r.initialDraft || '')}</div>
+          </div>
+          <div class="tab-content" data-id="${id}" data-tab="critique">
+            <div class="critique-text">${escapeHtml(r.critique || 'No critique available')}</div>
+          </div>
+          <div class="tab-content" data-id="${id}" data-tab="original">
+            <div class="original-email">${escapeHtml(r.originalBody || 'Original email not available')}</div>
+          </div>
+
+          ${r.status === 'draft' ? `
+          <div class="actions">
+            <button class="btn-approve" onclick="approveResponse('${id}')">Approve & Send</button>
+            <button class="btn-edit" onclick="showEditArea('${id}')">Edit</button>
+            <button class="btn-reject" onclick="rejectResponse('${id}')">Reject</button>
+          </div>
+          <div class="edit-area" id="edit-${id}">
+            <textarea id="textarea-${id}">${escapeHtml(r.refinedDraft || r.initialDraft || '')}</textarea>
+            <div class="actions">
+              <button class="btn-approve" onclick="approveEdited('${id}')">Save & Send</button>
+              <button class="btn-reject" onclick="hideEditArea('${id}')">Cancel</button>
+            </div>
+          </div>
+          ` : ''}
+        </div>
+      `).join('');
+
+      // Attach tab click handlers
+      document.querySelectorAll('.tabs .tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+          const id = e.target.closest('.tabs').dataset.id;
+          const tabName = e.target.dataset.tab;
+          document.querySelectorAll(`.tabs[data-id="${id}"] .tab`).forEach(t => t.classList.remove('active'));
+          document.querySelectorAll(`.tab-content[data-id="${id}"]`).forEach(c => c.classList.remove('active'));
+          e.target.classList.add('active');
+          document.querySelector(`.tab-content[data-id="${id}"][data-tab="${tabName}"]`).classList.add('active');
+        });
+      });
+    }
+
+    // ── Actions ──
+
+    async function approveResponse(id) {
+      try {
+        const res = await fetch(`${API_BASE}/api/responses/${id}/approve`, { method: 'POST' });
+        if (res.ok) {
+          notify('Response approved and queued for sending', 'success');
+          await loadData();
+        } else {
+          notify('Failed to approve response', 'error');
+        }
+      } catch (err) {
+        notify('API error: ' + err.message, 'error');
+      }
+    }
+
+    async function approveEdited(id) {
+      const content = document.getElementById(`textarea-${id}`).value;
+      try {
+        const res = await fetch(`${API_BASE}/api/responses/${id}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ finalContent: content }),
+        });
+        if (res.ok) {
+          notify('Edited response approved and queued for sending', 'success');
+          await loadData();
+        } else {
+          notify('Failed to approve response', 'error');
+        }
+      } catch (err) {
+        notify('API error: ' + err.message, 'error');
+      }
+    }
+
+    async function rejectResponse(id) {
+      if (!confirm('Reject this response draft?')) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/responses/${id}/reject`, { method: 'POST' });
+        if (res.ok) {
+          notify('Response rejected', 'success');
+          await loadData();
+        } else {
+          notify('Failed to reject response', 'error');
+        }
+      } catch (err) {
+        notify('API error: ' + err.message, 'error');
+      }
+    }
+
+    function showEditArea(id) {
+      document.getElementById(`edit-${id}`).style.display = 'block';
+    }
+
+    function hideEditArea(id) {
+      document.getElementById(`edit-${id}`).style.display = 'none';
+    }
+
+    // ── Filter Buttons ──
+
+    document.getElementById('filterBar').addEventListener('click', (e) => {
+      if (!e.target.classList.contains('filter-btn')) return;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+      currentFilter = e.target.dataset.filter;
+      renderResponses();
+    });
+
+    // ── Utilities ──
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function notify(message, type) {
+      const el = document.getElementById('notification');
+      el.textContent = message;
+      el.className = `notification ${type}`;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 4000);
+    }
+
+    // ── Init ──
+    loadData();
+    // Auto-refresh every 30 seconds
+    setInterval(loadData, 30000);
+  </script>
+</body>
+</html>

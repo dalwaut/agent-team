@@ -1,0 +1,59 @@
+{
+  "nextId": 7,
+  "jobs": {
+    "job-1": {
+      "channelId": "1470538457024692369",
+      "statusMessageId": "1471300393744203969",
+      "userId": "1470536166607683614",
+      "query": "hows my task list look?",
+      "status": "completed",
+      "startTime": 1770855749182,
+      "endTime": 1770855782426
+    },
+    "job-2": {
+      "channelId": "1470538457024692369",
+      "statusMessageId": "1471300963804512409",
+      "userId": "1470536166607683614",
+      "query": "i believe we are already doing this, instead tell me about the EvergladedNews tasks",
+      "status": "completed",
+      "startTime": 1770855885057,
+      "endTime": 1770855903537
+    },
+    "job-3": {
+      "channelId": "1470538457024692369",
+      "statusMessageId": "1471301868927062252",
+      "userId": "1470536166607683614",
+      "query": "write an email for me to denise regarding this info and save it to a draft for me. Use part of the email checker / email manager tool to do so if possible. Show me the produced email after you have sa",
+      "status": "completed",
+      "startTime": 1770856100836,
+      "endTime": 1770856163237
+    },
+    "job-4": {
+      "channelId": "1470538457024692369",
+      "statusMessageId": "1471303266884128769",
+      "userId": "1470536166607683614",
+      "query": "Excellent, we have sent it off. edit the email sender to never include the signature/contact info at the end, this is automated by gmail already and only duplicating the signature section.",
+      "status": "completed",
+      "startTime": 1770856434175,
+      "endTime": 1770856487475
+    },
+    "job-5": {
+      "channelId": "1470538457024692369",
+      "statusMessageId": "1471303935527747774",
+      "userId": "1470536166607683614",
+      "query": "where are at with the task deduplication. Also update the Everglades News task now that we have delegated some of the work out to denise",
+      "status": "completed",
+      "startTime": 1770856593595,
+      "endTime": 1770856782982
+    },
+    "job-6": {
+      "channelId": "1470538457024692369",
+      "statusMessageId": "1471308916225736848",
+      "userId": "1470536166607683614",
+      "query": "ok tell me about Eric Westberg let's work on his tasks",
+      "status": "completed",
+      "startTime": 1770857781054,
+      "endTime": 1770857803684
+    }
+  }
+}

@@ -1,0 +1,8 @@
+- [ ] vec itinerary app
+- [ ] vec news app
+- [ ] vec payment processing (memberships, ads, Classifieds, etc.)
+- [ ] bb payment processing for user account tiers.
+- [ ] bb ai agent chat windows
+- [ ] agents for:
+	- [ ] clickup app agent (build with mom)
+	- [ ] wp plugin plblishing
