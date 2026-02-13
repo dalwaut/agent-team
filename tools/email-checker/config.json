@@ -1,42 +1,42 @@
 {
-  "_comment": "OPAI Email Manager — 4 monitored accounts. Credentials in .env, not here.",
+  "_comment": "OPAI Email Manager — Monitored accounts. Credentials in .env, not here.",
 
   "accounts": [
     {
-      "name": "Gmail Personal",
+      "name": "Primary Gmail",
       "env_prefix": "",
       "mailbox": "INBOX",
       "max_emails": 20,
       "watched_senders": [],
       "watched_subjects": [],
-      "_note": "dalwaut@gmail.com — Empty watched_senders = process ALL senders."
+      "_note": "Primary personal Gmail — Empty watched_senders = process ALL senders."
     },
     {
-      "name": "Paradise Web",
+      "name": "Workspace Gmail",
       "env_prefix": "_PW",
       "mailbox": "INBOX",
       "max_emails": 20,
       "watched_senders": [],
       "watched_subjects": [],
-      "_note": "dallas@paradisewebfl.com — Google Workspace"
+      "_note": "Google Workspace email"
     },
     {
-      "name": "BoutaByte",
+      "name": "Business Email 1",
       "env_prefix": "_BB",
       "mailbox": "INBOX",
       "max_emails": 20,
       "watched_senders": [],
       "watched_subjects": [],
-      "_note": "dallas@boutabyte.com — Hostinger"
+      "_note": "Hostinger business email"
     },
     {
-      "name": "BoutaCare",
+      "name": "Business Email 2",
       "env_prefix": "_BC",
       "mailbox": "INBOX",
       "max_emails": 20,
       "watched_senders": [],
       "watched_subjects": [],
-      "_note": "dallas@boutacare.com — Hostinger"
+      "_note": "Hostinger business email"
     }
   ],
 

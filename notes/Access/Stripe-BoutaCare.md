@@ -1,6 +1,0 @@
-## Stripe
-- dallas@boutacare.com
-- Br!4mI2632
-- Publishable key: pk_live_51SvvGSDIRvOu5cW5sYXuXGoBhPdtGVhAFDB39R14o4Rcibe2FVHMiidEj52KsVAxD6bL7568XWyWdlvIvxAl6ATG00w0wbfbc3
-- secret key: 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
-

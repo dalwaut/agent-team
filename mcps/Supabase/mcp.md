@@ -1,2 +1,2 @@
 Personal access token:
-sbp_3c4cdca0e70732731a1dc4966a9ef3d699ef84ca
+YOUR_SUPABASE_PAT_HERE

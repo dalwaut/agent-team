@@ -1,7 +1,0 @@
-## Stripe
-- dallas@boutabyte.com
-- Br!4mI2632
-- Publishable key: 
-pk_live_51SxDwVEiZuVYT71fK0jPP8RERhrVic9g5f2bRyZZe7LXniGsMwTRbLuhkO8fm55a8hz8FqI990jaxfV1qm5sVFZy00hqogvifK
-- Secret:
-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

@@ -73,8 +73,8 @@ Agent → boutabyte-mcp (stdio) → file.boutabyte.com (VPS uploads)
 | `DEFAULT_ADMIN_USER_ID` | Empty (optional) | For `created_by` attribution |
 
 ### Supabase MCP PAT (separate system)
-- Stored at: `D:\SD\Home\OPAI\mcps\Supabase\mcp.md`
-- Token: `sbp_3c4cdca0e70732731a1dc4966a9ef3d699ef84ca`
+- Stored at: `mcps/Supabase/mcp.md`
+- Token: Set via `mcps/Supabase/mcp.md` (not committed)
 
 ---
 

@@ -1,6 +1,15 @@
 # ============================================
-# Agent Team Framework — OPAI Branch .gitignore
+# Agent Team Framework — Clean Branch .gitignore
 # ============================================
+
+# ── Secrets & Credentials (NEVER commit) ──
+**/.env
+Credentials.md
+notes/Access/
+
+# ── Runtime Data (instance-specific, not shared) ──
+tools/email-checker/data/
+tools/discord-bridge/data/
 
 # ── Personal / Workspace Content (not part of agent system) ──
 Obsidian/
@@ -54,9 +63,6 @@ __pycache__/
 
 # ── n8n Workflows (100+ large JSON files, sync separately) ──
 Library/n8n/Workflows/
-
-# ── Credentials Guide (never committed, even on internal branch) ──
-Credentials.md
 
 # ── Migration Backups ──
 _backup_*/

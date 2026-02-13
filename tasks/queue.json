@@ -1,56 +1,5 @@
 {
   "version": "1.0.0",
-  "description": "Deferred operations queue. Items land here when resources are unavailable or operations need human approval before execution.",
-  "schema": {
-    "id": "q-YYYYMMDD-NNN",
-    "type": "project-onboard | file-transfer | agent-task | maintenance",
-    "status": "queued | in_progress | completed | failed | blocked",
-    "priority": "critical | high | normal | low",
-    "created": "ISO 8601",
-    "updated": "ISO 8601",
-    "description": "Human-readable summary",
-    "payload": "Type-specific data object",
-    "blocked_reason": "Why this item is blocked (if status=blocked)",
-    "retry_count": 0,
-    "max_retries": 3,
-    "completed_at": "ISO 8601 (set on completion)"
-  },
-  "queue": [
-    {
-      "id": "q-20260209-001",
-      "type": "project-onboard",
-      "status": "queued",
-      "priority": "normal",
-      "created": "2026-02-09T20:00:00Z",
-      "updated": "2026-02-09T20:00:00Z",
-      "description": "Move FarmView from external location into Obsidian/Projects/FarmView and scaffold diamond workflow",
-      "payload": {
-        "project_name": "FarmView",
-        "source": "D:\\SD\\Home\\Everglades IT\\IT\\Projects\\FarmView - webapp",
-        "destination": "D:\\SD\\Home\\OPAI\\Obsidian\\Projects\\FarmView",
-        "steps": [
-          "Verify source path is accessible",
-          "Create destination folder with diamond scaffold",
-          "Copy source files into Codebase/",
-          "Generate PROJECT.md from status report",
-          "Generate CLAUDE.md with tech stack and conventions",
-          "Save onboarding report to reports/",
-          "Update MEMORY.md with new project location"
-        ],
-        "tech_stack": {
-          "framework": "React (TypeScript)",
-          "build": "Vite",
-          "styling": "Tailwind CSS + PostCSS",
-          "state": "React Context API",
-          "linting": "ESLint"
-        },
-        "origin": "Bolt.new generated, Jan 7 2025",
-        "status_report": "reports/2026-02-09/farmview-status-report.md"
-      },
-      "blocked_reason": "Source path resources were unavailable during initial attempt",
-      "retry_count": 0,
-      "max_retries": 3
-    }
-  ],
-  "completed": []
+  "operations": [],
+  "_note": "Deferred operations queue. Items auto-queued when resources are unavailable."
 }
