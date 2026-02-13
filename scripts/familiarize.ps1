@@ -74,7 +74,7 @@ if (-not (Test-Path $promptFile)) {
 }
 
 $dateStamp = Get-Date -Format "yyyy-MM-dd"
-$reportDir = Join-Path $agentDir "reports" $dateStamp
+$reportDir = Join-Path (Join-Path $agentDir "reports") $dateStamp
 if (-not (Test-Path $reportDir)) {
     New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
 }
@@ -136,7 +136,7 @@ try {
     Write-Host ""
 
     # Copy to latest
-    $latestDir = Join-Path $agentDir "reports" "latest"
+    $latestDir = Join-Path (Join-Path $agentDir "reports") "latest"
     if (-not (Test-Path $latestDir)) {
         New-Item -ItemType Directory -Path $latestDir -Force | Out-Null
     }

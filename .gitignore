@@ -6,15 +6,11 @@
 Obsidian/
 Clients/
 Documents/
-Research/
 gemini-scribe/
 Cursor/
-Agents/
 .obsidian/
 
 # ── Generated Output ──
-logs/
-reports/*/
 !reports/.gitkeep
 
 # ── Temp & OS Files ──
@@ -23,7 +19,6 @@ temp_workflows.json
 nul
 *.png
 Notes.md
-Useful Commands.md
 .DS_Store
 Thumbs.db
 desktop.ini
@@ -33,7 +28,7 @@ node_modules/
 mcps/stitch-skills/
 
 # ── Files with broken cloud-sync attributes (copy manually to server) ──
-mcps/Hostinger/
+# mcps/Hostinger/
 
 # ── IDE / Editor ──
 .vscode/
@@ -59,6 +54,12 @@ __pycache__/
 
 # ── n8n Workflows (100+ large JSON files, sync separately) ──
 Library/n8n/Workflows/
+
+# ── Credentials Guide (never committed, even on internal branch) ──
+Credentials.md
+
+# ── Migration Backups ──
+_backup_*/
 
 # ── Claude Code ──
 .claude/

@@ -20,6 +20,7 @@ Read every file in `reports/latest/`. For each report:
 Also check:
 - `reports/HITL/` — Are there items still awaiting human response? List them.
 - `reports/Archive/` — What was the last archived report date? (context for freshness)
+- `tasks/registry.json` — The unified task registry. Read all tasks and cross-reference with report findings. Tasks with `status: "open"` or `status: "in_progress"` are active work. Include a registry summary in your dispatch (total tasks, open count, by priority, by source). Flag any tasks that overlap with report findings — they may already be tracked or need updating.
 - `tasks/queue.json` — Are there blocked or failed queue items? Include them in the HITL briefing with retry status and context.
 - `CONVENTIONS.md` — Read workspace conventions so you can validate that proposed actions comply.
 
@@ -139,6 +140,10 @@ Output a final summary:
 | Blocked items (waiting) | N |
 | Stale items (>14 days) | N |
 | Reports ready to archive | N |
+| Registry: total tasks | N |
+| Registry: open tasks | N |
+| Registry: tasks overlapping with findings | N |
+| Queue: blocked/failed items | N |
 
 ### Next Squad Runs Recommended
 

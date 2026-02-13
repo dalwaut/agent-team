@@ -215,6 +215,15 @@
       "depends_on": [],
       "run_order": "parallel",
       "category": "operations"
+    },
+    "tools_monitor": {
+      "name": "Tools Monitor",
+      "emoji": "TM",
+      "description": "Audits health of all tools/ and mcps/: config validation, dependency checks, data staleness, code integrity, integration correctness. Report-only.",
+      "prompt_file": "prompt_tools_monitor.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
     }
   },
 
@@ -272,12 +281,16 @@
       "agents": ["workspace_steward", "report_dispatcher"]
     },
     "workspace": {
-      "description": "Complete workspace audit: notes, library, structure, hygiene, then dispatch",
-      "agents": ["notes_curator", "library_curator", "workspace_steward", "report_dispatcher"]
+      "description": "Complete workspace audit: notes, library, structure, tools, hygiene, then dispatch",
+      "agents": ["notes_curator", "library_curator", "workspace_steward", "tools_monitor", "report_dispatcher"]
     },
     "email": {
       "description": "Email management: check accounts, classify, extract tasks, review pending responses, then dispatch",
       "agents": ["email_manager", "report_dispatcher"]
+    },
+    "tools": {
+      "description": "Tools ecosystem health: audit Discord bridge, email manager, work companion, WP agent, and MCP servers",
+      "agents": ["tools_monitor", "report_dispatcher"]
     }
   },
 

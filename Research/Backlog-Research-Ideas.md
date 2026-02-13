@@ -1,0 +1,11 @@
+- [Agent] Dedicated GEO Agent - stays up to date on the latest LLM trends to perfect our knowledgebase and assist in coding perfected files to make websites be found by AI.
+- [Agent] VEC Suite of tools/agents - Contact Agent, Article Research Agent, Article Writer agent, Research Validator Agent, Post to wordpress Agent, etc.
+- [Low] Antigravity can only use 100 tools at once. Expand the limits or limit the tools a mcp provides. ref. Hostinger
+- [Low] Agent or app to build flipper "things" (scripts, screens, etc.)
+- [Low] VTT & TTV app "WE Talk" https://github.com/cjpais/Handy
+- [Medium],[Agent] ClickUp Agent to manage clickup (create tasks, update projects, comment/reply)
+- [High],[Agent] - Company AI - general agent for internal use and access to business related tools like clickup status, google calendar, gmail, etc.
+- [High] Coolify / Hostinger VPS file system and how to navigate.
+	- Cron jobs to backup the VPS to our NAS - EVERY DAY
+- [Low] workflow / agent / app to curate a workflow for upload to BoutaByte
+- [Low] move clickup to self hosted notion on VPS

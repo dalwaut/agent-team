@@ -1,0 +1,2 @@
+Organized research useful to the user or based on the topic provided
+continually updated as topics come in, sourced as a library for the user in the future or as a knowledge vault when agents are doing work.

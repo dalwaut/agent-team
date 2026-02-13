@@ -57,7 +57,7 @@ else {
 Write-Host ""
 
 # --- Check for reports ---
-$latestDir = Join-Path $agentDir "reports" "latest"
+$latestDir = Join-Path (Join-Path $agentDir "reports") "latest"
 if (-not (Test-Path $latestDir)) {
     Write-Error "No reports found. Run a squad first: .\.agent\scripts\run_squad.ps1 -Squad 'audit'"
     exit 1
@@ -115,7 +115,7 @@ if (-not (Test-Path $promptFile)) {
 }
 
 $dateStamp = Get-Date -Format "yyyy-MM-dd"
-$reportDir = Join-Path $agentDir "reports" $dateStamp
+$reportDir = Join-Path (Join-Path $agentDir "reports") $dateStamp
 if (-not (Test-Path $reportDir)) {
     New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
 }

@@ -1,0 +1,47 @@
+{
+  "title": "SpotPoint: Micro-Location Tracker",
+  "platform": "Web (Vite + React)",
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "content": "SpotPoint is a high-fidelity, context-aware micro-location sharing platform engineered to resolve the 'last 10 meters' problem in complex or high-density environments. While standard GPS applications excel at macro-navigation, they frequently falter in multi-level indoor structures or crowded outdoor events where signal noise and map granularity are issues. \n\nSpotPoint bridges this gap by providing a real-time, transient environment where users can visualize the precise location of peers and landmarks within specific situational contexts—such as music festivals, medical campuses, or complex transit hubs. By prioritizing low-latency coordinate broadcasting and Z-axis (altitude/floor) awareness, the application ensures seamless coordination in spaces where traditional digital maps are often too static. The platform is built with a privacy-first architecture, utilizing ephemeral 'Event Circles' that automatically purge sensitive coordinate history post-session, ensuring that user security remains a primary tenet of the user experience."
+    },
+    {
+      "id": "problem",
+      "title": "Problem Statement",
+      "content": "Standard maps are often insufficient for indoor navigation (hospitals/hotels) or high-density events (concerts). Users frequently struggle to communicate their exact location ('I'm by the blue pillar on the third floor') which leads to frustration and lost time."
+    },
+    {
+      "id": "goals",
+      "title": "Goals & Objectives",
+      "content": "- **Primary Goal:** Enable users to share their live location with 3-meter accuracy in specific venue contexts.\n- **Secondary Goal:** Allow users to set temporary 'Event Circles' that expire after a set time to maintain privacy."
+    },
+    {
+      "id": "users",
+      "title": "Target Users",
+      "content": "- **Event Goers:** People attending festivals, concerts, or large conferences.\n- **Visitors & Patients:** Individuals navigating complex indoor environments like hospitals or large hotels.\n- **Short-Trail Hikers:** Casual walkers who want to ensure their group stays together without needing heavy-duty topographic software."
+    },
+    {
+      "id": "features",
+      "title": "Key Features",
+      "content": "- **Dynamic Live Tracking:** High-frequency location updates with interpolation to ensure smooth movement markers on the map.\n- **Micro-Fencing & Proximity Alerts:** Configurable 'proximity pings' that notify users when a circle member is within a 10-20 meter radius.\n- **Multi-Level Indoor Navigation:** Support for 'Z-axis' data allowing users to toggle between floor plans in supported venues.\n- **Smart Venue Landmarks:** Interactive pins with metadata (e.g., photos, floor number, notes like 'behind the merchandise stand').\n- **Privacy-First Controls:** 'Ghost Mode' to pause location sharing without leaving the circle, and granular visibility toggles.\n- **PWA Capabilities:** Offline map caching and background location updates for web-based mobile usage."
+    },
+    {
+      "id": "flows",
+      "title": "User Flows",
+      "content": "1. **Onboarding & Permissions:** User lands on the app, provides 'Always Allow' location permissions, and sets a temporary display name/avatar.\n2. **Circle Creation & Distribution:** User initializes an 'Event Circle', sets an expiry timer (1h, 4h, 12h), and shares a secure link or dynamic QR code.\n3. **Venue Calibration:** The host identifies the 'Level 0' reference point or selects a pre-existing venue map to align floor-level tracking.\n4. **Active Navigation:** Users see real-time distance indicators and directional arrows pointing toward selected friends or landmarks.\n5. **Floor Switching:** When a user changes floors, they update their status (manually or via barometer API if available), updating their icon for others.\n6. **Session Termination:** Upon timer expiry or manual dissolution, the real-time subscription is killed, and all coordinate history is purged from the database."
+    },
+    {
+      "id": "tech",
+      "title": "Tech Stack",
+      "content": "- **Frontend:** React 18+ with Vite for optimized hot module replacement.\n- **Styling:** Tailwind CSS for responsive, mobile-first design; Headless UI/Radix for accessible components.\n- **State Management:** \n  - **Global State:** Zustand for lightweight UI state.\n  - **Server State:** TanStack Query (React Query) for caching and synchronizing venue data.\n- **Mapping & Geospatial:** Mapbox GL JS for vector tiling and custom indoor layer rendering.\n- **Backend/Real-time:** Supabase (PostgreSQL + Realtime) for low-latency coordinate broadcasting via WebSockets.\n- **PWA Support:** `vite-plugin-pwa` for service worker management and offline asset caching.\n- **Deployment:** Vercel or Netlify with Edge Functions for proximity logic calculations."
+    },
+    {
+      "id": "metrics",
+      "title": "Success Metrics",
+      "content": "- **Accuracy:** Mean error distance of less than 5 meters.\n- **Engagement:** Number of circles created per active user during weekends/event peaks.\n- **Safety:** Successful auto-termination of location sharing sessions after expiry."
+    }
+  ],
+  "lastEdited": 1769914890248
+}

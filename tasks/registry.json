@@ -708,14 +708,14 @@
     "t-20260212-045": {
       "id": "t-20260212-045",
       "title": "Review Eric's podcast Episode 1 script and provide feedback",
-      "description": "Eric Westberg wants feedback on his 'Pioneers of Personal Development' Episode 1 script before recording via Riverside.com. He wants to finalize and deliver by Friday.",
+      "description": "Eric Westberg wants feedback on his 'Pioneers of Personal Development' Episode 1 script before recording via Riverside.com. Friday deadline. MANUAL REVIEW — Dallas will review the script directly and confirm when feedback is sent.",
       "source": "email",
       "sourceRef": {
         "sender": "e.westberg@hotmail.com",
         "senderName": "Eric Westberg",
         "subject": "Podcast"
       },
-      "project": null,
+      "project": "Westberg",
       "assignee": "human",
       "status": "pending",
       "priority": "high",
@@ -735,14 +735,14 @@
     "t-20260212-046": {
       "id": "t-20260212-046",
       "title": "Receive and process Eric's finished podcast episode",
-      "description": "Eric plans to record and send the completed podcast episode by Friday after getting feedback approval.",
+      "description": "Eric plans to record and send the completed podcast episode by Friday after getting feedback approval. Waiting on Eric after feedback is sent.",
       "source": "email",
       "sourceRef": {
         "sender": "e.westberg@hotmail.com",
         "senderName": "Eric Westberg",
         "subject": "Podcast"
       },
-      "project": null,
+      "project": "Westberg",
       "assignee": "human",
       "status": "pending",
       "priority": "normal",
@@ -840,7 +840,213 @@
       "createdAt": "2026-02-11T22:39:48.874Z",
       "updatedAt": null,
       "completedAt": null
+    },
+    "t-20260212-051": {
+      "id": "t-20260212-051",
+      "title": "Reply to Eric's 'Re: AI pic' email — website status, logo quote, book reviews",
+      "description": "Eric asked 3 questions on Feb 10. RESPONSES: (1) Website: could be completely launched within a week after content is all organized; will need a retainer or per-update price. (2) Logo: price is being bundled into the final price — delegating logo task to Denise separately (see t-20260212-053). (3) Highlight boxes: unclear what Eric means by 'highlight boxes' — he said 'I don't know what you call those things'. Need to check if an image was attached to the 'Re: AI pic' email. Draft response exists in email system — update with these answers before sending.",
+      "source": "manual",
+      "sourceRef": {
+        "sender": "e.westberg@hotmail.com",
+        "senderName": "Eric Westberg",
+        "subject": "Re: AI pic"
+      },
+      "project": "Westberg",
+      "assignee": "human",
+      "status": "pending",
+      "priority": "high",
+      "deadline": "2026-02-12",
+      "routing": {
+        "type": "communication",
+        "squads": [
+          "email"
+        ],
+        "mode": "propose"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-12T14:00:00.000Z",
+      "updatedAt": null,
+      "completedAt": null
+    },
+    "t-20260212-052": {
+      "id": "t-20260212-052",
+      "title": "Place Eric's bio on the website About page",
+      "description": "Eric sent 'Website Bio-Eric Westberg.docx' on Feb 5 (subject: 'Bio Book Review'). Place on About Me page (WP id:8, currently has Lorem Ipsum placeholder). Gmail: https://mail.google.com/mail/u/0/#search/from%3Ae.westberg%40hotmail.com+subject%3A%22Bio+Book+Review%22 — WP access: username 'weadm' (see popd_hostinger.md). BLOCKED: need .docx content — provide in next chat or save to Clients/Westberg/.",
+      "source": "manual",
+      "sourceRef": {
+        "sender": "e.westberg@hotmail.com",
+        "senderName": "Eric Westberg",
+        "subject": "Bio Book Review"
+      },
+      "project": "Westberg",
+      "assignee": "human",
+      "status": "completed",
+      "priority": "high",
+      "deadline": "2026-02-12",
+      "routing": {
+        "type": "review",
+        "squads": [
+          "review"
+        ],
+        "mode": "propose"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-12T14:00:00.000Z",
+      "updatedAt": null,
+      "completedAt": null,
+      "notes": "Bio pushed to About Me page (WP id:8). Replaced Lorem Ipsum text blocks and Damon Vaughn placeholder with Eric Westberg bio. Live at https://pioneersofpersonaldevelopment.com/about-me/"
+    },
+    "t-20260212-053": {
+      "id": "t-20260212-053",
+      "title": "Delegate logo design to Denise — email with Eric's brief and profile image",
+      "description": "Logo price is bundled into final website price. Eric sent a 3-page Designer Brief on Jan 27: 'Don't throw it away... Refine it to be more timeless and scalable.' ACTION: Email Denise with (1) Eric's logo brief/preferences — Gmail: https://mail.google.com/mail/u/0/#search/from%3Ae.westberg%40hotmail.com+subject%3A%22Logo+Design%22, (2) channels4_profile.jpg from Clients/Westberg/, and (3) all of Eric's stated preferences. Draft at Clients/Westberg/Tasks/draft-053-denise-logo.md. Internal communication — OK to reference Denise by name.",
+      "source": "manual",
+      "sourceRef": {
+        "sender": "e.westberg@hotmail.com",
+        "senderName": "Eric Westberg",
+        "subject": "Logo Design"
+      },
+      "project": "Westberg",
+      "assignee": "denise",
+      "status": "pending",
+      "priority": "high",
+      "deadline": "2026-02-12",
+      "routing": {
+        "type": "admin",
+        "squads": [],
+        "mode": "propose"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-12T14:00:00.000Z",
+      "updatedAt": null,
+      "completedAt": null
+    },
+    "t-20260212-054": {
+      "id": "t-20260212-054",
+      "title": "Pull, present, and post 7 book reviews to Westberg website as posts",
+      "description": "Eric provided 7 book reviews total (5 from Jan 20 + 2 from Feb 5). Post as WP blog posts on pioneersofpersonaldevelopment.com. Books page already has 19 Amazon product cards. Gmail links: 5 reviews: https://mail.google.com/mail/u/0/#search/from%3Ae.westberg%40hotmail.com+subject%3A%22Status%22+after%3A2026%2F01%2F18+before%3A2026%2F01%2F22 | 2 reviews: https://mail.google.com/mail/u/0/#search/from%3Ae.westberg%40hotmail.com+subject%3A%22Bio+Book+Review%22 — WP access: username 'weadm' (see popd_hostinger.md). BLOCKED: need review text — provide in next chat or save to Clients/Westberg/.",
+      "source": "manual",
+      "sourceRef": {
+        "sender": "e.westberg@hotmail.com",
+        "senderName": "Eric Westberg",
+        "subject": "Re: Fw: Status"
+      },
+      "project": "Westberg",
+      "assignee": "human",
+      "status": "in_progress",
+      "priority": "normal",
+      "deadline": "2026-02-12",
+      "routing": {
+        "type": "content",
+        "squads": [],
+        "mode": "propose"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-12T14:00:00.000Z",
+      "updatedAt": null,
+      "completedAt": null,
+      "notes": "2 of 7 book reviews posted as drafts: Think and Grow Rich (WP id:3355) and The Greatest Salesman in the World (WP id:3356). Categories: Read (16) + Featured Book (20). Fusion Builder layout with Amazon affiliate links. Remaining 5 reviews need source content from Eric."
+    },
+    "t-20260212-055": {
+      "id": "t-20260212-055",
+      "title": "Email hosting transfer — GoDaddy to Boutabyte (end of site build)",
+      "description": "Eric approved the transfer on Feb 5. Move info@pioneersofpersonaldevelopment.com from GoDaddy to Boutabyte. DEPRIORITIZED: Do this at the end of the site build / before launch. Currently working fine, switch will save money. Not urgent — we are swamped and it is not necessary right now.",
+      "source": "manual",
+      "sourceRef": {
+        "sender": "e.westberg@hotmail.com",
+        "senderName": "Eric Westberg",
+        "subject": "Re: Fw: Website Feedback"
+      },
+      "project": "Westberg",
+      "assignee": "human",
+      "status": "pending",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "deployment",
+        "squads": [],
+        "mode": "propose"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-12T14:00:00.000Z",
+      "updatedAt": null,
+      "completedAt": null
+    },
+    "t-20260212-056": {
+      "id": "t-20260212-056",
+      "title": "Add Amazon Associate disclaimer to Westberg website — review and suggest placement",
+      "description": "COMPLETED: Disclaimer already present in two locations: (1) Books page footer: 'As an Amazon Associate, we earn from qualifying purchases.' (2) Privacy Policy page: full Amazon Affiliate Disclosure section. No further action needed unless site-wide footer placement desired (requires Avada theme panel).",
+      "source": "manual",
+      "sourceRef": {
+        "sender": "e.westberg@hotmail.com",
+        "senderName": "Eric Westberg",
+        "subject": "Re: Pioneers of Personal Development"
+      },
+      "project": "Westberg",
+      "assignee": "human",
+      "status": "completed",
+      "priority": "normal",
+      "deadline": "2026-02-12",
+      "routing": {
+        "type": "content",
+        "squads": [],
+        "mode": "propose"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-12T14:00:00.000Z",
+      "updatedAt": null,
+      "completedAt": null
+    },
+    "t-20260212-057": {
+      "id": "t-20260212-057",
+      "title": "Set and communicate new website launch date to Eric",
+      "description": "MERGED into t-20260212-051 (Re: AI pic reply). Launch date communication is included in that draft: 'fully launched within a week once content is organized' + retainer/per-update pricing. No separate action needed.",
+      "source": "manual",
+      "sourceRef": {
+        "sender": "e.westberg@hotmail.com",
+        "senderName": "Eric Westberg",
+        "subject": "Re: Fw: Website Feedback"
+      },
+      "project": "Westberg",
+      "assignee": "human",
+      "status": "completed",
+      "priority": "high",
+      "deadline": "2026-02-12",
+      "routing": {
+        "type": "communication",
+        "squads": [
+          "email"
+        ],
+        "mode": "propose"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-12T14:00:00.000Z",
+      "updatedAt": null,
+      "completedAt": null
+    },
+    "t-20260212-058": {
+      "id": "t-20260212-058",
+      "title": "Email checker: add attachment download + content extraction",
+      "description": "Email checker (tools/email-checker/index.js) currently fetches bodyStructure and source but has zero attachment handling. NEEDED: (1) Parse bodyStructure for Content-Disposition: attachment parts. (2) Fetch and save attachments to disk (e.g., Clients/<name>/). (3) For .docx files, extract text content and present 1:1. (4) For other files, provide a summary. (5) When referencing emails, provide Gmail search URLs instead of local draft paths. This was identified while working on Westberg tasks — bio.docx and book reviews were unreachable because only email metadata was stored.",
+      "source": "manual",
+      "sourceRef": {},
+      "project": "INTERNAL",
+      "assignee": "human",
+      "status": "pending",
+      "priority": "high",
+      "deadline": null,
+      "routing": {
+        "type": "feature",
+        "squads": [
+          "plan"
+        ],
+        "mode": "propose"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-12T15:00:00.000Z",
+      "updatedAt": null,
+      "completedAt": null
     }
   },
-  "lastUpdated": "2026-02-12T00:30:00.000Z"
+  "lastUpdated": "2026-02-12T15:00:00.000Z"
 }

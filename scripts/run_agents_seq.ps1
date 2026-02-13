@@ -35,12 +35,12 @@ if (-not $SkipPreflight) {
 
 # --- Timestamped report directory ---
 $dateStamp = Get-Date -Format "yyyy-MM-dd"
-$reportDir = Join-Path $scriptRoot "reports" $dateStamp
+$reportDir = Join-Path (Join-Path $scriptRoot "reports") $dateStamp
 if (-not (Test-Path $reportDir)) {
     New-Item -ItemType Directory -Path $reportDir -Force | Out-Null
 }
 # Also keep a "latest" symlink/copy
-$latestDir = Join-Path $scriptRoot "reports" "latest"
+$latestDir = Join-Path (Join-Path $scriptRoot "reports") "latest"
 
 # --- Discover all prompt files ---
 $promptFiles = Get-ChildItem -Path "$PSScriptRoot\prompt_*.txt" | Sort-Object Name
@@ -130,10 +130,14 @@ IMPORTANT INSTRUCTIONS:
     Start-Sleep -Seconds 3
 }
 
-# --- Copy to "latest" ---
+# --- Merge into latest (preserves reports from other squads) ---
 if (Test-Path $reportDir) {
-    if (Test-Path $latestDir) { Remove-Item -Recurse -Force $latestDir }
-    Copy-Item -Recurse -Path $reportDir -Destination $latestDir
+    if (-not (Test-Path $latestDir)) {
+        New-Item -ItemType Directory -Path $latestDir -Force | Out-Null
+    }
+    Get-ChildItem -Path $reportDir -File | ForEach-Object {
+        Copy-Item -Path $_.FullName -Destination $latestDir -Force
+    }
 }
 
 # --- Summary ---
