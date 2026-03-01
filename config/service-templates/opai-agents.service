@@ -1,0 +1,17 @@
+[Unit]
+Description=OPAI Agents — Agent Studio for managing AI agent teams
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-agents
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-agents
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8088
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/workspace/synced/opai/tools/opai-agents/.env
+
+EnvironmentFile=-%t/opai-vault/opai-agents.env
+[Install]
+WantedBy=default.target

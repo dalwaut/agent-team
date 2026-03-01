@@ -1,0 +1,281 @@
+{
+  "version": "1.0.0",
+  "description": "Deferred operations queue. Items land here when resources are unavailable or operations need human approval before execution.",
+  "schema": {
+    "id": "q-YYYYMMDD-NNN",
+    "type": "project-onboard | file-transfer | agent-task | maintenance",
+    "status": "queued | in_progress | completed | failed | blocked",
+    "priority": "critical | high | normal | low",
+    "created": "ISO 8601",
+    "updated": "ISO 8601",
+    "description": "Human-readable summary",
+    "payload": "Type-specific data object",
+    "blocked_reason": "Why this item is blocked (if status=blocked)",
+    "retry_count": 0,
+    "max_retries": 3,
+    "completed_at": "ISO 8601 (set on completion)"
+  },
+  "queue": [
+    {
+      "id": "q-20260214-001",
+      "type": "maintenance",
+      "status": "queued",
+      "priority": "critical",
+      "created": "2026-02-14T00:00:00Z",
+      "updated": "2026-02-14T00:40:00Z",
+      "description": "CRITICAL: Investigate and fix console/Claude Code mobile input issues — system is inserting predicted words/sentences while typing, making terminal and Claude Code unusable on mobile devices",
+      "payload": {
+        "area": "mobile-terminal",
+        "symptoms": [
+          "After typing first few words, system removes or adds predicted words/sentences",
+          "Affects both raw terminal and Claude Code services",
+          "Makes mobile usage completely unusable",
+          "CONFIRMED: Disabling mobile predictive text did NOT fix the issue — problem is NOT the keyboard"
+        ],
+        "ruled_out": [
+          "Mobile keyboard predictive text / autocorrect (disabled, issue persists)"
+        ],
+        "investigation_steps": [
+          "Check if this is a terminal emulator issue (which app? Termux, JuiceSSH, etc.)",
+          "Check if SSH client is sending autocomplete/predictive signals",
+          "Test with different terminal apps to isolate",
+          "Check if Claude Code CLI has readline/input handling issues on mobile TTY",
+          "Investigate terminal echo/line editing mode (stty -echo, raw mode)",
+          "Check stty/terminfo settings for the mobile session",
+          "Check if bash readline or Claude Code ink/react-ink is mishandling mobile TTY dimensions or resize events",
+          "Test with a basic SSH session (no Claude Code) to isolate whether issue is terminal-level or app-level"
+        ],
+        "requested_by": "dalwaut32"
+      },
+      "blocked_reason": null,
+      "retry_count": 0,
+      "max_retries": 3,
+      "completed_at": null
+    },
+    {
+      "id": "q-20260222-001",
+      "type": "maintenance",
+      "status": "queued",
+      "priority": "normal",
+      "created": "2026-02-22T00:00:00Z",
+      "updated": "2026-02-22T00:00:00Z",
+      "description": "Fix Grok idea generator — not outputting anything, only echoing back input JSON",
+      "payload": {
+        "area": "prd-pipeline",
+        "symptoms": [
+          "Grok idea generator returns only the input JSON with no new ideas generated",
+          "No output from the model, just input passthrough"
+        ],
+        "investigation_steps": [
+          "Check Grok API call in idea generator — verify model response is being parsed correctly",
+          "Check if response format changed (Grok API update?)",
+          "Verify API key and endpoint are correct",
+          "Check if streaming vs non-streaming response handling is mismatched",
+          "Log raw Grok API response to identify what's actually being returned"
+        ],
+        "requested_by": "dalwaut32"
+      },
+      "blocked_reason": null,
+      "retry_count": 0,
+      "max_retries": 3,
+      "completed_at": null
+    },
+    {
+      "id": "q-20260228-001",
+      "type": "agent-task",
+      "status": "queued",
+      "priority": "normal",
+      "created": "2026-02-28T00:00:00Z",
+      "updated": "2026-02-28T00:00:00Z",
+      "description": "R&D: Research Anthropic Agent SDK as alternative to claude -p for Telegram bridge — could improve latency, enable streaming responses, reduce subprocess overhead",
+      "payload": {
+        "area": "telegram-bridge",
+        "source": "video-intake",
+        "source_ref": "https://www.youtube.com/watch?v=9Svv-n11Ysk",
+        "source_title": "I Replaced OpenClaw With Claude Code in One Day — Mark Kashef",
+        "research_topics": [
+          "Anthropic Agent SDK (@anthropic-ai/claude-agent-sdk) — capabilities, API surface, subprocess model",
+          "Compare Agent SDK subprocess vs current claude -p fire-and-forget approach",
+          "Persistent session management — does Agent SDK maintain state across calls?",
+          "Streaming response support — can we pipe Agent SDK output to Telegram in real-time?",
+          "Resource overhead — Agent SDK daemon vs spawning claude -p per request",
+          "Compatibility with existing OPAI skills, MCP servers, CLAUDE.md context",
+          "Terms of service implications — verify Agent SDK usage is compliant with Claude Max plan"
+        ],
+        "agent": "rd_analyst",
+        "output_path": "notes/Improvements/agent-sdk-telegram-bridge.md",
+        "requested_by": "dalwaut32"
+      },
+      "blocked_reason": null,
+      "retry_count": 0,
+      "max_retries": 3,
+      "completed_at": null
+    },
+    {
+      "id": "q-20260228-002",
+      "type": "agent-task",
+      "status": "queued",
+      "priority": "normal",
+      "created": "2026-02-28T00:00:00Z",
+      "updated": "2026-02-28T00:00:00Z",
+      "description": "R&D: Add multimodal support to Telegram bridge — photo/video/voice interpretation via Claude Code vision pipeline",
+      "payload": {
+        "area": "telegram-bridge",
+        "source": "video-intake",
+        "source_ref": "https://www.youtube.com/watch?v=9Svv-n11Ysk",
+        "source_title": "I Replaced OpenClaw With Claude Code in One Day — Mark Kashef",
+        "research_topics": [
+          "SCC IDE vision pipeline pattern (stream-json envelope) — can it be adapted for Telegram?",
+          "grammY file handling — download photo/video from Telegram API to temp file",
+          "Claude Code --input-format stream-json with image content blocks",
+          "Voice note handling — transcription before Claude processing vs direct audio",
+          "File size limits and compression for Telegram media",
+          "User experience — inline response vs 'processing...' indicator for heavy media"
+        ],
+        "agent": "rd_analyst",
+        "output_path": "notes/Improvements/telegram-multimodal-support.md",
+        "requested_by": "dalwaut32"
+      },
+      "blocked_reason": null,
+      "retry_count": 0,
+      "max_retries": 3,
+      "completed_at": null
+    },
+    {
+      "id": "q-20260228-003",
+      "type": "agent-task",
+      "status": "queued",
+      "priority": "high",
+      "created": "2026-02-28T00:00:00Z",
+      "updated": "2026-02-28T00:00:00Z",
+      "description": "R&D: Build GEO audit agent squad for HELM — 5-dimension scoring methodology, website crawling, PDF report generation, agency service delivery pipeline",
+      "payload": {
+        "area": "helm",
+        "source": "video-intake",
+        "source_ref": "https://www.youtube.com/watch?v=Uyf8ehWyLto",
+        "source_title": "Claude Code Just KILLED All Marketing Agencies — Zubair Trabzada",
+        "research_topics": [
+          "5-dimension GEO scoring methodology (AI Citability, Brand Authority, Technical GEO, Content Quality, Schema)",
+          "Website crawling approach — Playwright headless vs curl-based fetching for audit data collection",
+          "llms.txt spec — format, compliance checking, generation",
+          "robots.txt AI crawler detection (GPTBot, ClaudeBot, PerplexityBot, Google-Extended)",
+          "Schema markup detection and scoring (Organization, FAQ, Product, Person, Offer, Review)",
+          "Per-AI-platform visibility testing — can we query each platform programmatically?",
+          "PDF report generation for OPAI — WeasyPrint vs Puppeteer vs reportlab vs HTML-to-PDF",
+          "Integration with HELM business management pipeline — audit > outreach > deliver > invoice"
+        ],
+        "playbook": "Library/helm-playbooks/geo-audit-service.md",
+        "agent": "rd_analyst",
+        "output_path": "notes/Improvements/helm-geo-audit-service.md",
+        "requested_by": "dalwaut32"
+      },
+      "blocked_reason": null,
+      "retry_count": 0,
+      "max_retries": 3,
+      "completed_at": null
+    },
+    {
+      "id": "q-20260228-004",
+      "type": "agent-task",
+      "status": "queued",
+      "priority": "normal",
+      "created": "2026-02-28T00:00:00Z",
+      "updated": "2026-02-28T00:00:00Z",
+      "description": "R&D: PDF report generation capability for OPAI — upgrade agent reports, HITL briefings, HELM deliverables from markdown to polished PDF",
+      "payload": {
+        "area": "opai-infrastructure",
+        "source": "video-intake",
+        "source_ref": "https://www.youtube.com/watch?v=Uyf8ehWyLto",
+        "source_title": "Claude Code Just KILLED All Marketing Agencies — Zubair Trabzada",
+        "research_topics": [
+          "Python PDF libraries: WeasyPrint (HTML/CSS to PDF), reportlab (programmatic), fpdf2",
+          "Node.js options: Puppeteer/Playwright PDF generation from HTML, pdfkit",
+          "Template approach — HTML/CSS report template + data injection vs programmatic layout",
+          "Branding — OPAI/HELM branded report templates with logos, colors, charts",
+          "Chart generation — matplotlib/chart.js for score gauges, bar charts, radar charts",
+          "Integration points — post_squad_hook.py, HELM report generation, HITL briefings",
+          "File storage — where do generated PDFs live? reports/ or served via tool API?"
+        ],
+        "agent": "rd_analyst",
+        "output_path": "notes/Improvements/pdf-report-generation.md",
+        "requested_by": "dalwaut32"
+      },
+      "blocked_reason": null,
+      "retry_count": 0,
+      "max_retries": 3,
+      "completed_at": null
+    },
+    {
+      "id": "q-20260228-005",
+      "type": "agent-task",
+      "status": "queued",
+      "priority": "normal",
+      "created": "2026-02-28T00:00:00Z",
+      "updated": "2026-02-28T00:00:00Z",
+      "description": "R&D: Crypto trading strategy automation — research open-source backtesting engines, Pine Script generation, iterative strategy improvement loops, and scoring methodologies. Build a library reference for later HELM use.",
+      "payload": {
+        "area": "helm",
+        "source": "video-intake",
+        "source_ref": "https://www.youtube.com/watch?v=77ikjQjdGFg",
+        "source_title": "Claude AI can NOW Automatically Build and Improve Your TradingView Strategies — Michael Automates",
+        "research_topics": [
+          "Open-source Python backtesting frameworks — Backtrader, vectorbt, Zipline, backtesting.py, freqtrade. Feature comparison, active maintenance, ease of integration with AI agents",
+          "Pine Script fundamentals — syntax, strategy structure, indicator functions. Enough for Claude to generate and modify TradingView strategies programmatically",
+          "OHLCV data sourcing — free APIs for historical crypto data (Binance API, CoinGecko, CCXT library, Yahoo Finance). Data formats, rate limits, caching strategies",
+          "Iterative strategy improvement pattern — how to structure an AI loop: generate strategy → backtest → score → mutate → repeat. Convergence criteria, iteration limits, diversity preservation",
+          "Multi-asset scoring methodology — testing strategies across multiple assets/timeframes to avoid overfitting. Risk-reward scoring, Sharpe ratio, max drawdown weighting, win rate vs profit factor tradeoffs",
+          "Strategy evaluation metrics — P&L%, max drawdown, Sharpe ratio, Sortino ratio, Calmar ratio, win rate, profit factor, number of trades. Which metrics matter most and why",
+          "Risk management for automated trading — position sizing, stop-loss strategies, portfolio diversification, correlation analysis between assets",
+          "Regulatory and liability considerations — what can HELM offer as a service vs financial advice? Educational content vs managed trading. Disclaimers and compliance boundaries",
+          "Open-source alternatives to TradingView — Grafana + data feeds, lightweight-charts (TradingView open-source lib), custom charting for strategy visualization",
+          "Integration with OPAI agent framework — how would a trading strategy squad work? Roles: data fetcher, strategy generator, backtester, scorer, reporter. Squad config pattern"
+        ],
+        "library_output": "Library/knowledge/reference/crypto-trading-automation.md",
+        "agent": "rd_analyst",
+        "output_path": "notes/Improvements/crypto-trading-automation.md",
+        "requested_by": "dalwaut32"
+      },
+      "blocked_reason": null,
+      "retry_count": 0,
+      "max_retries": 3,
+      "completed_at": null
+    },
+    {
+      "id": "q-20260228-006",
+      "type": "agent-task",
+      "status": "queued",
+      "priority": "high",
+      "created": "2026-02-28T00:00:00Z",
+      "updated": "2026-02-28T00:00:00Z",
+      "description": "R&D: AI task offloading via OpenRouter — reduce Claude subscription usage by routing bulk/repetitive/customer-facing tasks to cheaper models. Extend claude_api.py with multi-model fallback. Design HELM business AI layer.",
+      "payload": {
+        "area": "opai-infrastructure",
+        "source": "video-intake",
+        "source_ref": "https://www.youtube.com/watch?v=bi-ma2WE1mE",
+        "source_title": "These FREE APIs Unlock EVERY AI Model — iampauljames",
+        "reference_doc": "Library/knowledge/reference/multi-model-api-gateways.md",
+        "research_topics": [
+          "OpenRouter integration — sign up, get API key, test free models (Llama 3.3 70B, DeepSeek R1, Qwen3) for OPAI-relevant tasks",
+          "Extend tools/shared/claude_api.py — add OpenRouter as fallback tier: Anthropic API → OpenRouter (cheaper models) → Claude CLI. Model selection by task complexity",
+          "Task classification for model routing — which OPAI tasks can use free/cheap models vs which need Claude? Build a routing matrix: classification/triage → free, content gen → cheap, code/analysis → mid, reasoning/planning → Claude",
+          "HELM business AI layer design — how do HELM-managed businesses get AI capabilities? OpenRouter API key per business? Shared key with usage tracking? Cost allocation model?",
+          "Puter.js evaluation — is the User-Pays model viable for HELM web products? Can end users cover their own AI costs? UX friction analysis",
+          "BYOK strategy — should OPAI register its own provider keys (Anthropic, OpenAI) through OpenRouter for unified routing + automatic failover? Cost comparison: direct API vs OpenRouter BYOK",
+          "Free model benchmarking — test Llama 3.3 70B, DeepSeek R1, Qwen3, Gemma 3 on OPAI-relevant tasks: email classification, content summarization, data extraction, code review. Quality vs Claude comparison",
+          "Rate limit management — OpenRouter free tier is 50-1000 req/day. How to design a queue/throttle system for bulk tasks that respects limits?",
+          "Security and data handling — OpenRouter zero data retention option, BYOK encryption, privacy implications for client data passing through third-party gateway",
+          "Cost projection — model current OPAI Claude usage, estimate what percentage could be offloaded to cheaper models, calculate monthly savings"
+        ],
+        "agent": "rd_analyst",
+        "output_path": "notes/Improvements/ai-task-offloading-openrouter.md",
+        "requested_by": "dalwaut32"
+      },
+      "blocked_reason": null,
+      "retry_count": 0,
+      "max_retries": 3,
+      "completed_at": null
+    }
+  ],
+  "completed": []
+}
+

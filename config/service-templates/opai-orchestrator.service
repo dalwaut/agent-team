@@ -1,0 +1,25 @@
+[Unit]
+Description=OPAI Central Orchestrator
+Documentation=https://github.com/yourusername/opai
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-orchestrator
+Environment="OPAI_ROOT=/workspace/synced/opai"
+Environment="NODE_ENV=production"
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-orchestrator
+ExecStart=/usr/bin/node index.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=opai-orchestrator
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=50%
+
+EnvironmentFile=-%t/opai-vault/opai-orchestrator.env
+[Install]
+WantedBy=default.target

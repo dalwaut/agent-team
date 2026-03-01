@@ -1,0 +1,67 @@
+{
+  "$schema": "OPAI Network Configuration",
+  "version": "1.0.0",
+  "updated": "2026-02-14",
+
+  "topology": {
+    "description": "Coast Connect main router → 3 subnets, Tailscale mesh overlay",
+    "subnets": {
+      "A": { "name": "Daily work zone", "via": "Coast Connect direct" },
+      "B": { "name": "RV / Server zone", "via": "Extender → RV Router", "notes": "OPAI server + NAS live here" },
+      "C": { "name": "Bus zone", "via": "Extender → Bus Router" }
+    }
+  },
+
+  "server": {
+    "hostname": "opai-server",
+    "lan_ip": null,
+    "tailscale_ip": null,
+    "tailscale_hostname": "opai-server",
+    "notes": "LAN IP varies by DHCP. Use Tailscale IP or MagicDNS hostname for reliable access."
+  },
+
+  "nas": {
+    "hostname": "ds418",
+    "model": "Synology DS418",
+    "lan_ip": "192.168.2.138",
+    "tailscale_ip": "100.113.66.23",
+    "tailscale_hostname": "ds418",
+    "dsm_url": "http://192.168.2.138:5000",
+    "nfs": {
+      "enabled": true,
+      "version": "4.1",
+      "export": "/volume2/opai-users",
+      "mount_point": "/workspace/users",
+      "options": "rw,soft,timeo=50,retrans=3,nfsvers=4.1,_netdev",
+      "squash": "Map all users to admin"
+    },
+    "notes": "Volume 2 (Btrfs). NFS permissions set for server LAN IP with admin squash."
+  },
+
+  "services": {
+    "caddy": { "port": 80, "bind": "0.0.0.0", "notes": "ONLY externally-facing service" },
+    "portal": { "port": 8090, "bind": "127.0.0.1" },
+    "chat":   { "port": 8888, "bind": "127.0.0.1" },
+    "monitor":{ "port": 8080, "bind": "127.0.0.1" },
+    "tasks":  { "port": 8081, "bind": "127.0.0.1" },
+    "terminal":{ "port": 8082, "bind": "127.0.0.1" },
+    "messenger":{ "port": 8083, "bind": "127.0.0.1" },
+    "users":    { "port": 8084, "bind": "127.0.0.1" },
+    "dev":      { "port": 8085, "bind": "127.0.0.1" }
+  },
+
+  "firewall": {
+    "rules": [
+      "Allow TCP 80,443 from tailscale0 interface",
+      "Allow TCP 80,443 from localhost",
+      "Deny TCP 8080-8888 from any (services behind Caddy only)"
+    ]
+  },
+
+  "tailscale": {
+    "install_server": "curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up",
+    "install_nas": "Configure via Synology Package Center → Tailscale package",
+    "free_tier_limit": 100,
+    "magic_dns": true
+  }
+}

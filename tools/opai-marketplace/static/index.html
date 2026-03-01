@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI Marketplace</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/marketplace/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/auth/static/js/navbar.js" defer></script>
+</head>
+<body>
+    <nav class="topnav">
+        <div class="topnav-inner">
+            <div class="topnav-left">
+                <span class="logo-icon">&#128722;</span>
+                <span class="logo-text">OPAI Marketplace</span>
+            </div>
+            <div class="topnav-right">
+                <span class="user-chip" id="user-display"></span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="marketplace-container">
+        <!-- Admin bar (hidden for non-admins) -->
+        <div class="admin-bar" id="admin-bar" style="display:none;">
+            <div class="admin-toggle">
+                <input type="checkbox" id="admin-view-toggle">
+                <label for="admin-view-toggle">Admin View</label>
+            </div>
+            <button class="btn btn-small btn-accent" onclick="triggerSync()">Sync Catalog</button>
+            <div style="flex:1;"></div>
+            <span class="text-muted" id="product-count" style="font-size:12px;color:var(--text-muted);"></span>
+        </div>
+
+        <!-- Filter tabs -->
+        <div class="filter-bar">
+            <button class="filter-tab active" data-filter="all">All</button>
+            <button class="filter-tab" data-filter="webapp">WebApps</button>
+            <button class="filter-tab" data-filter="automation">Automations</button>
+            <button class="filter-tab" data-filter="plugin">Plugins</button>
+            <button class="filter-tab" data-filter="mobile">Mobile</button>
+            <div class="filter-spacer"></div>
+            <div class="tier-badge-bar" id="user-tier-display"></div>
+        </div>
+
+        <!-- Product grid -->
+        <div id="product-grid" class="product-grid">
+            <div class="loading-state">
+                <div class="spinner"></div>
+                <span>Loading products...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Product Detail Modal -->
+    <div class="modal-overlay" id="product-modal">
+        <div class="modal">
+            <button class="modal-close" id="modal-close-btn">&times;</button>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="/auth/static/js/auth-v3.js"></script>
+    <script src="/marketplace/static/js/app.js"></script>
+</body>
+</html>

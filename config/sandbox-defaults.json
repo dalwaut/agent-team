@@ -1,0 +1,27 @@
+{
+  "$schema": "OPAI Sandbox Role Defaults",
+  "version": "1.0.0",
+  "roles": {
+    "team": {
+      "max_parallel_agents": 2,
+      "storage_limit_gb": 50,
+      "agent_timeout_seconds": 300,
+      "allowed_agent_categories": ["quality", "planning", "research", "operations"],
+      "starter_agents": ["reviewer", "researcher", "features", "health"]
+    },
+    "client": {
+      "max_parallel_agents": 1,
+      "storage_limit_gb": 10,
+      "agent_timeout_seconds": 120,
+      "allowed_agent_categories": ["quality", "research"],
+      "starter_agents": ["reviewer", "researcher"]
+    },
+    "user": {
+      "max_parallel_agents": 1,
+      "storage_limit_gb": 10,
+      "agent_timeout_seconds": 120,
+      "allowed_agent_categories": ["quality"],
+      "starter_agents": ["reviewer"]
+    }
+  }
+}

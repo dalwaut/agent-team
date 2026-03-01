@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI Task Control Panel</title>
+    <link rel="stylesheet" href="static/style.css">
+    <link rel="stylesheet" href="static/monitor.css">
+    <script src="/auth/static/js/navbar.js" defer></script>
+    <script src="/docs/static/js/docs-widget.js" defer></script>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+    <h1>OPAI <span>Task Control Panel</span></h1>
+    <div class="header-right">
+        <div class="toggle-wrap">
+            <span>Queue</span>
+            <label class="toggle">
+                <input type="checkbox" id="queueEnabledToggle" checked>
+                <span class="toggle-slider toggle-slider-queue"></span>
+            </label>
+            <span class="executor-status" id="queueStatus">on</span>
+        </div>
+        <div class="toggle-wrap">
+            <span>Auto-Execute</span>
+            <label class="toggle">
+                <input type="checkbox" id="autoExecToggle">
+                <span class="toggle-slider"></span>
+            </label>
+            <span class="executor-status status-off" id="executorStatus">off</span>
+        </div>
+        <button class="btn btn-purple evolve-btn" onclick="showEvolveModal()">
+            ⟳ Evolve
+        </button>
+        <div class="header-stats">
+            <span class="header-stat"><strong id="statTotal">0</strong> total</span>
+            <span class="header-stat"><strong id="statPending">0</strong> pending</span>
+            <span class="header-stat overdue"><strong id="statOverdue">0</strong> overdue</span>
+        </div>
+    </div>
+</header>
+
+<!-- View Tabs -->
+<div class="view-tabs">
+    <button class="view-tab active" data-view="all" onclick="switchView('all')">All Tasks</button>
+    <button class="view-tab" data-view="my-queue" onclick="switchView('my-queue')">
+        My Queue <span class="queue-badge" id="queueBadge">0</span>
+    </button>
+    <button class="view-tab" data-view="feedback" onclick="switchView('feedback')">
+        Feedback <span class="queue-badge" id="feedbackBadge">0</span>
+    </button>
+    <button class="view-tab" data-view="audit" onclick="switchView('audit')">
+        Audit <span class="queue-badge" id="auditBadge">0</span>
+    </button>
+    <button class="view-tab" data-view="health" onclick="switchView('health')">
+        Health
+    </button>
+</div>
+
+<!-- Control Bar -->
+<form autocomplete="off" onsubmit="return false" style="display:contents">
+<div class="control-bar">
+    <button class="btn btn-success" onclick="showAddModal()">+ Add Task</button>
+    <select id="filterStatus"><option value="">Status</option></select>
+    <select id="filterPriority"><option value="">Priority</option></select>
+    <select id="filterProject"><option value="">Project</option></select>
+    <select id="filterClient"><option value="">Client</option></select>
+    <select id="filterAssignee"><option value="">Assignee</option></select>
+    <select id="filterSource"><option value="">Source</option></select>
+    <input type="search" id="searchInput" class="search-input" placeholder="Search tasks..." name="tcp_task_filter" autocomplete="off" data-form-type="other" data-lpignore="true">
+    <button class="btn" onclick="showColumnsModal()">Columns</button>
+    <button class="btn" onclick="showArchiveModal()">Archive</button>
+    <button class="btn" onclick="refreshAll()">Refresh</button>
+
+    <div class="batch-bar hidden" id="batchBar">
+        <span class="batch-count" id="batchCount">0 selected</span>
+        <button class="btn btn-primary" onclick="showBatchEditModal()">Edit</button>
+        <button class="btn btn-success" onclick="batchAction('complete')">Complete</button>
+        <button class="btn btn-warning" onclick="batchAction('reject')">Reject</button>
+        <button class="btn" onclick="batchArchive()">Archive</button>
+        <button class="btn btn-danger" onclick="batchAction('delete')">Delete</button>
+        <button class="btn" onclick="batchDelegate()">Delegate</button>
+    </div>
+</div>
+</form>
+
+<!-- Main Content -->
+<div class="main-content">
+
+    <!-- My Queue View (hidden by default) -->
+    <div class="my-queue-view hidden" id="myQueueView">
+        <div class="queue-summary" id="queueSummary"></div>
+        <div class="queue-cards" id="queueCards"></div>
+        <div class="queue-empty hidden" id="queueEmpty">
+            <div class="queue-empty-icon">&#10003;</div>
+            <div class="queue-empty-title">You're all caught up</div>
+            <div class="queue-empty-desc">No tasks need your attention right now.</div>
+        </div>
+    </div>
+
+    <!-- Feedback View (hidden by default) -->
+    <div class="feedback-view hidden" id="feedbackView">
+        <div class="feedback-summary" id="feedbackSummary"></div>
+        <div class="feedback-filters" id="feedbackFilters">
+            <select id="feedbackFilterTool"><option value="">All Tools</option></select>
+            <select id="feedbackFilterSeverity">
+                <option value="">All Severity</option>
+                <option value="HIGH">HIGH</option>
+                <option value="MEDIUM">MEDIUM</option>
+                <option value="LOW">LOW</option>
+            </select>
+            <select id="feedbackFilterStatus">
+                <option value="">All Status</option>
+                <option value="open">Open</option>
+                <option value="queued-running">Queued/Running</option>
+                <option value="implemented">Implemented</option>
+                <option value="has-task">Has Task</option>
+            </select>
+            <button class="btn" onclick="loadFeedback(true)">Refresh</button>
+            <button class="btn" onclick="showFeedbackSettings()" title="Feedback polling settings" style="padding:5px 8px;font-size:13px">&#9881;</button>
+            <div class="feedback-autofix-control">
+                <span class="feedback-autofix-label">Auto-fix:</span>
+                <select id="feedbackAutofixThreshold" onchange="updateAutofixThreshold(this.value)">
+                    <option value="NONE">Off</option>
+                    <option value="HIGH" style="color: #f85149;">HIGH only</option>
+                    <option value="MEDIUM" style="color: #d29922;">MEDIUM+</option>
+                    <option value="LOW" style="color: #58a6ff;">All</option>
+                </select>
+            </div>
+        </div>
+        <div class="feedback-cards" id="feedbackCards"></div>
+    </div>
+
+    <!-- Audit View (hidden by default) -->
+    <div class="audit-view hidden" id="auditView">
+        <div class="audit-summary" id="auditSummary"></div>
+
+        <!-- Tier filter buttons -->
+        <div class="audit-tier-bar">
+            <button class="audit-tier-btn active" data-tier="" onclick="setAuditTier(this, '')">All</button>
+            <button class="audit-tier-btn" data-tier="execution" onclick="setAuditTier(this, 'execution')">Execution</button>
+            <button class="audit-tier-btn" data-tier="system" onclick="setAuditTier(this, 'system')">System</button>
+            <button class="audit-tier-btn" data-tier="health" onclick="setAuditTier(this, 'health')">Health</button>
+            <span class="audit-heartbeat" id="auditHeartbeat" title="Time since last audit entry"></span>
+            <button class="btn btn-outline heartbeats-btn" onclick="showHeartbeatsModal()" title="View and control scheduler heartbeats">Heartbeats</button>
+        </div>
+
+        <div class="audit-filters">
+            <select id="auditFilterService"><option value="">All Services</option></select>
+            <select id="auditFilterAgent"><option value="">All Agents</option></select>
+            <select id="auditFilterOrigin">
+                <option value="">All Origins</option>
+                <option value="manual">Manual</option>
+                <option value="auto-executor">Auto-Executor</option>
+                <option value="hitl">HITL</option>
+                <option value="feedback-fixer">Feedback Fixer</option>
+                <option value="scheduled-squad">Squad Run</option>
+                <option value="scheduled-evolution">Evolution</option>
+            </select>
+            <select id="auditFilterStatus">
+                <option value="">All Status</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+                <option value="timeout">Timeout</option>
+                <option value="partial">Partial</option>
+                <option value="skipped">Skipped</option>
+            </select>
+            <input type="date" id="auditDateFrom" title="From date">
+            <input type="date" id="auditDateTo" title="To date">
+            <select id="auditSort">
+                <option value="timestamp">Time</option>
+                <option value="tokensTotal">Tokens</option>
+                <option value="tokensOutput">Output Tokens</option>
+                <option value="durationMs">Duration</option>
+                <option value="costUsd">Cost</option>
+            </select>
+            <div class="btn-group">
+                <button class="btn" onclick="loadAudit(true)">Refresh</button>
+                <button class="btn btn-outline" onclick="showTokenBudgetSettings()" id="tokenBudgetBtn" title="Daily token budget settings">Token Budget</button>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table class="task-table audit-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Service</th>
+                        <th>Event</th>
+                        <th>Agent / Origin</th>
+                        <th>Model</th>
+                        <th>Duration</th>
+                        <th>Tokens</th>
+                        <th>Output</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="auditTableBody"></tbody>
+            </table>
+        </div>
+        <div class="table-footer">
+            <span id="auditTableInfo">Showing 0 records</span>
+            <div class="pagination" id="auditPagination"></div>
+        </div>
+    </div>
+
+    <!-- Health View (Monitor panels — hidden by default) -->
+    <div class="health-view hidden" id="healthView">
+        <div class="health-header-bar">
+            <button class="header-btn header-btn-danger" id="killNetBtn" onclick="MonitorHealth.toggleNetworkLockdown()" title="Kill all external connections">Kill Net</button>
+            <button class="header-btn header-btn-start" id="startAllBtn" onclick="MonitorHealth.startAllServices()" title="Start all OPAI services">Start OPAI</button>
+            <button class="header-btn" id="updater-badge" onclick="MonitorHealth.toggleUpdaterPanel()" title="Update suggestions">UPD <span class="count" id="updater-count" data-count="0"></span></button>
+            <button class="header-btn" id="saveLayoutBtn" onclick="MonitorHealth.saveLayout()" title="Save panel layout">Save Layout</button>
+            <div class="conn-status" id="conn-status">
+                <span class="status-dot inactive" id="conn-dot"></span>
+                connecting...
+            </div>
+        </div>
+
+        <div class="dashboard">
+            <!-- Panel 1: System Stats -->
+            <div class="panel" id="panel-stats">
+                <div class="panel-header">
+                    <span class="panel-title">System Stats</span>
+                    <span class="panel-badge" id="stats-uptime">--</span>
+                </div>
+                <div class="panel-body">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">CPU</div>
+                            <div class="stat-value" id="stat-cpu">--%</div>
+                            <div class="stat-sub" id="stat-cpu-detail">-- cores</div>
+                            <div class="progress-bar"><div class="progress-fill green" id="bar-cpu" style="width:0%"></div></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Memory</div>
+                            <div class="stat-value" id="stat-mem">--%</div>
+                            <div class="stat-sub" id="stat-mem-detail">-- / --</div>
+                            <div class="progress-bar"><div class="progress-fill blue" id="bar-mem" style="width:0%"></div></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">NVMe /workspace</div>
+                            <div class="stat-value" id="stat-disk">--%</div>
+                            <div class="stat-sub" id="stat-disk-detail">-- / --</div>
+                            <div class="progress-bar"><div class="progress-fill green" id="bar-disk" style="width:0%"></div></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">System /</div>
+                            <div class="stat-value" id="stat-disk-sys">--%</div>
+                            <div class="stat-sub" id="stat-disk-sys-detail">-- / --</div>
+                            <div class="progress-bar"><div class="progress-fill orange" id="bar-disk-sys" style="width:0%"></div></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Load Avg</div>
+                            <div class="stat-value" id="stat-load">--</div>
+                            <div class="stat-sub" id="stat-load-detail">-- / --</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Swap</div>
+                            <div class="stat-value" id="stat-swap">--%</div>
+                            <div class="stat-sub" id="stat-swap-detail">-- / --</div>
+                            <div class="progress-bar"><div class="progress-fill orange" id="bar-swap" style="width:0%"></div></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Processes</div>
+                            <div class="stat-value blue" id="stat-procs">--</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Net Sent</div>
+                            <div class="stat-value blue" id="stat-net-sent">--</div>
+                            <div class="stat-sub" id="stat-net-sent-rate"></div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Net Recv</div>
+                            <div class="stat-value blue" id="stat-net-recv">--</div>
+                            <div class="stat-sub" id="stat-net-recv-rate"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel: Current Usage -->
+            <div class="panel" id="panel-usage-meters">
+                <div class="panel-header">
+                    <span class="panel-title">Current Usage</span>
+                    <span class="panel-badge" id="claude-active-badge">--</span>
+                </div>
+                <div class="panel-body">
+                    <div class="cli-usage" id="cli-plan-usage">
+                        <div class="cli-usage-row" id="plan-session" data-tip-key="session">
+                            <div class="cli-usage-label">Current session</div>
+                            <div class="cli-usage-bar-row">
+                                <span class="cli-usage-blocks" id="plan-blocks-session"></span>
+                                <span class="cli-usage-pct" id="plan-pct-session">--%</span>
+                            </div>
+                            <div class="cli-usage-sub" id="plan-sub-session">Loading...</div>
+                        </div>
+                        <div class="cli-usage-row" id="plan-week" data-tip-key="week">
+                            <div class="cli-usage-label">Current week (all models)</div>
+                            <div class="cli-usage-bar-row">
+                                <span class="cli-usage-blocks" id="plan-blocks-week"></span>
+                                <span class="cli-usage-pct" id="plan-pct-week">--%</span>
+                            </div>
+                            <div class="cli-usage-sub" id="plan-sub-week">Loading...</div>
+                        </div>
+                        <div class="cli-usage-row" id="plan-sonnet" data-tip-key="sonnet">
+                            <div class="cli-usage-label">Current week (Sonnet only)</div>
+                            <div class="cli-usage-bar-row">
+                                <span class="cli-usage-blocks" id="plan-blocks-sonnet"></span>
+                                <span class="cli-usage-pct" id="plan-pct-sonnet">--%</span>
+                            </div>
+                            <div class="cli-usage-sub" id="plan-sub-sonnet">Loading...</div>
+                        </div>
+                        <div class="cli-usage-row" id="plan-extra" data-tip-key="extra">
+                            <div class="cli-usage-label">Extra usage</div>
+                            <div class="cli-usage-bar-row">
+                                <span class="cli-usage-blocks" id="plan-blocks-extra"></span>
+                                <span class="cli-usage-pct" id="plan-pct-extra">--%</span>
+                            </div>
+                            <div class="cli-usage-sub" id="plan-sub-extra">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel: Claude Status -->
+            <div class="panel" id="panel-claude-status">
+                <div class="panel-header">
+                    <span class="panel-title">Claude Status</span>
+                    <span class="panel-badge" id="claude-status-badge">--</span>
+                </div>
+                <div class="panel-body">
+                    <div class="cli-status" id="cli-status-container">
+                        <div class="cli-status-row"><span class="cli-status-key">Version:</span> <span id="status-version">--</span></div>
+                        <div class="cli-status-row"><span class="cli-status-key">Active sessions:</span> <span id="status-sessions">--</span></div>
+                        <div class="cli-status-row"><span class="cli-status-key">Login method:</span> <span id="status-login">--</span></div>
+                        <div class="cli-status-row"><span class="cli-status-key">Model:</span> <span id="status-model">--</span></div>
+                        <div class="cli-status-row"><span class="cli-status-key">MCP servers:</span> <span id="status-mcp">--</span></div>
+                        <div class="cli-status-row"><span class="cli-status-key">Memory:</span> <span id="status-memory">--</span></div>
+                        <div class="cli-status-row"><span class="cli-status-key">Setting sources:</span> <span id="status-settings">--</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel: Claude Details -->
+            <div class="panel" id="panel-claude-usage">
+                <div class="panel-header">
+                    <span class="panel-title">Claude Details</span>
+                </div>
+                <div class="panel-body">
+                    <div class="stats-grid claude-usage-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Messages</div>
+                            <div class="stat-value green" id="claude-today-messages">--</div>
+                            <div class="stat-sub" id="claude-today-sessions-detail">-- sessions</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Tool Calls</div>
+                            <div class="stat-value orange" id="claude-today-tools">--</div>
+                            <div class="stat-sub" id="claude-today-model-detail">--</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Cache Created</div>
+                            <div class="stat-value" id="claude-today-cache-create">--</div>
+                            <div class="stat-sub">tokens created today</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Lifetime Output</div>
+                            <div class="stat-value" id="claude-lifetime-output">--</div>
+                            <div class="stat-sub" id="claude-lifetime-detail">-- sessions total</div>
+                        </div>
+                    </div>
+                    <div class="claude-section" style="margin-top:12px;">
+                        <div class="claude-section-title">Daily Trend (7 days)</div>
+                        <div class="claude-trend-bar" id="claude-trend-bar"></div>
+                    </div>
+                    <div class="claude-bottom-grid">
+                        <div class="claude-section">
+                            <div class="claude-section-title">Today by Hour</div>
+                            <div class="claude-heatmap" id="claude-heatmap"></div>
+                        </div>
+                        <div class="claude-section">
+                            <div class="claude-section-title">Sessions by Project</div>
+                            <div class="claude-project-list" id="claude-projects"></div>
+                        </div>
+                        <div class="claude-section">
+                            <div class="claude-section-title">Model Usage</div>
+                            <div class="claude-model-list" id="claude-models"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel: Running Agents -->
+            <div class="panel" id="panel-agents">
+                <div class="panel-header">
+                    <span class="panel-title">Running Agents</span>
+                    <span class="panel-badge" id="agent-count">0</span>
+                </div>
+                <div class="panel-body">
+                    <div id="agents-content">
+                        <div class="empty-state"><div class="empty-icon">~</div>No agents running</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel: Squad Status -->
+            <div class="panel" id="panel-squad">
+                <div class="panel-header">
+                    <span class="panel-title">Squad Status</span>
+                    <span class="panel-badge" id="squad-badge">--</span>
+                </div>
+                <div class="panel-body" id="squad-content">
+                    <div class="empty-state">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Panel: Services -->
+            <div class="panel" id="panel-services">
+                <div class="panel-header">
+                    <span class="panel-title">Services</span>
+                </div>
+                <div class="panel-body" id="services-content">
+                    <div class="empty-state">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Panel: Log Viewer -->
+            <div class="panel" id="panel-logs">
+                <div class="panel-header">
+                    <span class="panel-title">Log Viewer</span>
+                    <span class="panel-badge" id="log-count">0 lines</span>
+                </div>
+                <div class="panel-body">
+                    <div class="log-controls">
+                        <input type="search" class="log-filter" id="log-filter" placeholder="Filter logs..." autocomplete="off">
+                        <button class="btn btn-primary" onclick="MonitorHealth.clearLogs()">Clear</button>
+                        <button class="btn" id="log-pause-btn" onclick="MonitorHealth.toggleLogPause()">Pause</button>
+                    </div>
+                    <div class="log-viewer" id="log-viewer"></div>
+                </div>
+            </div>
+
+            <!-- Panel: Reports -->
+            <div class="panel" id="panel-reports">
+                <div class="panel-header">
+                    <span class="panel-title">Reports</span>
+                    <select id="report-date-select" class="log-filter" style="flex:unset; width:auto;" onchange="MonitorHealth.loadReports()">
+                        <option value="">All dates</option>
+                    </select>
+                </div>
+                <div class="panel-body">
+                    <ul class="report-list" id="reports-list">
+                        <div class="empty-state">Loading...</div>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Panel: Task Queue -->
+            <div class="panel" id="panel-queue">
+                <div class="panel-header">
+                    <span class="panel-title">Task Queue</span>
+                    <button class="btn btn-primary" onclick="MonitorHealth.processQueue()">Process Queue</button>
+                </div>
+                <div class="panel-body" id="queue-content">
+                    <div class="empty-state">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Panel: Quick Actions -->
+            <div class="panel" id="panel-actions">
+                <div class="panel-header">
+                    <span class="panel-title">Quick Actions</span>
+                </div>
+                <div class="panel-body">
+                    <div class="btn-group">
+                        <button class="btn btn-danger" onclick="MonitorHealth.killAllAgents()">Kill All Agents</button>
+                        <button class="btn btn-success" onclick="MonitorHealth.controlService('opai-orchestrator','start')">Start Orchestrator</button>
+                        <button class="btn btn-warning" onclick="MonitorHealth.controlService('opai-orchestrator','restart')">Restart Orchestrator</button>
+                        <button class="btn btn-success" onclick="MonitorHealth.controlService('opai-discord','start')">Start Discord</button>
+                        <button class="btn btn-warning" onclick="MonitorHealth.controlService('opai-discord','restart')">Restart Discord</button>
+                        <button class="btn btn-primary" onclick="MonitorHealth.processQueue()">Process Queue</button>
+                        <button class="btn btn-danger" onclick="MonitorHealth.emergencyStop()">EMERGENCY STOP</button>
+                    </div>
+                    <div id="action-result" class="mt-8 text-mono text-sm"></div>
+                </div>
+            </div>
+
+            <!-- Panel: User Controls -->
+            <div class="panel" id="panel-users">
+                <div class="panel-header">
+                    <span class="panel-title">User Controls</span>
+                    <span class="panel-badge" id="users-badge">--</span>
+                    <div style="display:flex; gap:6px; margin-left:auto;">
+                        <button class="btn btn-primary" onclick="MonitorHealth.openInviteModal()">Invite User</button>
+                        <button class="btn btn-danger" id="dropAllBtn" onclick="MonitorHealth.dropAllUsers()">Drop All Users</button>
+                    </div>
+                </div>
+                <div class="panel-body" id="users-content">
+                    <div class="empty-state">Loading...</div>
+                </div>
+                <div class="drop-banner" id="drop-banner" style="display:none;">
+                    ALL NON-ADMIN USERS DISABLED
+                    <button class="btn btn-success" onclick="MonitorHealth.restoreAllUsers()" style="margin-left:12px;">Restore All</button>
+                </div>
+            </div>
+
+            <!-- System Changes -->
+            <div class="panel" id="panel-updater" style="display: none;">
+                <div class="panel-header">
+                    <span class="panel-title">System Changes</span>
+                    <div class="filter-tabs" id="updater-tabs">
+                        <button class="filter-tab active" data-filter="all" onclick="MonitorHealth.setUpdaterFilter('all')">All</button>
+                        <button class="filter-tab" data-filter="update" onclick="MonitorHealth.setUpdaterFilter('update')">Updates</button>
+                        <button class="filter-tab" data-filter="notice" onclick="MonitorHealth.setUpdaterFilter('notice')">Notices</button>
+                        <button class="filter-tab" data-filter="archived" onclick="MonitorHealth.setUpdaterFilter('archived')">Archived</button>
+                    </div>
+                    <button class="btn" onclick="MonitorHealth.toggleUpdaterPanel()">Hide</button>
+                </div>
+                <div class="panel-body" id="updater-content">
+                    <div class="empty-state">No changes detected</div>
+                </div>
+            </div>
+        </div><!-- end .dashboard -->
+
+        <!-- Agent Detail Modal -->
+        <div class="modal-overlay" id="agent-modal">
+            <div class="modal" style="max-width:600px;">
+                <div class="modal-header">
+                    <h3 id="agent-modal-title">Agent Session</h3>
+                    <button class="modal-close" onclick="MonitorHealth.closeAgentModal()">&times;</button>
+                </div>
+                <div class="modal-body" id="agent-modal-content">
+                    <div class="empty-state">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Report Modal -->
+        <div class="modal-overlay" id="report-modal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3 id="report-modal-title">Report</h3>
+                    <div class="report-view-toggle">
+                        <button class="toggle-btn active" data-mode="pretty" onclick="MonitorHealth.toggleReportView('pretty')">Pretty</button>
+                        <button class="toggle-btn" data-mode="raw" onclick="MonitorHealth.toggleReportView('raw')">Raw</button>
+                    </div>
+                    <button class="modal-close" onclick="MonitorHealth.closeReportModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="markdown-content" id="report-modal-content"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Document Viewer Modal -->
+        <div class="modal-overlay" id="doc-modal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3 id="doc-modal-title">Document</h3>
+                    <div class="report-view-toggle">
+                        <button class="toggle-btn" data-mode="pretty" onclick="MonitorHealth.toggleDocView('pretty')">Markdown</button>
+                        <button class="toggle-btn active" data-mode="raw" onclick="MonitorHealth.toggleDocView('raw')">Raw</button>
+                    </div>
+                    <button class="modal-close" onclick="MonitorHealth.closeDocModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="report-raw-content" id="doc-modal-content"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Invite User Modal -->
+        <div class="modal-overlay" id="invite-modal">
+            <div class="modal" style="max-width:500px;">
+                <div class="modal-header">
+                    <h3>Invite User</h3>
+                    <button class="modal-close" onclick="MonitorHealth.closeInviteModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group"><label class="form-label">Email</label><input type="email" class="form-input" id="invite-email" placeholder="user@example.com" autocomplete="off"></div>
+                    <div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="invite-name" placeholder="John Doe" autocomplete="off"></div>
+                    <div class="form-group"><label class="form-label">Role</label><select class="form-input" id="invite-role"><option value="user">User</option><option value="admin">Admin</option></select></div>
+                    <div class="form-group"><label class="form-label">Default Preface Prompt</label><textarea class="form-input form-textarea" id="invite-preface" placeholder="System instructions..."></textarea></div>
+                    <div class="form-group">
+                        <label class="form-label">Allowed Apps</label>
+                        <div class="checkbox-group" id="invite-apps">
+                            <label class="checkbox-label"><input type="checkbox" value="chat"> Chat</label>
+                            <label class="checkbox-label"><input type="checkbox" value="tasks"> Tasks</label>
+                            <label class="checkbox-label"><input type="checkbox" value="terminal"> Terminal</label>
+                            <label class="checkbox-label"><input type="checkbox" value="discord"> Discord</label>
+                        </div>
+                    </div>
+                    <div class="form-group"><label class="form-label">Tailscale Invite Link</label><input type="text" class="form-input" id="invite-tailscale" placeholder="https://login.tailscale.com/admin/invite/..." autocomplete="off"></div>
+                    <div class="form-group"><label class="form-label">Personal Welcome Message</label><textarea class="form-input form-textarea" id="invite-message" rows="3" placeholder="Optional..."></textarea></div>
+                    <div class="form-actions">
+                        <button class="btn" onclick="MonitorHealth.closeInviteModal()">Cancel</button>
+                        <button class="btn btn-primary" onclick="MonitorHealth.sendInvite()">Send Invite</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit User Modal -->
+        <div class="modal-overlay" id="edit-user-modal">
+            <div class="modal" style="max-width:550px;">
+                <div class="modal-header">
+                    <h3 id="edit-user-title">Edit User</h3>
+                    <button class="modal-close" onclick="MonitorHealth.closeEditUserModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="edit-user-id">
+                    <div class="form-group"><label class="form-label">Display Name</label><input type="text" class="form-input" id="edit-user-name" autocomplete="off"></div>
+                    <div class="form-group"><label class="form-label">Role</label><select class="form-input" id="edit-user-role"><option value="user">User</option><option value="admin">Admin</option></select></div>
+                    <div class="form-group"><label class="form-label">Active</label><select class="form-input" id="edit-user-active"><option value="true">Active</option><option value="false">Disabled</option></select></div>
+                    <div class="form-group"><label class="form-label">Preface Prompt</label><textarea class="form-input form-textarea" id="edit-user-preface" rows="4"></textarea></div>
+                    <div class="form-group"><label class="form-label">Allowed Apps</label><div class="checkbox-group" id="edit-user-apps"><span class="text-muted">Loading apps...</span></div></div>
+                    <div class="form-group"><label class="form-label">Allowed Agents</label><div class="checkbox-group" id="edit-user-agents"></div></div>
+                    <div class="form-group"><label class="form-label">Sandbox Path</label><input type="text" class="form-input" id="edit-user-sandbox" placeholder="/workspace/users/..." autocomplete="off"></div>
+                    <div class="form-actions">
+                        <button class="btn" onclick="MonitorHealth.closeEditUserModal()">Cancel</button>
+                        <button class="btn btn-primary" onclick="MonitorHealth.saveUser()">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Network Lockdown PIN Modal -->
+        <div class="modal-overlay" id="pin-modal">
+            <div class="modal" style="max-width:360px;">
+                <div class="modal-header">
+                    <h3 id="pin-modal-title">Confirm Lockdown</h3>
+                    <button class="modal-close" onclick="MonitorHealth.closePinModal()">&times;</button>
+                </div>
+                <div class="modal-body" style="text-align:center;">
+                    <p class="text-muted mb-8" id="pin-modal-desc">Enter lockdown PIN to confirm</p>
+                    <input type="password" class="form-input" id="pin-input" placeholder="PIN" style="text-align:center; font-size:18px; letter-spacing:4px; max-width:200px; margin:0 auto;" autocomplete="new-password">
+                    <div class="form-actions" style="justify-content:center; margin-top:16px;">
+                        <button class="btn" onclick="MonitorHealth.closePinModal()">Cancel</button>
+                        <button class="btn btn-danger" id="pin-confirm-btn" onclick="MonitorHealth.confirmPinAction()">Confirm</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Floating tooltip -->
+        <div id="usage-float-tip"></div>
+    </div><!-- end .health-view -->
+
+    <!-- Task Table -->
+    <div class="table-wrap" id="allTasksView">
+        <table class="task-table">
+            <thead id="taskTableHead"></thead>
+            <tbody id="taskTableBody"></tbody>
+        </table>
+        <div class="table-footer">
+            <span id="tableInfo">Showing 0 tasks</span>
+            <div class="pagination" id="pagination"></div>
+        </div>
+    </div>
+
+    <!-- Bottom Panels -->
+    <div class="bottom-grid">
+        <!-- Squad Runner -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Squad Runner</span>
+                <span class="panel-badge" id="squadCount">0</span>
+            </div>
+            <div class="panel-body" id="squadList"></div>
+        </div>
+
+        <!-- HITL Briefings -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">HITL Briefings</span>
+                <span class="panel-badge" id="hitlCount">0</span>
+            </div>
+            <div class="panel-body" id="hitlList"></div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="panel" style="grid-column: 1 / -1;">
+            <div class="panel-header">
+                <span class="panel-title">Statistics</span>
+            </div>
+            <div class="panel-body" id="statsPanel"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Detail Slide-out -->
+<div class="detail-backdrop" id="detailBackdrop" onclick="closeDetail()"></div>
+<div class="detail-panel" id="detailPanel">
+    <div class="detail-header">
+        <h3 id="detailId">Task Detail</h3>
+        <button class="modal-close" onclick="closeDetail()">&times;</button>
+    </div>
+    <div class="detail-body" id="detailBody"></div>
+    <div class="detail-actions" id="detailActions"></div>
+</div>
+
+<!-- Add Task Modal -->
+<div class="modal-overlay" id="addModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Add Task</h3>
+            <button class="modal-close" onclick="closeModal('addModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Title</label>
+                <input type="text" id="addTitle" placeholder="Task title" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="addDesc" placeholder="Task description"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Priority</label>
+                <select id="addPriority">
+                    <option value="normal">Normal</option>
+                    <option value="low">Low</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Assignee</label>
+                <div class="searchable-select" id="addAssigneeWrap"></div>
+            </div>
+            <div id="addAgentFields" style="display: none;">
+                <div class="form-group">
+                    <label>Agent / Squad</label>
+                    <div class="searchable-select" id="addAgentPicker"></div>
+                </div>
+                <div class="form-group">
+                    <label>Agent Instructions</label>
+                    <textarea id="addAgentInstructions" placeholder="Custom instructions for the agent (optional)..." style="min-height: 60px;"></textarea>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Project</label>
+                <div class="searchable-select" id="addProjectWrap"></div>
+            </div>
+            <div class="form-group">
+                <label>Client</label>
+                <div class="searchable-select" id="addClientWrap"></div>
+            </div>
+            <div class="form-group">
+                <label>Deadline</label>
+                <input type="date" id="addDeadline">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('addModal')">Cancel</button>
+            <button class="btn btn-success" onclick="createTask()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Email Modal -->
+<div class="modal-overlay" id="emailModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Email Task Details</h3>
+            <button class="modal-close" onclick="closeModal('emailModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>From Account</label>
+                <select id="emailFrom"></select>
+            </div>
+            <div class="form-group">
+                <label>To</label>
+                <div class="searchable-select" id="emailToWrap"></div>
+            </div>
+            <div class="form-group">
+                <label>Subject</label>
+                <input type="text" id="emailSubject" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Body</label>
+                <textarea id="emailBody" style="min-height: 160px;"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('emailModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="sendEmail()">Send</button>
+        </div>
+    </div>
+</div>
+
+<!-- Delegate Modal -->
+<div class="modal-overlay" id="delegateModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Delegate Task</h3>
+            <button class="modal-close" onclick="closeModal('delegateModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Assign To</label>
+                <div class="searchable-select" id="delegateAssigneeWrap"></div>
+            </div>
+            <div class="checkbox-group">
+                <input type="checkbox" id="delegateSendEmail" checked onchange="toggleDelegateEmail()">
+                <label for="delegateSendEmail">Send notification email</label>
+            </div>
+            <div class="conditional-fields" id="delegateEmailFields">
+                <div class="form-group">
+                    <label>From Account</label>
+                    <select id="delegateFromAccount"></select>
+                </div>
+                <div class="form-group">
+                    <label>Email To</label>
+                    <select id="delegateEmailTo"></select>
+                </div>
+                <div class="form-group">
+                    <label>Additional Message</label>
+                    <textarea id="delegateMessage" placeholder="Optional note to include in the email"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('delegateModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="submitDelegate()">Delegate</button>
+        </div>
+    </div>
+</div>
+
+<!-- HITL Viewer Modal -->
+<div class="modal-overlay" id="hitlModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="hitlModalTitle">HITL Briefing</h3>
+            <button class="modal-close" onclick="closeModal('hitlModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="markdown-content" id="hitlContent"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-warning" id="hitlArchiveBtn" onclick="archiveHitl()">Archive</button>
+            <button class="btn" onclick="closeModal('hitlModal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Columns Config Modal -->
+<div class="modal-overlay" id="columnsModal">
+    <div class="modal" style="max-width: 400px;">
+        <div class="modal-header">
+            <h3>Configure Columns</h3>
+            <button class="modal-close" onclick="closeModal('columnsModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Drag to reorder. Toggle visibility with checkboxes.</p>
+            <div id="columnsConfigList"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="resetColumns()">Reset Default</button>
+            <button class="btn btn-primary" onclick="applyColumns()">Apply</button>
+        </div>
+    </div>
+</div>
+
+<!-- Archive Modal -->
+<div class="modal-overlay" id="archiveModal">
+    <div class="modal modal-wide">
+        <div class="modal-header">
+            <h3>Task Archive <span class="text-muted" id="archiveCount"></span></h3>
+            <button class="modal-close" onclick="closeModal('archiveModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <input type="search" id="archiveSearch" placeholder="Search archive..." style="flex:1;" autocomplete="off">
+                <button class="btn" onclick="loadArchive()">Search</button>
+            </div>
+            <div class="archive-list" id="archiveList"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('archiveModal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Batch Edit Modal -->
+<div class="modal-overlay" id="batchEditModal">
+    <div class="modal" style="max-width: 480px;">
+        <div class="modal-header">
+            <h3>Batch Edit <span id="batchEditCount" class="text-muted"></span></h3>
+            <button class="modal-close" onclick="closeModal('batchEditModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Leave fields empty to keep their current values. Only filled fields will be updated.</p>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="batchStatus">
+                    <option value="">— No change —</option>
+                    <option value="pending">pending</option>
+                    <option value="scheduled">scheduled</option>
+                    <option value="running">running</option>
+                    <option value="paused">paused</option>
+                    <option value="awaiting_retry">awaiting_retry</option>
+                    <option value="completed">completed</option>
+                    <option value="failed">failed</option>
+                    <option value="timed_out">timed_out</option>
+                    <option value="cancelled">cancelled</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Priority</label>
+                <select id="batchPriority">
+                    <option value="">— No change —</option>
+                    <option value="critical">critical</option>
+                    <option value="high">high</option>
+                    <option value="normal">normal</option>
+                    <option value="low">low</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Assignee</label>
+                <div class="searchable-select" id="batchAssigneeWrap"></div>
+            </div>
+            <div class="form-group">
+                <label>Project</label>
+                <div class="searchable-select" id="batchProjectWrap"></div>
+            </div>
+            <div class="form-group">
+                <label>Client</label>
+                <div class="searchable-select" id="batchClientWrap"></div>
+            </div>
+            <div class="form-group">
+                <label>Mode</label>
+                <select id="batchRoutingMode">
+                    <option value="">— No change —</option>
+                    <option value="propose">Needs Approval</option>
+                    <option value="execute">Execute</option>
+                    <option value="queued">Queued (always runs)</option>
+                    <option value="auto_safe">Auto-Safe</option>
+                    <option value="log">Log only</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Deadline</label>
+                <input type="date" id="batchDeadline">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('batchEditModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="submitBatchEdit()">Apply to Selected</button>
+        </div>
+    </div>
+</div>
+
+<!-- File Viewer Modal -->
+<div class="modal-overlay" id="fileViewerModal">
+    <div class="modal modal-wide">
+        <div class="modal-header">
+            <h3 id="fileViewerTitle">File Viewer</h3>
+            <div class="file-view-toggle" id="fileViewToggle" style="display:none">
+                <button class="toggle-btn active" data-mode="pretty" onclick="setFileViewMode('pretty')">Pretty</button>
+                <button class="toggle-btn" data-mode="raw" onclick="setFileViewMode('raw')">Raw</button>
+            </div>
+            <button class="modal-close" onclick="closeModal('fileViewerModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="file-viewer-meta" id="fileViewerMeta"></div>
+            <div class="markdown-content file-viewer-markdown" id="fileViewerPretty" style="display:none"></div>
+            <pre class="file-viewer-content" id="fileViewerContent"></pre>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="copyFileContent()">Copy</button>
+            <button class="btn" onclick="closeModal('fileViewerModal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Attachment Add Modal -->
+<div class="modal-overlay" id="attachModal">
+    <div class="modal" style="max-width: 480px;">
+        <div class="modal-header">
+            <h3>Attach File</h3>
+            <button class="modal-close" onclick="closeModal('attachModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>File Path</label>
+                <input type="text" id="attachPath" placeholder="/workspace/synced/opai/..." autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Display Name (optional)</label>
+                <input type="text" id="attachName" placeholder="Auto-detected from path" autocomplete="off">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('attachModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="submitAttachment()">Attach</button>
+        </div>
+    </div>
+</div>
+
+<!-- Evolve Modal -->
+<div class="modal-overlay" id="evolveModal">
+    <div class="modal modal-evolve">
+        <div class="modal-header">
+            <h3>⟳ Evolve — Self-Assessment &amp; Evolution Loop</h3>
+            <button class="modal-close" onclick="closeModal('evolveModal')">&times;</button>
+        </div>
+        <div class="modal-body evolve-modal-body">
+
+            <!-- Top bar: enable toggle + last run info -->
+            <div class="evolve-topbar">
+                <div class="evolve-enable-wrap">
+                    <label class="toggle">
+                        <input type="checkbox" id="evolveEnabledToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span id="evolveEnabledLabel">Enabled</span>
+                    <span class="evolve-tag" id="evolveLoopTag">Scheduled</span>
+                </div>
+                <div class="evolve-last-runs" id="evolveLastRuns"></div>
+            </div>
+
+            <!-- Two-column schedule grid -->
+            <div class="evolve-schedule-grid">
+
+                <!-- Self-Assessment Column -->
+                <div class="evolve-schedule-col">
+                    <div class="evolve-col-header">
+                        <span class="evolve-col-icon">🔍</span>
+                        <span class="evolve-col-title">Self-Assessment</span>
+                        <span class="evolve-status-dot" id="saStatusDot" title="idle"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>Frequency</label>
+                        <div class="evolve-freq-row">
+                            <span>Every</span>
+                            <input type="number" id="saFreqValue" class="evolve-freq-num" value="1" min="1" max="999">
+                            <select id="saFreqType" class="evolve-freq-type" onchange="toggleEvolveTimePicker('sa')">
+                                <option value="minutes">Minutes</option>
+                                <option value="hours">Hours</option>
+                                <option value="daily" selected>Days</option>
+                                <option value="weekly">Weeks</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group evolve-time-group" id="saTimeGroup">
+                        <label>Time of Day</label>
+                        <div class="evolve-time-row">
+                            <input type="number" id="saTimeHour" class="evolve-time-num" value="2" min="0" max="23" placeholder="HH">
+                            <span>:</span>
+                            <input type="number" id="saTimeMin" class="evolve-time-num" value="0" min="0" max="59" placeholder="MM">
+                            <span class="text-muted" style="font-size:11px">server time</span>
+                        </div>
+                    </div>
+                    <div class="evolve-cron-preview" id="saCronPreview"></div>
+                    <div class="evolve-dry-run-wrap">
+                        <button class="btn btn-purple evolve-dry-btn" id="saDryBtn" onclick="triggerEvolveDryRun('self_assessment')">
+                            Run Dry Run
+                        </button>
+                        <span class="evolve-dry-status" id="saDryStatus"></span>
+                    </div>
+                    <div class="evolve-report-link-wrap" id="saReportWrap">
+                        <div class="evolve-report-empty">No report yet — run a dry run to generate</div>
+                    </div>
+                </div>
+
+                <!-- Evolution Column -->
+                <div class="evolve-schedule-col">
+                    <div class="evolve-col-header">
+                        <span class="evolve-col-icon">⚡</span>
+                        <span class="evolve-col-title">Evolution Plan</span>
+                        <span class="evolve-status-dot" id="evoStatusDot" title="idle"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>Frequency</label>
+                        <div class="evolve-freq-row">
+                            <span>Every</span>
+                            <input type="number" id="evoFreqValue" class="evolve-freq-num" value="1" min="1" max="999">
+                            <select id="evoFreqType" class="evolve-freq-type" onchange="toggleEvolveTimePicker('evo')">
+                                <option value="minutes">Minutes</option>
+                                <option value="hours">Hours</option>
+                                <option value="daily" selected>Days</option>
+                                <option value="weekly">Weeks</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group evolve-time-group" id="evoTimeGroup">
+                        <label>Time of Day</label>
+                        <div class="evolve-time-row">
+                            <input type="number" id="evoTimeHour" class="evolve-time-num" value="3" min="0" max="23" placeholder="HH">
+                            <span>:</span>
+                            <input type="number" id="evoTimeMin" class="evolve-time-num" value="0" min="0" max="59" placeholder="MM">
+                            <span class="text-muted" style="font-size:11px">server time</span>
+                        </div>
+                    </div>
+                    <div class="evolve-cron-preview" id="evoCronPreview"></div>
+                    <div class="evolve-dry-run-wrap">
+                        <button class="btn btn-purple evolve-dry-btn" id="evoDryBtn" onclick="triggerEvolveDryRun('evolution')">
+                            Run Dry Run
+                        </button>
+                        <span class="evolve-dry-status" id="evoDryStatus"></span>
+                    </div>
+                    <div class="evolve-report-link-wrap" id="evoReportWrap">
+                        <div class="evolve-report-empty">No plan yet — run a dry run after self-assessment</div>
+                    </div>
+                </div>
+
+            </div><!-- end evolve-schedule-grid -->
+
+            <!-- Plan Steps Section -->
+            <div class="evolve-steps-section" id="evolvePlanSection" style="display:none">
+                <div class="evolve-steps-header">
+                    <span class="evolve-steps-title">Evolution Plan Steps</span>
+                    <span class="evolve-steps-meta" id="evolveStepsMeta"></span>
+                    <button class="btn btn-success" style="margin-left:auto;font-size:11px;padding:4px 10px" onclick="createAllEvolveSteps()">Create All as Tasks</button>
+                </div>
+                <div class="evolve-steps-list" id="evolveStepsList"></div>
+            </div>
+
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="closeModal('evolveModal')">Close</button>
+            <button class="btn btn-primary" onclick="saveEvolveSettings()">Save Schedule</button>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/auth/static/js/auth-v3.js"></script>
+<script>
+// Initialize auth before app.js loads
+(async () => {
+    try {
+        const cfg = await fetch('api/auth/config').then(r => r.json());
+        if (cfg.supabase_url && cfg.supabase_anon_key) {
+            window.OPAI_SUPABASE_URL = cfg.supabase_url;
+            window.OPAI_SUPABASE_ANON_KEY = cfg.supabase_anon_key;
+            if (typeof opaiAuth !== 'undefined') {
+                await opaiAuth.init({ requireApp: 'tasks' });
+            }
+        }
+    } catch (e) {
+        console.warn('Auth init skipped:', e.message);
+    }
+})();
+</script>
+<!-- Heartbeats Modal -->
+<div class="modal-overlay" id="heartbeatsModal" onclick="if(event.target===this)closeHeartbeatsModal()">
+    <div class="modal" style="max-width:560px">
+        <div class="modal-header">
+            <h3>Scheduler Heartbeats</h3>
+            <button class="modal-close" onclick="closeHeartbeatsModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="heartbeatsLoading" style="text-align:center;padding:2rem;color:var(--muted)">Loading heartbeats...</div>
+            <div id="heartbeatsList"></div>
+        </div>
+        <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:0.5rem;padding:0.75rem 1rem;border-top:1px solid var(--border)">
+            <button class="btn" onclick="closeHeartbeatsModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveHeartbeats()" id="heartbeatsSaveBtn">Save</button>
+        </div>
+    </div>
+</div>
+<script src="static/monitor.js"></script>
+<script src="static/app.js"></script>
+<script src="/messenger/static/js/widget.js" defer></script>
+</body>
+</html>

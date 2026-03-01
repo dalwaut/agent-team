@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI Team Hub</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="static/style.css?v=20260228a">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@14/dist/markdown-it.min.js"></script>
+    <script src="/auth/static/js/auth-v3.js" defer></script>
+    <script src="/auth/static/js/navbar.js" defer></script>
+    <script src="/docs/static/js/docs-widget.js" defer></script>
+    <script src="static/app.js?v=20260228a" defer></script>
+</head>
+<body>
+
+<!-- Loading screen -->
+<div id="loading-screen" class="loading-screen">
+    <div class="loading-logo">Team Hub</div>
+    <div class="spinner"></div>
+    <div class="loading-text">Authenticating...</div>
+</div>
+
+<!-- Main app -->
+<div id="app" class="app" style="display:none;">
+    <header class="th-header">
+        <div class="th-header-left">
+            <span class="th-logo">Team Hub</span>
+            <button class="btn btn-ghost btn-small" onclick="goHome()" title="Home" style="padding:4px 8px;">
+                <svg style="width:15px;height:15px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </button>
+            <button class="btn btn-ghost btn-small" onclick="openInviteModal()" title="Invite Member" style="padding:4px 8px;">
+                <svg style="width:15px;height:15px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+            </button>
+            <button class="btn btn-ghost btn-small" onclick="openSettingsModal()" title="Settings" style="padding:4px 8px;">
+                <svg style="width:15px;height:15px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+        </div>
+        <div class="th-header-center">
+            <button class="btn btn-accent btn-small th-header-action-btn" onclick="openCreateNewModal()" style="white-space:nowrap;">+ Create New</button>
+            <div class="th-search-wrap" id="search-wrap">
+                <svg class="th-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                <input type="text" id="search-input" class="th-search-input" placeholder="Search items... ( / )">
+                <div id="search-results" class="th-search-results" style="display:none;"></div>
+            </div>
+            <button class="btn btn-ghost btn-small th-header-action-btn" onclick="openTemplateBrowser()" style="white-space:nowrap;">Templates</button>
+        </div>
+        <div class="th-header-right">
+            <div class="th-view-switcher">
+                <button class="th-view-btn active" data-view="board" title="Board view">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                </button>
+                <button class="th-view-btn" data-view="list" title="List view">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                </button>
+                <button class="th-view-btn" data-view="calendar" title="Calendar view">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                </button>
+            </div>
+            <button class="th-ai-toggle-btn" id="ai-toggle-btn" onclick="toggleAIPanel()" title="AI Assistant">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3h-1v1a4 4 0 0 1-8 0v-1H7a3 3 0 0 1-3-3v-2a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/></svg>
+            </button>
+            <button class="th-notif-btn" id="notif-btn" title="Notifications">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                <span class="th-notif-badge" id="notif-badge" style="display:none;">0</span>
+            </button>
+            <div class="th-user-chip" id="user-chip"></div>
+        </div>
+    </header>
+
+    <div class="th-body">
+        <aside class="th-sidebar" id="sidebar">
+            <div class="th-sidebar-section">
+                <div class="th-sidebar-label">SPACES <button class="th-sidebar-add-inline" onclick="openCreateNewModal('space')" title="New Space">+</button></div>
+                <div id="space-tree" class="th-space-tree">
+                    <div class="loading-text" style="padding:12px;font-size:12px;">Loading spaces...</div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="th-main" id="main-content">
+            <div class="empty-state">
+                <div class="empty-state-icon">&#128203;</div>
+                <div class="empty-state-text">Select a list from the sidebar</div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<!-- Detail Panel -->
+<div id="detail-panel" class="th-detail-panel">
+    <div class="th-detail-header">
+        <div class="th-detail-type" id="detail-type-badge"></div>
+        <div class="th-detail-header-actions" id="detail-header-actions"></div>
+        <button class="th-detail-close" id="detail-close">&times;</button>
+    </div>
+    <div class="th-detail-body" id="detail-body"></div>
+</div>
+<div id="detail-backdrop" class="th-detail-backdrop" style="display:none;"></div>
+
+<!-- Notification dropdown -->
+<div id="notification-dropdown" class="th-notif-dropdown" style="display:none;">
+    <div class="th-notif-header">
+        <span>Notifications</span>
+        <button class="th-notif-mark-all" id="mark-all-read">Mark all read</button>
+    </div>
+    <div id="notif-list" class="th-notif-list"></div>
+</div>
+
+<!-- Create New Wizard Modal -->
+<div id="create-new-modal" class="modal-overlay">
+    <div class="modal" style="max-width:540px;">
+        <button class="modal-close">&times;</button>
+        <div class="modal-title" id="cn-modal-title">Create New</div>
+
+        <!-- Step 1: Type Selection -->
+        <div id="cn-step-type" class="wizard-grid">
+            <div class="wizard-type-card" onclick="selectCreateType('space')">
+                <div class="wizard-type-icon">&#127759;</div>
+                <div class="wizard-type-label">Space</div>
+                <div class="wizard-type-desc">New workspace with folders &amp; lists</div>
+            </div>
+            <div class="wizard-type-card" onclick="selectCreateType('folder')">
+                <div class="wizard-type-icon">&#128193;</div>
+                <div class="wizard-type-label">Folder</div>
+                <div class="wizard-type-desc">Group lists inside a space</div>
+            </div>
+            <div class="wizard-type-card" onclick="selectCreateType('list')">
+                <div class="wizard-type-icon">&#128203;</div>
+                <div class="wizard-type-label">List</div>
+                <div class="wizard-type-desc">Container for tasks</div>
+            </div>
+            <div class="wizard-type-card" onclick="selectCreateType('task')">
+                <div class="wizard-type-icon">&#9998;</div>
+                <div class="wizard-type-label">Task</div>
+                <div class="wizard-type-desc">Actionable work item</div>
+            </div>
+            <div class="wizard-type-card" onclick="selectCreateType('structure')">
+                <div class="wizard-type-icon">&#127959;</div>
+                <div class="wizard-type-label">Structure</div>
+                <div class="wizard-type-desc">Build a full space with folders, lists &amp; tasks</div>
+            </div>
+        </div>
+
+        <!-- Step 2: Context-aware form (rendered by JS) -->
+        <div id="cn-step-form" style="display:none;"></div>
+    </div>
+</div>
+
+<!-- Template Browser Modal -->
+<div id="template-browser-modal" class="modal-overlay">
+    <div class="modal" style="max-width:600px;">
+        <button class="modal-close">&times;</button>
+        <div class="modal-title">Templates</div>
+        <div class="th-tab-bar">
+            <button class="th-tab active" onclick="switchTemplateTab('browse')">Browse</button>
+            <button class="th-tab" onclick="switchTemplateTab('create')">Create</button>
+        </div>
+
+        <!-- Browse Tab -->
+        <div id="tpl-tab-browse" class="tpl-tab-content">
+            <div id="tpl-browse-list" style="margin-top:12px;">Loading...</div>
+        </div>
+
+        <!-- Create Tab -->
+        <div id="tpl-tab-create" class="tpl-tab-content" style="display:none;">
+            <form id="tpl-create-form" onsubmit="handleSaveTemplate(event)" style="margin-top:12px;">
+                <div class="form-group">
+                    <label class="form-label">Template Name</label>
+                    <input class="form-input" id="tpl-create-name" required placeholder="e.g. Client Project">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <input class="form-input" id="tpl-create-desc" placeholder="What this template is for...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="display:flex;align-items:center;gap:8px;">
+                        <input type="checkbox" id="tpl-create-shared"> Share with team
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Structure</label>
+                    <div class="tpl-tree" id="tpl-builder-tree">
+                        <div style="color:var(--text-muted);font-size:12px;padding:8px;">Add folders and lists below</div>
+                    </div>
+                    <div style="display:flex;gap:6px;margin-top:8px;">
+                        <button type="button" class="btn btn-small btn-ghost" onclick="tplAddFolder()">+ Folder</button>
+                        <button type="button" class="btn btn-small btn-ghost" onclick="tplAddList()">+ List</button>
+                    </div>
+                </div>
+                <button class="btn btn-accent" type="submit" style="width:100%;justify-content:center;">Save Template</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Add Member Modal -->
+<div id="invite-modal" class="modal-overlay">
+    <div class="modal" style="max-width:480px;">
+        <button class="modal-close">&times;</button>
+        <div class="modal-title">Add Team Member</div>
+        <div class="form-group">
+            <label class="form-label">Spaces to Add To</label>
+            <div class="invite-spaces-wrap">
+                <label class="invite-share-all-label">
+                    <input type="checkbox" id="invite-share-all" onchange="toggleInviteShareAll()">
+                    <span>Share All Spaces</span>
+                </label>
+                <div id="invite-space-list" class="invite-space-list"></div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Search Users</label>
+            <div class="invite-search-wrap">
+                <svg class="invite-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                <input type="text" class="form-input" id="member-search" placeholder="Search by name or email..." autocomplete="off" style="padding-left:32px;">
+            </div>
+        </div>
+        <div id="member-search-results" class="invite-results-list"></div>
+        <p id="member-search-hint" style="font-size:12px;color:var(--text-muted);margin-top:8px;display:none;"></p>
+        <!-- Current Members Section -->
+        <div class="form-group" style="margin-top:16px;">
+            <label class="form-label">Current Members</label>
+            <div id="invite-current-members" class="invite-results-list" style="max-height:180px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Space Settings Modal -->
+<div id="settings-modal" class="modal-overlay">
+    <div class="modal settings-modal" style="max-width:640px;">
+        <button class="modal-close">&times;</button>
+        <div class="modal-title settings-modal-title">
+            <svg style="width:18px;height:18px;margin-right:6px;vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            TeamHub Settings
+        </div>
+        <div id="settings-space-label" style="font-size:12px;color:var(--text-muted);margin-bottom:16px;"></div>
+        <div class="th-tab-bar">
+            <button class="th-tab active" onclick="switchSettingsTab('statuses')">Statuses</button>
+            <button class="th-tab" onclick="switchSettingsTab('priorities')">Priorities</button>
+            <button class="th-tab" onclick="switchSettingsTab('tags')">Tags</button>
+            <button class="th-tab" onclick="switchSettingsTab('import')">Import</button>
+            <button class="th-tab" onclick="switchSettingsTab('landing')">Landing</button>
+            <button class="th-tab" onclick="switchSettingsTab('members')">Members</button>
+            <button class="th-tab" onclick="switchSettingsTab('discord-ai')">Discord AI</button>
+        </div>
+        <div id="settings-tab-statuses" class="settings-tab-content"></div>
+        <div id="settings-tab-priorities" class="settings-tab-content" style="display:none;"></div>
+        <div id="settings-tab-tags" class="settings-tab-content" style="display:none;"></div>
+        <div id="settings-tab-import" class="settings-tab-content" style="display:none;"></div>
+        <div id="settings-tab-landing" class="settings-tab-content" style="display:none;"></div>
+        <div id="settings-tab-members" class="settings-tab-content" style="display:none;"></div>
+        <div id="settings-tab-discord-ai" class="settings-tab-content" style="display:none;"></div>
+    </div>
+</div>
+
+<!-- AI Panel -->
+<div id="ai-panel" class="th-ai-panel">
+    <div class="th-ai-header">
+        <div class="th-ai-header-left">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3h-1v1a4 4 0 0 1-8 0v-1H7a3 3 0 0 1-3-3v-2a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/></svg>
+            <span class="th-ai-title">AI Assistant</span>
+        </div>
+        <div class="th-ai-header-right">
+            <span id="ai-context-label" class="th-ai-context-label"></span>
+            <button class="th-ai-close" onclick="closeAIPanel()">&times;</button>
+        </div>
+    </div>
+    <div class="th-ai-messages" id="ai-messages">
+        <div class="th-ai-empty" id="ai-empty">Ask anything about your tasks across all workspaces.</div>
+    </div>
+    <div class="th-ai-footer">
+        <textarea id="ai-input" class="th-ai-input" placeholder="Ask about your tasks..." rows="2"></textarea>
+        <button class="th-ai-send" id="ai-send-btn" onclick="sendAIMessage()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+    </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+</body>
+</html>

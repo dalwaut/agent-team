@@ -1,0 +1,1821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI — Email Agent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="/auth/static/js/navbar.js" defer></script>
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --surface-2: #1a1a25;
+            --surface-3: #222233;
+            --border: #2a2a3a;
+            --border-light: #3a3a4a;
+            --text: #e0e0e8;
+            --text-muted: #8888a0;
+            --text-dim: #5a5a70;
+            --accent: #6c5ce7;
+            --accent-light: #a29bfe;
+            --green: #00b894;
+            --green-dim: #00b89430;
+            --yellow: #fdcb6e;
+            --yellow-dim: #fdcb6e30;
+            --red: #e17055;
+            --red-dim: #e1705530;
+            --orange: #f39c12;
+            --orange-dim: #f39c1230;
+            --blue: #0984e3;
+            --blue-dim: #0984e330;
+            --purple: #6c5ce7;
+            --purple-dim: #6c5ce730;
+            --teal: #00cec9;
+            --teal-dim: #00cec930;
+            --radius: 8px;
+            --radius-lg: 12px;
+            --shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+
+        /* ── Header ───────────────────────────── */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1.5rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 44px;
+            z-index: 100;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        .header.killed {
+            background: #1a0f0f;
+            border-bottom-color: var(--red);
+        }
+
+        .header-left { display: flex; align-items: center; gap: 1rem; }
+        .header-left h1 { font-size: 1.1rem; font-weight: 600; white-space: nowrap; }
+        .account-badge {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            background: var(--surface-2);
+            padding: 0.2rem 0.6rem;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .header-center { display: flex; align-items: center; }
+
+        /* ── Segmented Mode Control ──────────── */
+        .segmented-control {
+            display: flex;
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 3px;
+            gap: 2px;
+            border: 1px solid var(--border);
+        }
+        .seg-btn {
+            padding: 0.35rem 1rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            font-family: inherit;
+            background: transparent;
+            color: var(--text-muted);
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .seg-btn:hover { color: var(--text); }
+        .seg-btn.active-suggestion {
+            background: var(--blue);
+            color: white;
+            box-shadow: 0 1px 4px rgba(9,132,227,0.4);
+        }
+        .seg-btn.active-internal {
+            background: var(--yellow);
+            color: #1a1a25;
+            box-shadow: 0 1px 4px rgba(253,203,110,0.4);
+        }
+        .seg-btn.active-auto {
+            background: var(--green);
+            color: white;
+            box-shadow: 0 1px 4px rgba(0,184,148,0.4);
+        }
+        .seg-caps {
+            display: flex;
+            gap: 2px;
+            margin-left: 2px;
+        }
+        .seg-cap {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.5;
+        }
+        .seg-cap.on { opacity: 1; }
+
+        .header-right { display: flex; align-items: center; gap: 0.5rem; }
+
+        .btn {
+            padding: 0.4rem 0.9rem;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 500;
+            font-family: inherit;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            white-space: nowrap;
+        }
+        .btn:hover { opacity: 0.85; transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-green { background: var(--green); color: white; }
+        .btn-red { background: var(--red); color: white; }
+        .btn-blue { background: var(--blue); color: white; }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+        .btn-outline:hover { border-color: var(--accent); }
+        .btn-sm { padding: 0.25rem 0.6rem; font-size: 0.75rem; }
+        .btn-xs { padding: 0.2rem 0.5rem; font-size: 0.7rem; }
+
+        /* Check Now spinner */
+        .btn-check .spinner {
+            display: none;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        .btn-check.loading .spinner { display: inline-block; }
+        .btn-check.loading .btn-text { display: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Kill pulse */
+        .kill-pulse {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--red);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(225,112,85,0.7); }
+            50% { opacity: 0.6; box-shadow: 0 0 0 6px rgba(225,112,85,0); }
+        }
+
+        /* ── Stats Strip ─────────────────────── */
+        .stats-strip {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            padding: 0.6rem 1.5rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            font-size: 0.78rem;
+            overflow-x: auto;
+        }
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        .stat-item strong { color: var(--text); font-weight: 600; }
+        .stat-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .stat-dot.green { background: var(--green); }
+        .stat-dot.yellow { background: var(--yellow); }
+        .stat-dot.red { background: var(--red); }
+        .stat-dot.blue { background: var(--blue); }
+
+        /* ── Layout ───────────────────────────── */
+        .container { max-width: 1200px; margin: 0 auto; padding: 1rem 1.5rem; }
+
+        /* ── Tabs ─────────────────────────────── */
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 1rem;
+        }
+        .tab {
+            padding: 0.65rem 1.25rem;
+            cursor: pointer;
+            color: var(--text-muted);
+            border: none;
+            border-bottom: 2px solid transparent;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            background: none;
+            font-family: inherit;
+        }
+        .tab:hover { color: var(--text); }
+        .tab.active {
+            color: var(--accent-light);
+            border-bottom-color: var(--accent);
+        }
+        .tab-count {
+            background: var(--surface-2);
+            color: var(--text-muted);
+            padding: 0.1rem 0.5rem;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            margin-left: 0.4rem;
+        }
+        .tab.active .tab-count { background: var(--accent); color: white; }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
+        /* ── Filter Bar ──────────────────────── */
+        .filter-bar {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .filter-bar select,
+        .filter-bar input {
+            padding: 0.4rem 0.7rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 0.8rem;
+        }
+        .filter-bar input {
+            flex: 1;
+            max-width: 300px;
+        }
+        .filter-bar input::placeholder { color: var(--text-dim); }
+
+        /* ── Email Cards (Inbox) ─────────────── */
+        .email-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            margin-bottom: 0.5rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            overflow: hidden;
+        }
+        .email-card:hover {
+            border-color: var(--border-light);
+            box-shadow: var(--shadow);
+        }
+        .email-card-main {
+            padding: 0.85rem 1rem;
+            cursor: pointer;
+            display: grid;
+            grid-template-columns: 36px 1fr auto;
+            gap: 0.75rem;
+            align-items: start;
+        }
+        .email-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: white;
+            flex-shrink: 0;
+        }
+        .email-body { min-width: 0; }
+        .email-top {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+            margin-bottom: 0.15rem;
+        }
+        .email-sender {
+            font-weight: 600;
+            font-size: 0.88rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .email-address {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .email-subject {
+            font-size: 0.83rem;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 0.4rem;
+        }
+        .email-meta {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            flex-wrap: wrap;
+        }
+        .email-right {
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 0.3rem;
+            flex-shrink: 0;
+        }
+        .email-time {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+        .email-expand-hint {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+
+        /* ── Tag Pills ───────────────────────── */
+        .tag-pill {
+            display: inline-block;
+            padding: 0.1rem 0.5rem;
+            border-radius: 10px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .tag-urgent { background: var(--red-dim); color: var(--red); }
+        .tag-priority { background: var(--red-dim); color: var(--red); }
+        .tag-client { background: var(--blue-dim); color: var(--blue); }
+        .tag-customer { background: var(--blue-dim); color: var(--blue); }
+        .tag-internal { background: var(--purple-dim); color: var(--accent-light); }
+        .tag-team { background: var(--purple-dim); color: var(--accent-light); }
+        .tag-invoice { background: var(--green-dim); color: var(--green); }
+        .tag-billing { background: var(--green-dim); color: var(--green); }
+        .tag-newsletter { background: #63636320; color: var(--text-muted); }
+        .tag-marketing { background: #63636320; color: var(--text-muted); }
+        .tag-task { background: var(--orange-dim); color: var(--orange); }
+        .tag-action { background: var(--orange-dim); color: var(--orange); }
+        .tag-informational { background: var(--teal-dim); color: var(--teal); }
+        .tag-default { background: #2a2a3a; color: var(--text-muted); }
+
+        /* ── Outcome Badges ──────────────────── */
+        .outcome-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.15rem 0.55rem;
+            border-radius: 10px;
+            font-size: 0.68rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .outcome-skipped { background: #63636320; color: var(--text-muted); }
+        .outcome-classified { background: var(--blue-dim); color: var(--blue); }
+        .outcome-tagged { background: var(--purple-dim); color: var(--accent-light); }
+        .outcome-draft { background: var(--yellow-dim); color: var(--yellow); }
+        .outcome-sent { background: var(--green-dim); color: var(--green); }
+        .outcome-error { background: var(--red-dim); color: var(--red); }
+
+        /* ── Expanded Card Detail ────────────── */
+        .email-detail {
+            display: none;
+            padding: 0 1rem 1rem;
+            border-top: 1px solid var(--border);
+        }
+        .email-card.expanded .email-detail { display: block; }
+
+        .action-timeline {
+            padding: 0.75rem 0;
+        }
+        .timeline-entry {
+            display: flex;
+            gap: 0.75rem;
+            padding: 0.5rem 0;
+            position: relative;
+        }
+        .timeline-entry:not(:last-child)::before {
+            content: '';
+            position: absolute;
+            left: 7px;
+            top: 24px;
+            bottom: -4px;
+            width: 1px;
+            background: var(--border);
+        }
+        .timeline-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-top: 3px;
+        }
+        .timeline-dot.classify { background: var(--blue); }
+        .timeline-dot.tag { background: var(--accent); }
+        .timeline-dot.draft { background: var(--yellow); }
+        .timeline-dot.queue { background: var(--orange); }
+        .timeline-dot.send { background: var(--green); }
+        .timeline-dot.skip { background: var(--text-muted); }
+        .timeline-dot.suggest { background: var(--blue); }
+        .timeline-dot.error { background: var(--red); }
+        .timeline-dot.organize { background: var(--teal); }
+
+        .timeline-content { flex: 1; min-width: 0; }
+        .timeline-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+        }
+        .timeline-action {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .timeline-time { font-size: 0.7rem; color: var(--text-dim); }
+        .timeline-reasoning {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+        .timeline-details {
+            margin-top: 0.4rem;
+            padding: 0.5rem;
+            background: var(--bg);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            white-space: pre-wrap;
+            overflow-x: auto;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .draft-preview {
+            margin-top: 0.75rem;
+            padding: 0.75rem;
+            background: var(--bg);
+            border-radius: var(--radius);
+            border-left: 3px solid var(--yellow);
+        }
+        .draft-preview-header {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--yellow);
+            text-transform: uppercase;
+            margin-bottom: 0.4rem;
+        }
+        .draft-preview-body {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+
+        .card-feedback {
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border);
+        }
+        .card-feedback-form {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .card-feedback-form input {
+            flex: 1;
+            padding: 0.4rem 0.6rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-family: inherit;
+            font-size: 0.8rem;
+        }
+        .card-feedback-form input::placeholder { color: var(--text-dim); }
+
+        /* ── Queue Cards ─────────────────────── */
+        .queue-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        .queue-left h4 {
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }
+        .queue-left .queue-sender {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+        .queue-left .queue-summary {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+        .queue-right {
+            border-left: 1px solid var(--border);
+            padding-left: 1rem;
+        }
+        .queue-right-header {
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 0.4rem;
+        }
+        .queue-draft-text {
+            font-size: 0.82rem;
+            color: var(--text);
+            white-space: pre-wrap;
+            line-height: 1.5;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .queue-draft-edit {
+            width: 100%;
+            min-height: 120px;
+            padding: 0.6rem;
+            background: var(--bg);
+            border: 1px solid var(--accent);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 0.82rem;
+            line-height: 1.5;
+            resize: vertical;
+        }
+        .queue-actions {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 0.5rem;
+            justify-content: flex-end;
+            padding-top: 0.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        /* ── Activity Timeline ───────────────── */
+        .activity-row {
+            display: grid;
+            grid-template-columns: 80px 90px 1fr 1.5fr auto;
+            gap: 0.75rem;
+            padding: 0.55rem 0.75rem;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .activity-row:hover { background: var(--surface-2); }
+        .activity-time { color: var(--text-muted); font-size: 0.75rem; }
+        .activity-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+        .action-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .action-dot.classify { background: var(--blue); }
+        .action-dot.tag { background: var(--accent); }
+        .action-dot.draft { background: var(--yellow); }
+        .action-dot.queue { background: var(--orange); }
+        .action-dot.send { background: var(--green); }
+        .action-dot.skip { background: var(--text-muted); }
+        .action-dot.suggest { background: var(--blue); }
+        .action-dot.error { background: var(--red); }
+        .action-dot.kill { background: var(--red); }
+        .action-dot.resume { background: var(--green); }
+        .action-dot.reject { background: var(--red); }
+        .action-dot.organize { background: var(--teal); }
+
+        .action-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .activity-sender {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .activity-subject {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text-muted);
+        }
+        .activity-reasoning {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Expanded activity detail */
+        .activity-detail {
+            display: none;
+            padding: 0.75rem;
+            background: var(--surface-2);
+            border-bottom: 1px solid var(--border);
+        }
+        .activity-detail.open { display: block; }
+        .activity-detail h4 { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.4rem; }
+        .activity-detail pre {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            white-space: pre-wrap;
+            overflow-x: auto;
+            background: var(--bg);
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+        .activity-detail .reasoning-text {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+            margin-bottom: 0.5rem;
+        }
+
+        /* ── Feedback Rules ──────────────────── */
+        .feedback-rule {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .feedback-rule.inactive { opacity: 0.5; }
+        .feedback-comment { font-size: 0.85rem; }
+        .feedback-meta { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.2rem; }
+
+        /* ── Setting Group (used in controls sidebar) ── */
+        .setting-group { margin-bottom: 1.25rem; }
+
+        /* ── Confirmation Modal ──────────────── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 300;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            max-width: 420px;
+            width: 90%;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        }
+        .modal h3 { margin-bottom: 0.75rem; font-size: 1rem; }
+        .modal p { font-size: 0.88rem; color: var(--text-muted); margin-bottom: 1.25rem; line-height: 1.5; }
+        .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+
+        /* ── Empty State ─────────────────────── */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-muted);
+        }
+        .empty-state-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.75rem;
+            opacity: 0.3;
+        }
+        .empty-state p { font-size: 0.9rem; }
+
+        /* ── Date Navigator ─────────────────── */
+        .date-nav {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .date-nav-btn {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            border-radius: var(--radius);
+            padding: 0.25rem 0.6rem;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.15s;
+            line-height: 1;
+        }
+        .date-nav-btn:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+        .date-nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .date-nav-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text);
+            min-width: 90px;
+            text-align: center;
+            letter-spacing: 0.02em;
+        }
+
+        /* ── Email Content Panel ─────────────── */
+        .email-content-panel {
+            margin-top: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+        .email-content-toggle {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem 0.75rem;
+            background: var(--surface-2);
+            border: none;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            transition: background 0.15s, color 0.15s;
+            text-align: left;
+        }
+        .email-content-toggle:hover { background: var(--surface-3); color: var(--text); }
+        .email-content-toggle .chevron { transition: transform 0.2s; font-style: normal; }
+        .email-content-toggle.open .chevron { transform: rotate(180deg); }
+        .email-content-body {
+            display: none;
+            padding: 0.75rem;
+            background: var(--bg);
+            font-size: 0.82rem;
+            line-height: 1.55;
+        }
+        .email-content-body.open { display: block; }
+        .email-meta-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.3rem;
+            align-items: baseline;
+        }
+        .email-meta-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-dim);
+            min-width: 68px;
+            flex-shrink: 0;
+        }
+        .email-meta-value { color: var(--text-muted); word-break: break-word; }
+        .email-body-preview {
+            margin-top: 0.6rem;
+            padding-top: 0.6rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 240px;
+            overflow-y: auto;
+        }
+        .email-attachments {
+            margin-top: 0.5rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+        }
+        .attachment-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.2rem 0.55rem;
+            background: var(--surface-3);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+        .attachment-chip .clip { font-style: normal; }
+        .email-content-loading { color: var(--text-dim); font-size: 0.78rem; padding: 0.25rem 0; }
+
+        /* ── Alert Banner ────────────────────── */
+        .alert-banner {
+            background: var(--surface);
+            border-bottom: 2px solid var(--red);
+            padding: 0.6rem 1.5rem;
+            display: flex;
+            gap: 0.75rem;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+        .alert-banner-title { font-size: 0.75rem; font-weight: 700; color: var(--red); text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; align-self: center; }
+        .alert-items { display: flex; flex-direction: column; gap: 0.35rem; flex: 1; min-width: 0; }
+        .alert-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
+        .alert-subject { color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+        .alert-reason { color: var(--text-muted); font-size: 0.73rem; }
+        .alert-dismiss { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 0.9rem; padding: 0; line-height: 1; flex-shrink: 0; }
+        .alert-dismiss:hover { color: var(--text); }
+
+        /* ── Feedback type badge ──────────────── */
+        .rule-type-badge { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface-3); color: var(--text-muted); margin-right: 0.25rem; }
+        .rule-type-badge.tone { background: var(--purple-dim); color: var(--accent-light); }
+        .rule-type-badge.routing { background: var(--blue-dim); color: var(--blue); }
+        .rule-type-badge.cc { background: var(--teal-dim); color: var(--teal); }
+        .rule-type-badge.always-respond { background: var(--green-dim); color: var(--green); }
+        .rule-type-badge.never-respond { background: var(--red-dim); color: var(--red); }
+
+        /* ── Activity date divider ────────────── */
+        .activity-date-divider { padding: 0.35rem 0.75rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); background: var(--bg); border-bottom: 1px solid var(--border); }
+
+        /* ── Compose / Classify modals ────────── */
+        .big-modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.5rem; max-width: 560px; width: 94%; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+        .big-modal h3 { margin-bottom: 1rem; font-size: 1rem; }
+        .big-modal label { display: block; font-size: 0.72rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.3rem; margin-top: 0.75rem; }
+        .big-modal input, .big-modal textarea { width: 100%; padding: 0.5rem 0.7rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: inherit; font-size: 0.85rem; }
+        .big-modal input:focus, .big-modal textarea:focus { outline: none; border-color: var(--accent); }
+        .big-modal textarea { resize: vertical; min-height: 100px; line-height: 1.5; }
+        .classify-result { margin-top: 1rem; padding: 0.75rem; background: var(--bg); border-radius: var(--radius); border: 1px solid var(--border); font-size: 0.82rem; }
+        .classify-result-title { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.4rem; }
+
+        /* ── Account Picker ──────────────────── */
+        .account-picker { position: relative; }
+        .account-picker-btn {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--accent-light);
+            cursor: pointer;
+            font-size: 0.85rem;
+            padding: 0.2rem 0.5rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            transition: all 0.15s;
+            font-family: inherit;
+        }
+        .account-picker-btn:hover { border-color: var(--accent); background: var(--surface-3); }
+        .account-picker-btn .picker-icon { font-size: 1rem; line-height: 1; }
+
+        .account-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            min-width: 320px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            z-index: 150;
+            overflow: hidden;
+        }
+        .account-dropdown.open { display: block; }
+        .account-dropdown-header {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .account-dropdown-header span { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+        .account-dropdown-list { max-height: 300px; overflow-y: auto; }
+        .account-item {
+            padding: 0.6rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.15s;
+            border-bottom: 1px solid var(--border);
+        }
+        .account-item:last-child { border-bottom: none; }
+        .account-item:hover { background: var(--surface-2); }
+        .account-item.active { background: var(--accent)10; border-left: 3px solid var(--accent); }
+        .account-item-info { min-width: 0; }
+        .account-item-name { display: block; font-size: 0.82rem; font-weight: 600; }
+        .account-item-email { display: block; font-size: 0.7rem; color: var(--text-muted); }
+        .account-item-right { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+        .account-setup-badge {
+            font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+            padding: 0.1rem 0.35rem; border-radius: 4px;
+            background: var(--orange-dim); color: var(--orange);
+        }
+        .account-mode-badge {
+            font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+            padding: 0.1rem 0.35rem; border-radius: 4px;
+        }
+        .account-mode-suggestion { background: var(--blue-dim); color: var(--blue); }
+        .account-mode-internal { background: var(--yellow-dim); color: var(--yellow); }
+        .account-mode-auto { background: var(--green-dim); color: var(--green); }
+
+        /* ── Controls Sidebar ────────────────── */
+        .controls-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 200;
+        }
+        .controls-overlay.open { display: block; }
+        .controls-sidebar {
+            position: fixed;
+            top: 0;
+            right: -440px;
+            width: 420px;
+            max-width: 92vw;
+            height: 100vh;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            z-index: 201;
+            transition: right 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -4px 0 20px rgba(0,0,0,0.3);
+        }
+        .controls-sidebar.open { right: 0; }
+        .controls-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .controls-header h3 { font-size: 1rem; font-weight: 600; }
+        .controls-close {
+            background: none; border: none; color: var(--text-muted);
+            font-size: 1.3rem; cursor: pointer; padding: 0.2rem; line-height: 1;
+        }
+        .controls-close:hover { color: var(--text); }
+        .controls-body { flex: 1; padding: 1.25rem; overflow-y: auto; }
+        .controls-section { margin-bottom: 1.5rem; }
+        .controls-section-title {
+            font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.06em; color: var(--text-dim);
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.4rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .ctrl-account-card {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 0.75rem 1rem;
+        }
+        .ctrl-account-name { font-size: 0.9rem; font-weight: 600; }
+        .ctrl-account-email { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem; }
+        .ctrl-account-status { font-size: 0.7rem; color: var(--text-dim); margin-top: 0.3rem; display: flex; align-items: center; gap: 0.4rem; }
+        .ctrl-account-status .dot { width: 6px; height: 6px; border-radius: 50%; }
+        .ctrl-account-status .dot.connected { background: var(--green); }
+        .ctrl-account-status .dot.pending { background: var(--orange); }
+
+        /* Credentials setup section */
+        .ctrl-creds-section {
+            margin-top: 0.75rem;
+            padding: 0.85rem;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+        .ctrl-creds-section.needs-setup {
+            border-color: var(--orange);
+            background: rgba(243, 156, 18, 0.06);
+        }
+        .ctrl-creds-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.6rem;
+        }
+        .ctrl-creds-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-dim);
+        }
+        .ctrl-creds-toggle {
+            font-size: 0.68rem;
+            color: var(--accent-light);
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            padding: 0;
+        }
+        .ctrl-creds-toggle:hover { text-decoration: underline; }
+        .ctrl-creds-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+        }
+        .ctrl-creds-grid .cred-field-full {
+            grid-column: 1 / -1;
+        }
+        .ctrl-creds-grid label {
+            display: block;
+            font-size: 0.66rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            margin-bottom: 0.2rem;
+        }
+        .ctrl-creds-grid input {
+            width: 100%;
+            padding: 0.4rem 0.55rem;
+            background: var(--surface-3);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 0.78rem;
+        }
+        .ctrl-creds-grid input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .ctrl-creds-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.65rem;
+        }
+        .ctrl-creds-actions .btn {
+            flex: 1;
+            padding: 0.45rem 0.6rem;
+            font-size: 0.72rem;
+        }
+        .ctrl-creds-hint {
+            font-size: 0.64rem;
+            color: var(--text-dim);
+            margin-top: 0.5rem;
+            line-height: 1.35;
+        }
+        .ctrl-creds-hint a {
+            color: var(--accent-light);
+            text-decoration: none;
+        }
+        .ctrl-creds-hint a:hover {
+            text-decoration: underline;
+        }
+
+        /* Mode selector in controls */
+        .ctrl-mode-group { display: flex; gap: 4px; }
+        .ctrl-mode-btn {
+            flex: 1; padding: 0.5rem 0.4rem; border: 1px solid var(--border);
+            border-radius: var(--radius); cursor: pointer; text-align: center;
+            font-size: 0.72rem; font-weight: 600; font-family: inherit;
+            background: var(--surface-2); color: var(--text-muted);
+            transition: all 0.2s;
+        }
+        .ctrl-mode-btn:hover { border-color: var(--border-light); color: var(--text); }
+        .ctrl-mode-btn.active[data-mode="suggestion"] { background: var(--blue); color: white; border-color: var(--blue); }
+        .ctrl-mode-btn.active[data-mode="internal"] { background: var(--yellow); color: #1a1a25; border-color: var(--yellow); }
+        .ctrl-mode-btn.active[data-mode="auto"] { background: var(--green); color: white; border-color: var(--green); }
+        .ctrl-mode-desc { font-size: 0.72rem; color: var(--text-dim); margin-top: 0.5rem; line-height: 1.4; }
+
+        /* Permission toggles */
+        .perm-toggle {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.6rem 0; border-bottom: 1px solid var(--border);
+            transition: opacity 0.2s;
+        }
+        .perm-toggle:last-child { border-bottom: none; }
+        .perm-toggle.disabled { opacity: 0.35; pointer-events: none; }
+        .perm-info { min-width: 0; flex: 1; }
+        .perm-label { display: block; font-size: 0.82rem; font-weight: 500; }
+        .perm-desc { display: block; font-size: 0.68rem; color: var(--text-dim); margin-top: 0.1rem; }
+        .perm-locked { display: block; font-size: 0.62rem; color: var(--orange); margin-top: 0.1rem; font-style: italic; }
+
+        /* Toggle switch */
+        .toggle-switch {
+            position: relative; display: inline-block; width: 38px; height: 20px;
+            flex-shrink: 0; margin-left: 0.75rem;
+        }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute; inset: 0; background: var(--surface-3);
+            border-radius: 20px; cursor: pointer; transition: all 0.2s;
+            border: 1px solid var(--border);
+        }
+        .toggle-slider::before {
+            content: ''; position: absolute; height: 14px; width: 14px;
+            left: 2px; bottom: 2px; background: var(--text-muted);
+            border-radius: 50%; transition: all 0.2s;
+        }
+        .toggle-switch input:checked + .toggle-slider { background: var(--accent); border-color: var(--accent); }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); background: white; }
+        .toggle-switch.disabled .toggle-slider { cursor: not-allowed; background: var(--bg); border-color: var(--border); }
+        .toggle-switch.disabled .toggle-slider::before { background: var(--text-dim); }
+
+        /* ── Whitelist Chips ────────────────── */
+        .wl-label { font-size: 0.68rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.35rem; }
+        .wl-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.5rem; }
+        .wl-chip {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px;
+            padding: 0.22rem 0.55rem; font-size: 0.75rem; color: var(--text);
+        }
+        .wl-chip.domain { border-color: var(--accent); color: var(--accent-light); }
+        .wl-chip-remove {
+            background: none; border: none; color: var(--text-dim); cursor: pointer;
+            font-size: 0.9rem; line-height: 1; padding: 0 0.1rem; transition: color 0.15s;
+        }
+        .wl-chip-remove:hover { color: var(--red); }
+        .wl-empty { font-size: 0.72rem; color: var(--text-dim); font-style: italic; }
+
+        /* ── Blacklist / Trash / Classifications ── */
+        .email-actions-bar { display:flex; gap:0.5rem; flex-wrap:wrap; padding-top:0.75rem; margin-top:0.75rem; border-top:1px solid var(--border); }
+        .btn-danger { color:var(--red); border-color:var(--red); }
+        .btn-danger:hover { background:rgba(225,112,85,0.1); }
+        .bl-chip { border-color:var(--red); color:var(--red); }
+        .classify-dropdown { position:relative; }
+        .classify-dropdown-menu { display:none; position:absolute; bottom:100%; left:0; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); min-width:220px; z-index:10; max-height:calc(100vh - 60px); overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+        .classify-dropdown-menu::-webkit-scrollbar { width:4px; }
+        .classify-dropdown-menu::-webkit-scrollbar-track { background:transparent; }
+        .classify-dropdown-menu::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+        .classify-dropdown-menu.open { display:block; }
+        .cls-option { padding:0.5rem 0.75rem; cursor:pointer; font-size:0.8rem; display:flex; align-items:center; gap:0.5rem; }
+        .cls-option:hover { background:var(--surface-3); }
+        .cls-dot { width:8px; height:8px; border-radius:50%; }
+        .outcome-badge-wrap { position:relative; display:inline-flex; }
+        .outcome-badge-wrap .badge-remove { display:none; position:absolute; top:-6px; right:-6px; width:16px; height:16px; border-radius:50%; background:var(--red); color:#fff; font-size:10px; line-height:16px; text-align:center; cursor:pointer; z-index:2; }
+        .outcome-badge-wrap:hover .badge-remove { display:block; }
+        .cls-chip { display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0.6rem; margin-bottom:0.3rem; background:var(--surface-2); border-radius:var(--radius); font-size:0.8rem; }
+        .pending-trash-item { display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0; font-size:0.78rem; border-bottom:1px solid var(--border); }
+        .outcome-blacklisted { background:rgba(225,112,85,0.15); color:var(--red); }
+        .outcome-trashed { background:rgba(225,112,85,0.15); color:var(--red); }
+        .outcome-auto-trash { background:rgba(253,203,110,0.15); color:var(--yellow); }
+        .suggestion-pill { display:inline-flex; align-items:center; gap:0.3rem; padding:0.15rem 0.5rem; background:var(--blue-dim); border:1px solid var(--blue); border-radius:20px; font-size:0.68rem; color:var(--blue); cursor:pointer; }
+        .suggestion-pill:hover { background:rgba(9,132,227,0.25); }
+
+        /* ── Onboarding Modal ────────────────── */
+        .onboarding-modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 0;
+            max-width: 600px;
+            width: 94%;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            overflow: hidden;
+        }
+        .ob-progress {
+            display: flex; justify-content: center; gap: 0.5rem;
+            padding: 1rem 1.5rem 0; margin-bottom: 0;
+        }
+        .ob-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--surface-3); transition: all 0.2s;
+        }
+        .ob-dot.active { background: var(--accent); transform: scale(1.3); }
+        .ob-dot.completed { background: var(--green); }
+        .ob-content { padding: 1.25rem 1.5rem; min-height: 280px; }
+        .ob-step { display: none; }
+        .ob-step.active { display: block; }
+        .ob-step h3 { font-size: 1.1rem; margin-bottom: 0.3rem; }
+        .ob-step .ob-subtitle { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.25rem; line-height: 1.5; }
+        .ob-field { margin-bottom: 1rem; }
+        .ob-field label {
+            display: block; font-size: 0.72rem; font-weight: 600;
+            color: var(--text-muted); text-transform: uppercase;
+            letter-spacing: 0.04em; margin-bottom: 0.3rem;
+        }
+        .ob-field input {
+            width: 100%; padding: 0.5rem 0.7rem;
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: var(--radius); color: var(--text);
+            font-family: inherit; font-size: 0.85rem;
+        }
+        .ob-field input:focus { outline: none; border-color: var(--accent); }
+        .ob-field .ob-hint { font-size: 0.68rem; color: var(--text-dim); margin-top: 0.25rem; }
+        .ob-row { display: grid; grid-template-columns: 2fr 1fr; gap: 0.75rem; }
+        .ob-guide-list { list-style: none; padding: 0; }
+        .ob-guide-list li {
+            padding: 0.6rem 0; border-bottom: 1px solid var(--border);
+            display: flex; gap: 0.75rem; align-items: flex-start;
+        }
+        .ob-guide-list li:last-child { border-bottom: none; }
+        .ob-guide-icon { font-size: 1.1rem; flex-shrink: 0; width: 28px; text-align: center; }
+        .ob-guide-text { font-size: 0.82rem; color: var(--text-muted); line-height: 1.45; }
+        .ob-guide-text strong { color: var(--text); }
+        .ob-footer {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 1rem 1.5rem; border-top: 1px solid var(--border);
+            background: var(--surface-2);
+        }
+
+        /* ── Controls footer ────────────────── */
+        .controls-footer {
+            padding: 1rem 1.25rem;
+            border-top: 1px solid var(--border);
+        }
+
+        /* ── Responsive ──────────────────────── */
+        @media (max-width: 768px) {
+            .header { flex-wrap: wrap; gap: 0.5rem; }
+            .header-center { order: 3; width: 100%; justify-content: center; }
+            .stats-strip { gap: 1rem; padding: 0.5rem 1rem; }
+            .queue-card { grid-template-columns: 1fr; }
+            .queue-right { border-left: none; padding-left: 0; border-top: 1px solid var(--border); padding-top: 0.75rem; }
+            .activity-row { grid-template-columns: 70px 70px 1fr; }
+            .activity-subject, .activity-reasoning { display: none; }
+            .email-card-main { grid-template-columns: 1fr auto; }
+            .email-avatar { display: none; }
+            .controls-sidebar { width: 100%; max-width: 100%; }
+            .account-dropdown { min-width: 280px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header" id="header">
+        <div class="header-left">
+            <h1>Email Agent</h1>
+            <div class="account-picker" id="account-picker">
+                <button class="account-picker-btn" onclick="toggleAccountPicker()" title="Switch account">
+                    <span class="picker-icon">+</span>
+                    <span id="account-badge">agent@paradisewebfl.com</span>
+                </button>
+                <div class="account-dropdown" id="account-dropdown">
+                    <div class="account-dropdown-header">
+                        <span>Email Accounts</span>
+                        <button class="btn btn-primary btn-xs" onclick="openOnboarding()">+ Create New</button>
+                    </div>
+                    <div class="account-dropdown-list" id="account-list-items"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="header-center">
+            <div class="segmented-control" id="mode-control">
+                <button class="seg-btn" data-mode="suggestion" onclick="setMode('suggestion')" title="Suggestion: classify + tag only. No drafting or sending.">
+                    Suggestion
+                    <span class="seg-caps"><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap"></span><span class="seg-cap"></span><span class="seg-cap"></span></span>
+                </button>
+                <button class="seg-btn" data-mode="internal" onclick="setMode('internal')" title="Internal: classify + tag + draft. Drafts queued for admin approval.">
+                    Internal
+                    <span class="seg-caps"><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap"></span></span>
+                </button>
+                <button class="seg-btn" data-mode="auto" onclick="setMode('auto')" title="Auto: classify + tag + draft + auto-send (rate limited). Use with caution.">
+                    Auto
+                    <span class="seg-caps"><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap on"></span></span>
+                </button>
+            </div>
+        </div>
+
+        <div class="header-right">
+            <button class="btn btn-blue btn-sm btn-check" id="btn-check-now" onclick="checkNow()">
+                <span class="spinner"></span>
+                <span class="btn-text">Check Now</span>
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="openCompose()">Compose</button>
+            <button class="btn btn-outline btn-sm" onclick="openClassifyTest()">Test Classify</button>
+            <button class="btn btn-outline btn-sm" onclick="openControls()">Controls</button>
+            <button class="btn btn-red btn-sm" id="btn-kill" onclick="killAgent()">Kill</button>
+            <button class="btn btn-green btn-sm" id="btn-resume" onclick="resumeAgent()" style="display:none">
+                <span class="kill-pulse"></span> Resume
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats Strip -->
+    <div class="stats-strip">
+        <div class="stat-item">
+            <span class="stat-dot blue"></span>
+            <strong id="stat-emails">0</strong> emails today
+        </div>
+        <div class="stat-item">
+            <span class="stat-dot yellow"></span>
+            <strong id="stat-drafts">0</strong> drafts pending
+        </div>
+        <div class="stat-item">
+            <span class="stat-dot green"></span>
+            <strong id="stat-sends">0</strong> auto-sends
+        </div>
+        <div class="stat-item" id="stat-rate-wrap">
+            <span class="stat-dot green" id="stat-rate-dot"></span>
+            <strong id="stat-rate">0/5</strong> rate limit
+        </div>
+        <div class="stat-item" style="margin-left:auto">
+            <span style="color:var(--text-dim)" id="last-check">Last check: --</span>
+        </div>
+    </div>
+
+    <!-- Alert Banner (hidden when empty) -->
+    <div id="alert-banner" style="display:none"></div>
+
+    <div class="container">
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" data-tab="inbox" onclick="switchTab('inbox')">
+                Inbox <span class="tab-count" id="count-inbox">0</span>
+            </button>
+            <button class="tab" data-tab="queue" onclick="switchTab('queue')">
+                Queue <span class="tab-count" id="count-queue">0</span>
+            </button>
+            <button class="tab" data-tab="activity" onclick="switchTab('activity')">
+                Activity <span class="tab-count" id="count-activity">0</span>
+            </button>
+            <button class="tab" data-tab="feedback" onclick="switchTab('feedback')">
+                Feedback <span class="tab-count" id="count-feedback">0</span>
+            </button>
+        </div>
+
+        <!-- Inbox Tab -->
+        <div class="tab-panel active" id="panel-inbox">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
+                <div class="date-nav" id="date-nav" style="margin-bottom:0"></div>
+                <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+                    <div class="filter-bar" style="margin-bottom:0">
+                        <select id="inbox-filter" onchange="loadEmails()">
+                            <option value="">All emails</option>
+                            <option value="classify">Classified</option>
+                            <option value="tag">Tagged</option>
+                            <option value="draft">Drafted</option>
+                            <option value="send">Sent</option>
+                            <option value="skip">Skipped</option>
+                        </select>
+                        <form autocomplete="off" onsubmit="return false" style="display:contents"><input type="search" id="inbox-search" name="inbox-search-nofill" placeholder="Search sender or subject..." oninput="filterInbox()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true"></form>
+                    </div>
+                    <button class="btn btn-outline btn-sm" onclick="dismissAllSkipped()" title="Hide all skipped emails from view">Hide Skipped</button>
+                </div>
+            </div>
+            <div id="inbox-list"></div>
+            <div class="empty-state" id="inbox-empty" style="display:none">
+                <div class="empty-state-icon">&#9993;</div>
+                <p>No emails processed yet. Click <strong>Check Now</strong> to fetch.</p>
+            </div>
+        </div>
+
+        <!-- Queue Tab -->
+        <div class="tab-panel" id="panel-queue">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:0.75rem">
+                <button class="btn btn-red btn-sm" onclick="clearQueue()">Clear All</button>
+            </div>
+            <div id="queue-list"></div>
+            <div class="empty-state" id="queue-empty" style="display:none">
+                <div class="empty-state-icon">&#10003;</div>
+                <p>No drafts awaiting approval.</p>
+            </div>
+        </div>
+
+        <!-- Activity Tab -->
+        <div class="tab-panel" id="panel-activity">
+            <div class="filter-bar">
+                <select id="activity-filter" onchange="loadActivity()">
+                    <option value="">All actions</option>
+                    <option value="classify">Classify</option>
+                    <option value="tag">Tag</option>
+                    <option value="draft">Draft</option>
+                    <option value="send">Send</option>
+                    <option value="skip">Skip</option>
+                    <option value="queue">Queue</option>
+                    <option value="error">Error</option>
+                </select>
+            </div>
+            <div id="activity-list"></div>
+            <div class="empty-state" id="activity-empty" style="display:none">
+                <div class="empty-state-icon">&#128196;</div>
+                <p>No activity recorded yet.</p>
+            </div>
+        </div>
+
+        <!-- Feedback Tab -->
+        <div class="tab-panel" id="panel-feedback">
+            <div style="margin-bottom:1rem;">
+                <div class="card-feedback-form" style="flex-wrap:wrap;gap:0.5rem">
+                    <select id="new-feedback-type" style="padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:inherit;font-size:0.8rem;flex-shrink:0">
+                        <option value="general">General</option>
+                        <option value="tone">Tone &amp; Style</option>
+                        <option value="routing">Routing</option>
+                        <option value="cc">CC Rules</option>
+                        <option value="always-respond">Always Respond</option>
+                        <option value="never-respond">Never Respond</option>
+                    </select>
+                    <input type="text" id="new-feedback" placeholder="Add a feedback rule..." style="flex:1;min-width:200px">
+                    <button class="btn btn-primary btn-sm" onclick="addFeedback()">Add Rule</button>
+                </div>
+            </div>
+            <div id="feedback-list"></div>
+            <div class="empty-state" id="feedback-empty" style="display:none">
+                <div class="empty-state-icon">&#128172;</div>
+                <p>No feedback rules yet. Add rules to influence agent behavior.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controls Sidebar -->
+    <div class="controls-overlay" id="controls-overlay" onclick="closeControls()"></div>
+    <div class="controls-sidebar" id="controls-sidebar">
+        <div class="controls-header">
+            <h3>Agent Controls</h3>
+            <button class="controls-close" onclick="closeControls()">&times;</button>
+        </div>
+        <div class="controls-body">
+            <!-- Account Info -->
+            <div class="controls-section">
+                <div class="controls-section-title">Active Account</div>
+                <div class="ctrl-account-card">
+                    <div class="ctrl-account-name" id="ctrl-account-name">--</div>
+                    <div class="ctrl-account-email" id="ctrl-account-email">--</div>
+                    <div class="ctrl-account-status" id="ctrl-account-status">
+                        <span class="dot connected"></span> <span>Connected</span>
+                    </div>
+                </div>
+                <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+                    <button class="btn btn-outline btn-sm" style="flex:1" id="ctrl-test-btn" onclick="testAccountConnection()">Test Connection</button>
+                    <button class="btn btn-sm" id="ctrl-delete-btn" style="flex:0 0 auto;background:transparent;border:1px solid var(--border);color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:0.72rem;padding:0.35rem 0.65rem;border-radius:var(--radius)" onclick="deleteActiveAccount()">Delete</button>
+                </div>
+            </div>
+
+            <!-- Credentials Setup -->
+            <div class="controls-section" id="ctrl-creds-wrapper" style="display:none">
+                <div class="ctrl-creds-section" id="ctrl-creds-box">
+                    <div class="ctrl-creds-header">
+                        <span class="ctrl-creds-title">Email Server Credentials</span>
+                        <button class="ctrl-creds-toggle" id="ctrl-creds-toggle-btn" onclick="toggleCredsSection()">Hide</button>
+                    </div>
+                    <div id="ctrl-creds-fields">
+                        <div class="ctrl-creds-grid">
+                            <div>
+                                <label>IMAP Host</label>
+                                <input type="text" id="cred-imap-host" placeholder="imap.gmail.com">
+                            </div>
+                            <div>
+                                <label>IMAP Port</label>
+                                <input type="number" id="cred-imap-port" placeholder="993">
+                            </div>
+                            <div class="cred-field-full">
+                                <label>IMAP Username</label>
+                                <input type="text" id="cred-imap-user" placeholder="you@gmail.com">
+                            </div>
+                            <div class="cred-field-full">
+                                <label>IMAP Password / App Password</label>
+                                <input type="password" id="cred-imap-pass" placeholder="Enter app password">
+                            </div>
+                            <div>
+                                <label>SMTP Host</label>
+                                <input type="text" id="cred-smtp-host" placeholder="smtp.gmail.com">
+                            </div>
+                            <div>
+                                <label>SMTP Port</label>
+                                <input type="number" id="cred-smtp-port" placeholder="465">
+                            </div>
+                            <div class="cred-field-full">
+                                <label>SMTP Username</label>
+                                <input type="text" id="cred-smtp-user" placeholder="you@gmail.com">
+                            </div>
+                            <div class="cred-field-full">
+                                <label>SMTP Password / App Password</label>
+                                <input type="password" id="cred-smtp-pass" placeholder="Enter app password">
+                            </div>
+                        </div>
+                        <div class="ctrl-creds-hint" id="ctrl-creds-hint">
+                            For Gmail, use an <a href="https://myaccount.google.com/apppasswords" target="_blank">App Password</a> (16-char code). Regular passwords won't work with 2FA enabled.
+                        </div>
+                        <div class="ctrl-creds-actions">
+                            <button class="btn btn-outline" id="ctrl-creds-save" onclick="saveAccountCredentials()">Save Credentials</button>
+                            <button class="btn btn-primary" id="ctrl-creds-save-test" onclick="saveAndTestCredentials()">Save &amp; Test</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Operating Mode -->
+            <div class="controls-section">
+                <div class="controls-section-title">Operating Mode</div>
+                <div class="ctrl-mode-group">
+                    <button class="ctrl-mode-btn" data-mode="suggestion" onclick="setControlsMode('suggestion')">
+                        Suggestion
+                    </button>
+                    <button class="ctrl-mode-btn" data-mode="internal" onclick="setControlsMode('internal')">
+                        Internal
+                    </button>
+                    <button class="ctrl-mode-btn" data-mode="auto" onclick="setControlsMode('auto')">
+                        Auto
+                    </button>
+                </div>
+                <div class="ctrl-mode-desc" id="ctrl-mode-desc">Classify and tag only. No drafting or sending.</div>
+            </div>
+
+            <!-- Autonomy Controls -->
+            <div class="controls-section">
+                <div class="controls-section-title">Autonomy Controls</div>
+                <div id="ctrl-permissions"></div>
+            </div>
+
+            <!-- Sender Whitelist -->
+            <div class="controls-section">
+                <div class="controls-section-title">Sender Whitelist</div>
+                <div id="ctrl-wl-domains"></div>
+                <div id="ctrl-wl-addresses"></div>
+                <div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.5rem">
+                    <div style="display:flex;gap:0.4rem">
+                        <input id="wl-add-domain" placeholder="domain.com" style="flex:1;padding:0.4rem 0.6rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:inherit;font-size:0.8rem">
+                        <button class="btn btn-outline btn-sm" onclick="addWhitelistDomain()">+ Domain</button>
+                    </div>
+                    <div style="display:flex;gap:0.4rem">
+                        <input id="wl-add-address" placeholder="user@domain.com" style="flex:1;padding:0.4rem 0.6rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:inherit;font-size:0.8rem">
+                        <button class="btn btn-outline btn-sm" onclick="addWhitelistAddress()">+ Address</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sender Blacklist -->
+            <div class="controls-section">
+                <div class="controls-section-title" style="color:var(--red)">Sender Blacklist</div>
+                <div id="ctrl-bl-domains"></div>
+                <div id="ctrl-bl-addresses"></div>
+                <div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.5rem">
+                    <div style="display:flex;gap:0.4rem">
+                        <input id="bl-add-domain" placeholder="domain.com" style="flex:1;padding:0.4rem 0.6rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:inherit;font-size:0.8rem">
+                        <button class="btn btn-outline btn-sm btn-danger" onclick="addBlacklistDomain()">+ Domain</button>
+                    </div>
+                    <div style="display:flex;gap:0.4rem">
+                        <input id="bl-add-address" placeholder="user@domain.com" style="flex:1;padding:0.4rem 0.6rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:inherit;font-size:0.8rem">
+                        <button class="btn btn-outline btn-sm btn-danger" onclick="addBlacklistAddress()">+ Address</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pending Trash -->
+            <div class="controls-section">
+                <div class="controls-section-title" style="display:flex;align-items:center;gap:0.5rem">
+                    Pending Trash <span id="pending-trash-count" class="outcome-badge outcome-auto-trash" style="display:none;font-size:0.7rem"></span>
+                </div>
+                <div id="ctrl-pending-trash"><div class="wl-empty">No pending auto-trash</div></div>
+            </div>
+
+            <!-- Custom Classifications -->
+            <div class="controls-section">
+                <div class="controls-section-title">Custom Classifications</div>
+                <div id="ctrl-classifications"></div>
+                <div style="margin-top:0.75rem;display:flex;gap:0.4rem">
+                    <input id="cls-add-name" placeholder="Classification name" style="flex:1;padding:0.4rem 0.6rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:inherit;font-size:0.8rem">
+                    <button class="btn btn-outline btn-sm" onclick="createClassification()">+ Create</button>
+                </div>
+            </div>
+
+            <!-- Agent Settings -->
+            <div class="controls-section">
+                <div class="controls-section-title">Agent Settings</div>
+                <div class="setting-group">
+                    <label style="display:block;font-size:0.72rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.3rem">Check Interval (minutes)</label>
+                    <input type="number" id="set-interval" min="1" max="60" value="5" style="width:100%;padding:0.5rem 0.7rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:inherit;font-size:0.85rem">
+                </div>
+                <div class="setting-group" style="margin-top:0.75rem">
+                    <label style="display:block;font-size:0.72rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.3rem">Rate Limit (sends/hour)</label>
+                    <input type="number" id="set-rate" min="1" max="50" value="5" style="width:100%;padding:0.5rem 0.7rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:inherit;font-size:0.85rem">
+                </div>
+                <div class="setting-group" style="margin-top:0.75rem">
+                    <label style="display:block;font-size:0.72rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.3rem">Voice Profile</label>
+                    <input type="text" id="set-voice" value="" style="width:100%;padding:0.5rem 0.7rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:inherit;font-size:0.85rem">
+                </div>
+                <div class="setting-group" style="margin-top:0.75rem">
+                    <label style="display:block;font-size:0.72rem;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.3rem">Lookback Window (minutes)</label>
+                    <input type="number" id="set-lookback" min="10" max="1440" value="60" style="width:100%;padding:0.5rem 0.7rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:inherit;font-size:0.85rem">
+                </div>
+            </div>
+        </div>
+        <div class="controls-footer">
+            <button class="btn btn-primary" style="width:100%" onclick="saveSettings()">Save Settings</button>
+        </div>
+    </div>
+
+    <!-- Onboarding Modal -->
+    <div class="modal-overlay" id="onboarding-overlay" onclick="if(event.target===this)closeOnboarding()">
+        <div class="onboarding-modal">
+            <div class="ob-progress">
+                <span class="ob-dot active" data-step="0"></span>
+                <span class="ob-dot" data-step="1"></span>
+                <span class="ob-dot" data-step="2"></span>
+                <span class="ob-dot" data-step="3"></span>
+            </div>
+            <div class="ob-content">
+                <!-- Step 0: How It Works -->
+                <div class="ob-step active" data-step="0">
+                    <h3>Welcome to Email Agent</h3>
+                    <p class="ob-subtitle">Your AI-powered email assistant that monitors, classifies, and responds to emails on your behalf.</p>
+                    <ul class="ob-guide-list">
+                        <li>
+                            <span class="ob-guide-icon">&#128270;</span>
+                            <div class="ob-guide-text"><strong>Suggestion Mode</strong> &#8212; AI reads and classifies your emails with tags and priority. No actions taken.</div>
+                        </li>
+                        <li>
+                            <span class="ob-guide-icon">&#9997;</span>
+                            <div class="ob-guide-text"><strong>Internal Mode</strong> &#8212; AI drafts responses and queues them for your approval before sending.</div>
+                        </li>
+                        <li>
+                            <span class="ob-guide-icon">&#9889;</span>
+                            <div class="ob-guide-text"><strong>Auto Mode</strong> &#8212; AI sends responses autonomously (rate-limited). Full control via permissions.</div>
+                        </li>
+                        <li>
+                            <span class="ob-guide-icon">&#128274;</span>
+                            <div class="ob-guide-text"><strong>Whitelist Only</strong> &#8212; Only emails from whitelisted senders are processed. Everything else is safely skipped.</div>
+                        </li>
+                        <li>
+                            <span class="ob-guide-icon">&#128736;</span>
+                            <div class="ob-guide-text"><strong>Granular Controls</strong> &#8212; Toggle individual permissions (tag, draft, send, move) in the Controls sidebar.</div>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Step 1: Account Details -->
+                <div class="ob-step" data-step="1">
+                    <h3>Account Details</h3>
+                    <p class="ob-subtitle">Name this account and enter the email address to monitor.</p>
+                    <div class="ob-field">
+                        <label>Account Name</label>
+                        <input type="text" id="ob-name" placeholder="e.g. Work Email, Personal Gmail">
+                        <div class="ob-hint">A friendly name to identify this account.</div>
+                    </div>
+                    <div class="ob-field">
+                        <label>Email Address</label>
+                        <input type="email" id="ob-email" placeholder="you@example.com">
+                    </div>
+                    <div class="ob-field">
+                        <label>Voice Profile (optional)</label>
+                        <input type="text" id="ob-voice" placeholder="e.g. professional, casual, dallas-personal">
+                        <div class="ob-hint">Personality style for AI-drafted responses.</div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Server Settings -->
+                <div class="ob-step" data-step="2">
+                    <h3>Email Server Settings</h3>
+                    <p class="ob-subtitle">IMAP for reading emails, SMTP for sending. For Gmail, use an <strong>App Password</strong> (Google Account &rarr; Security &rarr; App Passwords).</p>
+                    <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:0.5rem">IMAP (Incoming)</div>
+                    <div class="ob-row">
+                        <div class="ob-field">
+                            <label>Host</label>
+                            <input type="text" id="ob-imap-host" value="imap.gmail.com">
+                        </div>
+                        <div class="ob-field">
+                            <label>Port</label>
+                            <input type="number" id="ob-imap-port" value="993">
+                        </div>
+                    </div>
+                    <div class="ob-row">
+                        <div class="ob-field">
+                            <label>Username</label>
+                            <input type="text" id="ob-imap-user" placeholder="you@example.com">
+                        </div>
+                        <div class="ob-field">
+                            <label>App Password</label>
+                            <input type="password" id="ob-imap-pass" placeholder="xxxx xxxx xxxx xxxx">
+                        </div>
+                    </div>
+                    <div style="font-size:0.72rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin:0.75rem 0 0.5rem">SMTP (Outgoing)</div>
+                    <div class="ob-row">
+                        <div class="ob-field">
+                            <label>Host</label>
+                            <input type="text" id="ob-smtp-host" value="smtp.gmail.com">
+                        </div>
+                        <div class="ob-field">
+                            <label>Port</label>
+                            <input type="number" id="ob-smtp-port" value="465">
+                        </div>
+                    </div>
+                    <div class="ob-row">
+                        <div class="ob-field">
+                            <label>Username</label>
+                            <input type="text" id="ob-smtp-user" placeholder="you@example.com">
+                        </div>
+                        <div class="ob-field">
+                            <label>App Password</label>
+                            <input type="password" id="ob-smtp-pass" placeholder="xxxx xxxx xxxx xxxx">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Review & Create -->
+                <div class="ob-step" data-step="3">
+                    <h3>Ready to Go</h3>
+                    <p class="ob-subtitle">Review your settings and create the account. You can adjust permissions anytime in the Controls sidebar.</p>
+                    <div id="ob-review" style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:0.75rem 1rem;font-size:0.82rem;line-height:1.6"></div>
+                    <div style="margin-top:1rem;padding:0.75rem;background:var(--blue-dim);border-radius:var(--radius);font-size:0.78rem;color:var(--blue)">
+                        New accounts start in <strong>Suggestion Mode</strong> with classify + tag only. Upgrade to Internal or Auto mode in Controls when ready.
+                    </div>
+                </div>
+            </div>
+            <div class="ob-footer">
+                <button class="btn btn-outline btn-sm" id="ob-prev" onclick="prevOnboardingStep()" style="display:none">Back</button>
+                <div style="flex:1"></div>
+                <button class="btn btn-outline btn-sm" onclick="closeOnboarding()" style="margin-right:0.5rem">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="ob-next" onclick="nextOnboardingStep()">Next</button>
+                <button class="btn btn-green btn-sm" id="ob-create" onclick="createAccountFromOnboarding()" style="display:none">Create Account</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal">
+            <h3 id="modal-title">Confirm</h3>
+            <p id="modal-body">Are you sure?</p>
+            <div id="modal-input-wrap" style="display:none;margin-top:0.75rem">
+                <textarea id="modal-input" rows="3" placeholder="Optional draft guidance..." style="width:100%;background:var(--surface-3);border:1px solid var(--border);border-radius:var(--radius);padding:0.5rem;font-size:0.82rem;color:var(--text);font-family:inherit;resize:vertical"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="modal-confirm" onclick="confirmModal()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Compose Modal -->
+    <div class="modal-overlay" id="compose-overlay" onclick="if(event.target===this)closeCompose()">
+        <div class="big-modal">
+            <h3>Compose Email</h3>
+            <label>To</label>
+            <input type="email" id="compose-to" placeholder="recipient@example.com">
+            <label>Subject</label>
+            <input type="text" id="compose-subject" placeholder="Subject line">
+            <label>Body</label>
+            <textarea id="compose-body" placeholder="Write your message here..."></textarea>
+            <div class="modal-actions" style="margin-top:1rem">
+                <button class="btn btn-outline btn-sm" onclick="closeCompose()">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="compose-send-btn" onclick="sendCompose()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Classify Test Modal -->
+    <div class="modal-overlay" id="classify-overlay" onclick="if(event.target===this)closeClassifyTest()">
+        <div class="big-modal">
+            <h3>Test Email Classification</h3>
+            <label>From</label>
+            <input type="text" id="classify-from" placeholder="sender@example.com">
+            <label>Subject</label>
+            <input type="text" id="classify-subject" placeholder="Email subject">
+            <label>Body (optional)</label>
+            <textarea id="classify-body" placeholder="Email body..." style="min-height:80px"></textarea>
+            <div class="modal-actions" style="margin-top:1rem">
+                <button class="btn btn-outline btn-sm" onclick="closeClassifyTest()">Cancel</button>
+                <button class="btn btn-blue btn-sm" id="classify-run-btn" onclick="runClassifyTest()">Classify</button>
+            </div>
+            <div id="classify-result-box" style="display:none" class="classify-result">
+                <div class="classify-result-title">Classification Result</div>
+                <div id="classify-result-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

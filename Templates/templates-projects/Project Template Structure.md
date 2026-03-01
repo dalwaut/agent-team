@@ -1,0 +1,11 @@
+| **Heading**                             | **Purpose & Agent Action**                                                                                                                  |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`---`**                               | **YAML Frontmatter (Metadata)**: Used for quick filtering and status tracking in Obsidian.                                                  |
+| **`# Project: [App Name]`**             | The project's title and primary identifier.                                                                                                 |
+| **`## Status & Timeline`**              | **Management Agent Input:** The agent will read the `Status` and set the `Last Updated` date.                                               |
+| **`### Core Idea & User Story`**        | **Research Agent Input:** This is your input—your notes and idea.                                                                           |
+| **`### Agent Task List (DO NOT EDIT)`** | **Management Agent Output:** This is where the Management Agent will break down the project into sub-tasks for the other agents to execute. |
+| **`## I. Research & Planning`**         | **Research Agent Output:** The Research Agent will read the _Core Idea_ and populate this section.                                          |
+| **`## II. Application Specification`**  | **Review Agent Output:** The Review Agent will use the research output to formalize the spec.                                               |
+| **`## III. Development & Code (WIP)`**  | **Code Agents (JS/HTML/CSS) Output:** The build agents will write the code and file structure here or in a linked code block.               |
+| **`## IV. Test & Verification`**        | **Testing Agent Output:** The Testing Agent will report test results, errors, and next steps.                                               |

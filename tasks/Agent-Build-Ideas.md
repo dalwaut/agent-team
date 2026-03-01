@@ -1,0 +1,5 @@
+- n8n template scraper & post automator - scrapes the public n8n templates library for trending automations (that we havent pulled before) pulls the automation(if possible) and writes a post (could be blog, article, announcement etc.) to be displayed or used in some way (website, social media, video, etc.)
+- Wordpress multi agent - can access websites via a Login's document and preform various tasks like updating or posting to the websites.
+- Avada theme pull and store for GHL - (could be automation)
+- Hostinger Agent - ssh into server and take care of tasks.
+- [High] Daily Overview Agent - activates at 7am, reviews projects / notes / emails? /etc. And presents a morning or on-call report for things to focus on and quick status of work.

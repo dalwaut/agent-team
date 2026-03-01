@@ -1,0 +1,15 @@
+{
+  "name": "opai-email-agent",
+  "version": "1.0.0",
+  "description": "OPAI Email Agent — persistent email monitoring, classification, drafting, and auto-response for agent@paradisewebfl.com",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0",
+    "express": "^5.2.1",
+    "imapflow": "^1.0.0",
+    "nodemailer": "^8.0.1"
+  }
+}

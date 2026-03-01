@@ -1,0 +1,239 @@
+{
+  "_doc": "Master MCP server catalog. Services pick their subset via config/mcp-profiles/*.json or by building dynamic configs at runtime (e.g. Discord bot). Env vars use ${VAR} placeholders — consumers must resolve them from .env or process.env before writing temp files.",
+
+  "servers": {
+
+    "playwright": {
+      "description": "Playwright MCP — headless browser automation via accessibility tree",
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest",
+        "--headless",
+        "--user-data-dir", "/workspace/synced/opai/tools/opai-browser/data/sessions/default",
+        "--user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        "--viewport-size", "1280x900"
+      ],
+      "tools_count": 12,
+      "tools": [
+        "browser_navigate", "browser_click", "browser_type", "browser_snapshot",
+        "browser_take_screenshot", "browser_scroll", "browser_go_back",
+        "browser_go_forward", "browser_wait", "browser_select_option",
+        "browser_hover", "browser_press_key"
+      ],
+      "used_by": ["claude-code-global", "opai-browser"],
+      "notes": "DOM/accessibility-tree primary. Vision opt-in for CAPTCHAs only. Session dirs in tools/opai-browser/data/sessions/."
+    },
+
+    "teamhub": {
+      "description": "Team Hub workspace MCP — task/item CRUD, search, collaboration",
+      "command": "node",
+      "args": ["/workspace/synced/opai/tools/discord-bridge/teamhub-mcp.js"],
+      "dynamic_args": ["--workspace", "<workspace_id>"],
+      "tools_count": 15,
+      "tools": [
+        "workspace_summary", "list_spaces", "list_folders", "list_lists",
+        "list_items", "search_items", "get_item", "create_item", "update_item",
+        "create_folder", "create_list", "create_space",
+        "add_comment", "assign_item", "list_members"
+      ],
+      "used_by": ["discord-bridge", "opai-benchmark"],
+      "notes": "Requires --workspace <uuid> arg per workspace. Multi-workspace: repeat --workspace flag. Talks to Team Hub API at 127.0.0.1:8089."
+    },
+
+    "clickup": {
+      "description": "ClickUp project management — spaces, folders, tasks, comments",
+      "command": "node",
+      "args": ["/workspace/synced/opai/mcps/clickup-mcp/dist/index.js"],
+      "env": {
+        "CLICKUP_API_KEY": "${CLICKUP_API_KEY}",
+        "CLICKUP_TEAM_ID": "${CLICKUP_TEAM_ID}"
+      },
+      "tools_count": 9,
+      "tools": [
+        "clickup_list_spaces", "clickup_list_folders", "clickup_list_tasks",
+        "clickup_get_task", "clickup_create_task", "clickup_update_task",
+        "clickup_add_comment", "clickup_search_tasks", "clickup_get_members"
+      ],
+      "used_by": ["claude-code-global"],
+      "notes": "OPAI admin task management. Hardcoded team ID in root .mcp.json."
+    },
+
+    "youtube-transcript": {
+      "description": "OPAI YouTube transcript MCP — wraps tools/shared/youtube.py. Transcripts, metadata, keyword search.",
+      "command": "python3",
+      "args": ["/workspace/synced/opai/mcps/youtube-transcript/server.py"],
+      "tools_count": 3,
+      "tools": [
+        "get_transcript", "get_video_metadata", "search_transcript"
+      ],
+      "used_by": ["claude-code-global"],
+      "notes": "In-house MCP. No API key needed. Replaces @emit-ia and @kimtaeyoon83 third-party packages."
+    },
+
+    "godaddy": {
+      "description": "GoDaddy domain management — search, availability, registration",
+      "type": "http",
+      "url": "https://api.godaddy.com/v1/domains/mcp",
+      "tools_count": 2,
+      "tools": ["domains_suggest", "domains_check_availability"],
+      "used_by": ["claude-code-global"],
+      "notes": "HTTP-based MCP. Auth handled by GoDaddy session."
+    },
+
+    "hostinger": {
+      "description": "Hostinger API — file manager, domains, DNS, hosting ops",
+      "command": "npx",
+      "args": ["hostinger-api-mcp@latest"],
+      "env": {
+        "API_TOKEN": "${HOSTINGER_API_TOKEN}"
+      },
+      "tools_count": 10,
+      "tools": [],
+      "used_by": ["claude-code-manual"],
+      "notes": "On-demand only. Not in root .mcp.json (avoid startup cost). Enable per-session when doing hosting tasks."
+    },
+
+    "wordpress-vec": {
+      "description": "WordPress + WooCommerce — posts, pages, media, products",
+      "command": "node",
+      "args": ["/workspace/synced/opai/mcps/Wordpress-VEC/dist/index.js"],
+      "env": {
+        "WORDPRESS_URL": "${WORDPRESS_URL}",
+        "WORDPRESS_USERNAME": "${WORDPRESS_USERNAME}",
+        "WORDPRESS_APPLICATION_PASSWORD": "${WORDPRESS_APPLICATION_PASSWORD}",
+        "WOO_CONSUMER_KEY": "${WOO_CONSUMER_KEY}",
+        "WOO_CONSUMER_SECRET": "${WOO_CONSUMER_SECRET}"
+      },
+      "tools_count": 16,
+      "tools": [
+        "list_posts", "get_post", "create_post", "update_post", "delete_post",
+        "list_pages", "get_page", "create_page", "update_page", "delete_page",
+        "upload_media", "list_media", "delete_media",
+        "list_products", "create_product", "update_product"
+      ],
+      "used_by": ["opai-wordpress", "opai-helm"],
+      "notes": "Requires WP site credentials. Site-specific — one instance per WordPress site."
+    },
+
+    "boutabyte": {
+      "description": "BoutaByte platform — publish/manage web apps via Supabase + file API",
+      "command": "node",
+      "args": ["/workspace/synced/opai/mcps/boutabyte-mcp/dist/index.js"],
+      "env": {
+        "SUPABASE_URL": "${SUPABASE_URL}",
+        "SUPABASE_SERVICE_KEY": "${SUPABASE_SERVICE_KEY}",
+        "FILE_API_URL": "${FILE_API_URL}",
+        "FILE_API_KEY": "${FILE_API_KEY}"
+      },
+      "tools_count": 2,
+      "tools": ["publish_webapp", "list_projects"],
+      "used_by": ["antigravity-agent"],
+      "notes": "Phase 1 MVP. Low tool count — not a tool-search candidate."
+    },
+
+    "supabase": {
+      "description": "Supabase management — database, auth, storage, edge functions (Anthropic hosted)",
+      "type": "hosted",
+      "provider": "claude_ai_Supabase",
+      "tools_count": 25,
+      "tools": [
+        "search_docs", "list_organizations", "get_organization",
+        "list_projects", "get_project", "get_cost", "confirm_cost",
+        "create_project", "pause_project", "restore_project",
+        "list_tables", "list_extensions", "list_migrations",
+        "apply_migration", "execute_sql", "get_logs", "get_advisors",
+        "get_project_url", "get_publishable_keys", "generate_typescript_types",
+        "list_edge_functions", "get_edge_function", "deploy_edge_function",
+        "create_branch", "list_branches", "delete_branch", "merge_branch",
+        "reset_branch", "rebase_branch"
+      ],
+      "used_by": ["claude-code-global"],
+      "notes": "Anthropic-hosted MCP. Auto-available in Claude Code. Heaviest tool set (25+ tools) — prime candidate for tool search deferred loading."
+    },
+
+    "netlify": {
+      "description": "Netlify deployment + project management (Anthropic hosted)",
+      "type": "hosted",
+      "provider": "claude_ai_Netlify",
+      "tools_count": 8,
+      "tools": [
+        "get-netlify-coding-context", "netlify-user-services-reader",
+        "netlify-deploy-services-reader", "netlify-deploy-services-updater",
+        "netlify-team-services-reader", "netlify-project-services-reader",
+        "netlify-project-services-updater", "netlify-extension-services-reader"
+      ],
+      "used_by": ["claude-code-global", "opai-helm"],
+      "notes": "Anthropic-hosted MCP. Auto-available in Claude Code."
+    },
+
+    "n8n": {
+      "description": "n8n workflow automation — search, execute, inspect workflows (Anthropic hosted)",
+      "type": "hosted",
+      "provider": "claude_ai_n8n",
+      "tools_count": 3,
+      "tools": ["search_workflows", "execute_workflow", "get_workflow_details"],
+      "used_by": ["claude-code-global"],
+      "notes": "Anthropic-hosted MCP. INTERNAL ONLY — n8n licensing restricts customer access."
+    }
+  },
+
+  "profiles": {
+    "_doc": "Pre-built server subsets. Claude Code profiles use config/mcp-profiles/*.json launched via scripts/claude-*.sh. Internal services reference profiles here.",
+
+    "slim": {
+      "description": "Minimal — YouTube only. Best for coding sessions.",
+      "servers": ["youtube-transcript"],
+      "config_file": "config/mcp-profiles/slim.json",
+      "launch": "scripts/claude-slim.sh"
+    },
+
+    "browser": {
+      "description": "Default — YouTube + Playwright. Same as .mcp.json.",
+      "servers": ["youtube-transcript", "playwright"],
+      "config_file": "config/mcp-profiles/browser.json",
+      "launch": "scripts/claude-browser.sh"
+    },
+
+    "wordpress": {
+      "description": "WordPress automation — YouTube + Playwright + WP-VEC",
+      "servers": ["youtube-transcript", "playwright", "wordpress-vec"],
+      "config_file": "config/mcp-profiles/wordpress.json",
+      "launch": "scripts/claude-wordpress.sh"
+    },
+
+    "full": {
+      "description": "All local MCPs — YouTube, Playwright, ClickUp, GoDaddy",
+      "servers": ["youtube-transcript", "playwright", "clickup", "godaddy"],
+      "config_file": "config/mcp-profiles/full.json",
+      "launch": "scripts/claude-full.sh"
+    },
+
+    "discord-teamhub": {
+      "description": "Discord bot Team Hub channels — workspace MCP only",
+      "servers": ["teamhub"],
+      "notes": "Workspace IDs injected at runtime. Non-admin guilds get --allowedTools mcp__teamhub__*"
+    },
+
+    "helm": {
+      "description": "HELM business runner — WP, Netlify, Supabase, Team Hub",
+      "servers": ["wordpress-vec", "netlify", "supabase", "teamhub", "playwright"]
+    },
+
+    "benchmark": {
+      "description": "Benchmark scenarios — Team Hub with specific workspace",
+      "servers": ["teamhub"],
+      "notes": "BoutaByte workspace: 5f158f9d-de71-4db1-bd05-87684f34da30"
+    }
+  },
+
+  "tool_search_notes": {
+    "threshold": "Auto-enables when MCP tools exceed ~10% of context window",
+    "current_tool_count": "Combined 116 tools across all servers",
+    "high_impact_combos": [
+      "admin profile (64+ tools) — tool search critical",
+      "helm profile (51+ tools) — tool search critical",
+      "discord-teamhub (15 tools) — below threshold alone, fine without tool search"
+    ],
+    "setting": "ENABLE_TOOL_SEARCH=auto (default in Claude Code, no action needed)"
+  }
+}

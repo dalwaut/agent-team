@@ -1,0 +1,16 @@
+{
+  "name": "discord-admin-coderead",
+  "description": "Admin code lookup — uses file read tools (like Discord admin channel)",
+  "service": "discord-admin",
+  "prompt": "Read the file at config/orchestrator.json and tell me which services are configured and their ports.",
+  "model": "claude-sonnet-4-6",
+  "max_turns": 5,
+  "timeout": 60,
+  "allowed_tools": ["Read", "Glob", "Grep"],
+  "expected_tools": ["Read"],
+  "expected_params": {},
+  "success_check": {
+    "response_contains": ["port"]
+  },
+  "success_criteria": "File read successfully, services and ports listed"
+}

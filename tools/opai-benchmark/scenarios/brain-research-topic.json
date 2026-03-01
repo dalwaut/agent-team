@@ -1,0 +1,15 @@
+{
+  "name": "brain-research-topic",
+  "description": "Research synthesis — simulates Brain research agent prompt",
+  "service": "brain",
+  "prompt": "Research the topic of 'Edge Computing for IoT' and provide:\n1. A concise definition (2-3 sentences)\n2. Top 3 use cases with brief explanations\n3. Key challenges and limitations\n4. How it compares to traditional cloud computing for IoT workloads\n5. Emerging trends (2025-2026)\n\nKeep the total response under 500 words.",
+  "model": "claude-sonnet-4-6",
+  "max_turns": 1,
+  "timeout": 60,
+  "expected_tools": [],
+  "expected_params": {},
+  "success_check": {
+    "response_contains": ["edge", "IoT"]
+  },
+  "success_criteria": "Structured research output covering all 5 points"
+}

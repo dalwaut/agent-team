@@ -1,0 +1,15 @@
+{
+  "name": "email-classify",
+  "description": "Classify an email — simulates email checker agent (haiku)",
+  "service": "email-checker",
+  "prompt": "Classify this email into exactly one category: support, billing, feature-request, spam, onboarding, or other.\n\nFrom: john@example.com\nSubject: Can't access my dashboard\nBody: Hi, I just signed up yesterday and my subscription is active but when I try to log in to the dashboard I get a 403 error. I've tried clearing my cache and using incognito mode. Can someone help?\n\nRespond with ONLY the category name, nothing else.",
+  "model": "claude-haiku-4-5-20251001",
+  "max_turns": 1,
+  "timeout": 15,
+  "expected_tools": [],
+  "expected_params": {},
+  "success_check": {
+    "response_contains": ["support"]
+  },
+  "success_criteria": "Correctly classified as support"
+}

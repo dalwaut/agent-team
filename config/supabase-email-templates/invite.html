@@ -1,0 +1,123 @@
+<!-- OPAI Invite Email Template
+     Paste this into: Supabase Dashboard > Auth > Email Templates > Invite User
+
+     Available variables:
+       {{ .ConfirmationURL }}        - The invite acceptance link
+       {{ .Data.display_name }}      - User's display name
+       {{ .Data.role }}              - Assigned role (admin/user)
+       {{ .Data.custom_message }}    - Personal note from the inviting admin
+       {{ .Data.tailscale_invite }}  - Tailscale VPN invite link
+       {{ .Data.invited_by }}        - Admin user ID who sent the invite
+-->
+
+<div style="max-width:600px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:#0a0a0f;color:#e0e0e8;border-radius:12px;overflow:hidden;border:1px solid #2a2a3e;">
+
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#12121a 0%,#1a1a2e 100%);padding:32px 24px;text-align:center;border-bottom:1px solid #2a2a3e;">
+    <div style="display:inline-block;background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;font-size:28px;font-weight:800;padding:12px 20px;border-radius:12px;letter-spacing:2px;box-shadow:0 4px 24px rgba(168,85,247,0.3);">OP</div>
+    <h1 style="color:#e0e0e8;font-size:22px;margin-top:16px;font-weight:600;">You're Invited to OPAI</h1>
+    <p style="color:#8888a0;font-size:14px;margin-top:8px;">Orchestrated Projects + Agent Intelligence</p>
+  </div>
+
+  <!-- Body -->
+  <div style="padding:24px;">
+
+    <p style="font-size:15px;line-height:1.6;color:#e0e0e8;">
+      Hello {{ .Data.display_name }},
+    </p>
+
+    <p style="font-size:15px;line-height:1.6;color:#c0c0d0;margin-top:12px;">
+      You've been invited to join <strong style="color:#a855f7;">OPAI</strong> — an AI-powered workspace with intelligent agents, chat, task management, and more.
+    </p>
+
+    {{ if .Data.custom_message }}
+    <div style="background:#12121a;border-left:3px solid #a855f7;padding:12px 16px;border-radius:0 8px 8px 0;margin:20px 0;">
+      <p style="color:#8888a0;font-size:12px;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">Message from Admin</p>
+      <p style="color:#e0e0e8;font-size:14px;line-height:1.6;">{{ .Data.custom_message }}</p>
+    </div>
+    {{ end }}
+
+    <!-- Setup Steps -->
+    <div style="margin:24px 0;">
+      <h2 style="color:#e0e0e8;font-size:16px;margin-bottom:16px;font-weight:600;">Getting Started</h2>
+
+      <!-- Step 1: Tailscale -->
+      <div style="background:#12121a;border:1px solid #2a2a3e;border-radius:8px;padding:16px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;margin-bottom:8px;">
+          <span style="background:#a855f7;color:#fff;font-size:12px;font-weight:700;width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-right:10px;">1</span>
+          <strong style="color:#e0e0e8;font-size:14px;">Install Tailscale VPN</strong>
+        </div>
+        <p style="color:#8888a0;font-size:13px;line-height:1.5;margin-left:34px;">
+          OPAI runs on a private network. You need Tailscale to connect.
+        </p>
+        <div style="margin-left:34px;margin-top:10px;">
+          <a href="https://tailscale.com/download" style="display:inline-block;background:#2a2a3e;color:#a855f7;text-decoration:none;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;border:1px solid #3a3a4e;">Download Tailscale</a>
+        </div>
+      </div>
+
+      <!-- Step 2: Join Network -->
+      <div style="background:#12121a;border:1px solid #2a2a3e;border-radius:8px;padding:16px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;margin-bottom:8px;">
+          <span style="background:#a855f7;color:#fff;font-size:12px;font-weight:700;width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-right:10px;">2</span>
+          <strong style="color:#e0e0e8;font-size:14px;">Join the OPAI Network</strong>
+        </div>
+        <p style="color:#8888a0;font-size:13px;line-height:1.5;margin-left:34px;">
+          After installing Tailscale, use the link below to join the OPAI network.
+        </p>
+        {{ if .Data.tailscale_invite }}
+        <div style="margin-left:34px;margin-top:10px;">
+          <a href="{{ .Data.tailscale_invite }}" style="display:inline-block;background:#10b981;color:#fff;text-decoration:none;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;">Join OPAI Network</a>
+        </div>
+        {{ else }}
+        <p style="color:#d29922;font-size:12px;margin-left:34px;margin-top:8px;">
+          Your admin will send you a separate Tailscale invite link.
+        </p>
+        {{ end }}
+      </div>
+
+      <!-- Step 3: Accept Invite -->
+      <div style="background:#12121a;border:1px solid #2a2a3e;border-radius:8px;padding:16px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;margin-bottom:8px;">
+          <span style="background:#a855f7;color:#fff;font-size:12px;font-weight:700;width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-right:10px;">3</span>
+          <strong style="color:#e0e0e8;font-size:14px;">Accept Your Invite & Set Password</strong>
+        </div>
+        <p style="color:#8888a0;font-size:13px;line-height:1.5;margin-left:34px;">
+          Click the button below to set your password and activate your account. Make sure Tailscale is connected first.
+        </p>
+        <div style="margin-left:34px;margin-top:12px;">
+          <a href="{{ .ConfirmationURL }}" style="display:inline-block;background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:15px;font-weight:600;box-shadow:0 4px 16px rgba(168,85,247,0.3);">Accept Invite</a>
+        </div>
+      </div>
+
+      <!-- Step 4: Login -->
+      <div style="background:#12121a;border:1px solid #2a2a3e;border-radius:8px;padding:16px;">
+        <div style="display:flex;align-items:center;margin-bottom:8px;">
+          <span style="background:#a855f7;color:#fff;font-size:12px;font-weight:700;width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin-right:10px;">4</span>
+          <strong style="color:#e0e0e8;font-size:14px;">Login to OPAI</strong>
+        </div>
+        <p style="color:#8888a0;font-size:13px;line-height:1.5;margin-left:34px;">
+          Once connected via Tailscale, open your browser and go to:
+        </p>
+        <div style="margin-left:34px;margin-top:8px;">
+          <code style="background:#0d1117;border:1px solid #2a2a3e;padding:6px 12px;border-radius:6px;font-size:13px;color:#a855f7;font-family:'Fira Code',Consolas,monospace;">https://opai-server.tail856df6.ts.net</code>
+        </div>
+        <p style="color:#8888a0;font-size:12px;margin-left:34px;margin-top:8px;">
+          Your browser may show a certificate warning — this is normal for the private network. Click "Advanced" and proceed.
+        </p>
+      </div>
+    </div>
+
+    <!-- Help -->
+    <div style="border-top:1px solid #2a2a3e;padding-top:16px;margin-top:24px;">
+      <p style="color:#8888a0;font-size:12px;text-align:center;">
+        Having trouble? Reply to this email or contact your OPAI administrator.
+      </p>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div style="background:#12121a;padding:16px 24px;text-align:center;border-top:1px solid #2a2a3e;">
+    <p style="color:#6e7681;font-size:11px;">OPAI — Orchestrated Projects + Agent Intelligence</p>
+  </div>
+
+</div>

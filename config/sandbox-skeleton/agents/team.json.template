@@ -1,0 +1,51 @@
+{
+  "$schema": "User Agent Roster",
+  "version": "1.0.0",
+  "description": "Your personal agent team. Customize agents, add new ones, or modify prompts.",
+
+  "agents": {
+    "reviewer": {
+      "name": "Code Reviewer",
+      "category": "quality",
+      "run_order": "parallel",
+      "prompt_file": "agents/prompts/reviewer.txt",
+      "description": "Reviews code for quality, consistency, and best practices"
+    },
+    "researcher": {
+      "name": "Researcher",
+      "category": "research",
+      "run_order": "parallel",
+      "prompt_file": "agents/prompts/researcher.txt",
+      "description": "Researches best practices, dependencies, and solutions"
+    },
+    "features": {
+      "name": "Feature Planner",
+      "category": "planning",
+      "run_order": "parallel",
+      "prompt_file": "agents/prompts/features.txt",
+      "description": "Plans architecture and implementation for new features"
+    },
+    "health": {
+      "name": "Health Checker",
+      "category": "quality",
+      "run_order": "parallel",
+      "prompt_file": "agents/prompts/health.txt",
+      "description": "Checks performance, dead code, unused dependencies"
+    }
+  },
+
+  "squads": {
+    "review": {
+      "agents": ["reviewer"],
+      "description": "Quick code review"
+    },
+    "plan": {
+      "agents": ["features", "researcher"],
+      "description": "Feature planning with research"
+    },
+    "audit": {
+      "agents": ["reviewer", "health"],
+      "description": "Full quality audit"
+    }
+  }
+}

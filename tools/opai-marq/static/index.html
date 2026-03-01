@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marq — App Store Publisher</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <div class="logo">MQ</div>
+                <h1>Marq</h1>
+            </div>
+            <div class="header-right">
+                <button class="btn btn-primary" id="btn-new-app" onclick="showNewAppModal()">+ New App</button>
+            </div>
+        </div>
+
+        <!-- Tab bar -->
+        <div class="tabs" id="tab-bar">
+            <div class="tab active" data-tab="dashboard" onclick="switchTab('dashboard')">Dashboard</div>
+            <div class="tab" data-tab="submissions" onclick="switchTab('submissions')">Submissions</div>
+            <div class="tab" data-tab="checks" onclick="switchTab('checks')">Pre-Checks</div>
+            <div class="tab" data-tab="assets" onclick="switchTab('assets')">Assets</div>
+            <div class="tab" data-tab="metadata" onclick="switchTab('metadata')">Metadata</div>
+            <div class="tab" data-tab="reviews" onclick="switchTab('reviews')">Reviews</div>
+        </div>
+
+        <!-- Content area -->
+        <div class="content" id="content">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+
+    <!-- New App Modal -->
+    <div class="modal-overlay" id="new-app-modal" style="display:none">
+        <div class="modal">
+            <h2>Register New App</h2>
+            <div class="form-group">
+                <label>App Name</label>
+                <input type="text" id="new-app-name" placeholder="My Awesome App">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Platform</label>
+                    <select id="new-app-platform">
+                        <option value="both">iOS + Android</option>
+                        <option value="ios">iOS Only</option>
+                        <option value="android">Android Only</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Version</label>
+                    <input type="text" id="new-app-version" placeholder="1.0.0">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Project Folder</label>
+                <div class="input-with-browse">
+                    <input type="text" id="new-app-project-path" placeholder="Select your app project folder" readonly>
+                    <button type="button" class="btn btn-sm btn-browse" onclick="openFilePicker({ title: 'Select Project Folder', mode: 'dirs', onSelect: function(p){ document.getElementById('new-app-project-path').value = p; } })">Browse</button>
+                </div>
+                <span class="form-hint">Root folder of your app project (source, build files, APK/IPA)</span>
+            </div>
+            <div class="form-group">
+                <label>Docs Folder</label>
+                <div class="input-with-browse">
+                    <input type="text" id="new-app-doc-folder" placeholder="Select your docs folder" readonly>
+                    <button type="button" class="btn btn-sm btn-browse" onclick="openFilePicker({ title: 'Select Docs Folder', mode: 'dirs', onSelect: function(p){ document.getElementById('new-app-doc-folder').value = p; } })">Browse</button>
+                </div>
+                <span class="form-hint">Folder with README, PRD, CHANGELOG — used for AI metadata generation</span>
+            </div>
+            <div class="form-group">
+                <label>iOS Bundle ID</label>
+                <input type="text" id="new-app-bundle" placeholder="com.example.myapp">
+            </div>
+            <div class="form-group">
+                <label>Android Package Name</label>
+                <input type="text" id="new-app-package" placeholder="com.example.myapp">
+            </div>
+            <div class="form-group">
+                <label>Privacy Policy URL</label>
+                <input type="text" id="new-app-privacy" placeholder="https://example.com/privacy">
+            </div>
+            <div class="form-group">
+                <label>Support URL</label>
+                <input type="text" id="new-app-support" placeholder="https://example.com/support">
+            </div>
+            <div class="modal-actions">
+                <button class="btn" onclick="hideNewAppModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="createApp()">Create App</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/auth/static/js/auth-v3.js"></script>
+    <script src="/auth/static/js/navbar.js" defer></script>
+    <script src="static/js/app.js"></script>
+    <script src="static/js/dashboard.js"></script>
+    <script src="static/js/checks.js"></script>
+    <script src="static/js/assets.js"></script>
+    <script src="static/js/metadata.js"></script>
+    <script src="static/js/reviews.js"></script>
+</body>
+</html>

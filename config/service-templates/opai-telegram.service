@@ -1,0 +1,17 @@
+[Unit]
+Description=OPAI Telegram Bot
+After=network.target opai-caddy.service
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-telegram
+ExecStartPre=-/workspace/synced/opai/scripts/vault-env.sh opai-telegram
+ExecStart=/home/dallas/.nvm/versions/node/v20.19.5/bin/node index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PATH=/home/dallas/.nvm/versions/node/v20.19.5/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/run/user/1000/opai-vault/opai-telegram.env
+
+[Install]
+WantedBy=default.target

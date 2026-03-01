@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPAI Command Center</title>
+  <link rel="stylesheet" href="static/style.css?v=20260228">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- Navbar injected by navbar.js -->
+
+  <div id="app">
+    <!-- Tab Navigation -->
+    <nav id="tab-nav">
+      <button class="tab-btn active" data-tab="command-center">Command Center</button>
+      <button class="tab-btn" data-tab="tasks">Tasks</button>
+      <button class="tab-btn" data-tab="workers">Workers</button>
+      <button class="tab-btn" data-tab="openclaw">OpenClaw</button>
+      <button class="tab-btn" data-tab="system">System</button>
+    </nav>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- TAB: COMMAND CENTER                                     -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div id="tab-command-center" class="tab-panel active">
+
+      <!-- Quick Stats -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">CPU</div>
+          <div class="stat-value" id="stat-cpu">—</div>
+          <div class="stat-bar"><div class="stat-fill" id="bar-cpu"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Memory</div>
+          <div class="stat-value" id="stat-mem">—</div>
+          <div class="stat-bar"><div class="stat-fill" id="bar-mem"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Disk</div>
+          <div class="stat-value" id="stat-disk">—</div>
+          <div class="stat-bar"><div class="stat-fill" id="bar-disk"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Tasks</div>
+          <div class="stat-value" id="stat-tasks">—</div>
+          <div class="stat-sub" id="stat-tasks-detail"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Workers</div>
+          <div class="stat-value" id="stat-workers">—</div>
+          <div class="stat-sub" id="stat-workers-detail"></div>
+        </div>
+      </div>
+
+      <!-- Two-column layout -->
+      <div class="cc-grid">
+        <!-- Activity Feed -->
+        <div class="panel">
+          <h3 class="panel-title">Recent Activity</h3>
+          <div id="activity-feed" class="activity-feed">
+            <div class="loading">Loading...</div>
+          </div>
+        </div>
+
+        <!-- Service Status -->
+        <div class="panel">
+          <h3 class="panel-title">Service Health</h3>
+          <div id="service-health" class="service-list">
+            <div class="loading">Loading...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- App Shortcuts -->
+      <div class="panel">
+        <h3 class="panel-title">Quick Links</h3>
+        <div class="shortcut-grid" id="shortcuts">
+          <a href="/team-hub/" class="shortcut" style="--sc-color: #3b82f6">Team Hub</a>
+          <a href="/files/" class="shortcut" style="--sc-color: #10b981">Files</a>
+          <a href="/wordpress/" class="shortcut" style="--sc-color: #6366f1">WordPress</a>
+          <a href="/email-agent/" class="shortcut" style="--sc-color: #f59e0b">Email Agent</a>
+          <a href="/users/" class="shortcut" style="--sc-color: #14b8a6">Users</a>
+          <a href="#openclaw" class="shortcut" style="--sc-color: #ef4444" onclick="document.querySelector('[data-tab=openclaw]').click();return false">OpenClaw</a>
+          <a href="/dashboard" class="shortcut" style="--sc-color: #8b5cf6">Portal</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- TAB: TASKS                                              -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div id="tab-tasks" class="tab-panel">
+      <div class="subtab-nav">
+        <button class="subtab-btn active" data-subtab="task-list">All Tasks</button>
+        <button class="subtab-btn" data-subtab="task-feedback">Feedback</button>
+        <button class="subtab-btn" data-subtab="task-audit">Audit</button>
+      </div>
+
+      <div id="subtab-task-list" class="subtab-panel active">
+        <div class="toolbar">
+          <input type="text" id="task-search" class="search-input" placeholder="Search tasks...">
+          <select id="task-filter-status" class="filter-select">
+            <option value="">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="running">Running</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <select id="task-filter-priority" class="filter-select">
+            <option value="">All Priority</option>
+            <option value="high">High</option>
+            <option value="normal">Normal</option>
+            <option value="low">Low</option>
+          </select>
+          <button class="btn btn-sm" onclick="loadTasks()">Refresh</button>
+        </div>
+        <div id="task-table-wrap" class="table-scroll">
+          <table class="data-table" id="task-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <th>Status</th>
+                <th>Priority</th>
+                <th>Source</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody id="task-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="subtab-task-feedback" class="subtab-panel">
+        <div id="feedback-list" class="feedback-list">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+
+      <div id="subtab-task-audit" class="subtab-panel">
+        <div class="toolbar">
+          <input type="text" id="audit-search" class="search-input" placeholder="Search audit...">
+          <button class="btn btn-sm" onclick="loadAudit()">Refresh</button>
+        </div>
+        <div id="audit-list" class="audit-list">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- TAB: WORKERS                                            -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div id="tab-workers" class="tab-panel">
+      <div class="subtab-nav">
+        <button class="subtab-btn active" data-subtab="worker-overview">Overview</button>
+        <button class="subtab-btn" data-subtab="worker-guardrails">Guardrails</button>
+        <button class="subtab-btn" data-subtab="worker-approvals">Approvals</button>
+      </div>
+
+      <div id="subtab-worker-overview" class="subtab-panel active">
+        <div id="worker-cards" class="worker-grid">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+
+      <div id="subtab-worker-guardrails" class="subtab-panel">
+        <div id="guardrails-content">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+
+      <div id="subtab-worker-approvals" class="subtab-panel">
+        <div id="approvals-content">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- TAB: OPENCLAW                                            -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div id="tab-openclaw" class="tab-panel">
+      <div class="subtab-nav">
+        <button class="subtab-btn active" data-subtab="oc-instances">Instances</button>
+        <button class="subtab-btn" data-subtab="oc-audit">Credential Log</button>
+        <button class="subtab-btn" data-subtab="oc-hub">ClawHub</button>
+      </div>
+
+      <div id="subtab-oc-instances" class="subtab-panel active">
+        <!-- Stats row -->
+        <div class="oc-stats" id="oc-stats">
+          <span class="oc-stat">Total: <strong id="oc-total">—</strong></span>
+          <span class="oc-stat">Running: <strong id="oc-running" style="color:var(--success)">—</strong></span>
+          <span class="oc-stat">Stopped: <strong id="oc-stopped" style="color:var(--text-muted)">—</strong></span>
+          <span class="oc-stat">Ports: <strong id="oc-ports" style="color:var(--text-dim)">9001-9099</strong></span>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+          <button class="btn btn-sm btn-primary" onclick="ocShowCreateForm()">+ New Instance</button>
+          <button class="btn btn-sm" onclick="loadOCInstances()">Refresh</button>
+        </div>
+
+        <!-- Create form (hidden by default) -->
+        <div id="oc-create-form" class="oc-create-form" style="display:none">
+          <input type="text" id="oc-new-slug" class="search-input" placeholder="Slug (e.g. alpha-01)" style="min-width:160px">
+          <input type="text" id="oc-new-name" class="search-input" placeholder="Display name" style="min-width:160px">
+          <select id="oc-new-tier" class="filter-select">
+            <option value="internal">internal</option>
+            <option value="starter">starter</option>
+            <option value="pro">pro</option>
+          </select>
+          <button class="btn btn-sm btn-success" onclick="ocCreateInstance()">Create</button>
+          <button class="btn btn-sm" onclick="ocHideCreateForm()">Cancel</button>
+        </div>
+
+        <!-- Instance cards -->
+        <div id="oc-instance-grid" class="worker-grid">
+          <div class="loading">Click the OpenClaw tab to load instances</div>
+        </div>
+      </div>
+
+      <div id="subtab-oc-audit" class="subtab-panel">
+        <div class="toolbar">
+          <input type="text" id="oc-audit-filter" class="search-input" placeholder="Filter by instance...">
+          <button class="btn btn-sm" onclick="loadOCAudit()">Refresh</button>
+        </div>
+        <div id="oc-audit-list" class="audit-list">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+
+      <div id="subtab-oc-hub" class="subtab-panel">
+        <div class="toolbar">
+          <input type="text" id="hub-search" class="search-input" placeholder="Search skills..." style="min-width:200px">
+          <select id="hub-category" class="filter-select">
+            <option value="">All categories</option>
+            <option value="research">Research</option>
+            <option value="development">Development</option>
+            <option value="communication">Communication</option>
+            <option value="analytics">Analytics</option>
+            <option value="marketing">Marketing</option>
+            <option value="productivity">Productivity</option>
+          </select>
+          <select id="hub-compat" class="filter-select">
+            <option value="">All compatibility</option>
+            <option value="full">Full (Claude Code)</option>
+            <option value="partial">Partial</option>
+            <option value="oc_only">OC Only</option>
+          </select>
+          <button class="btn btn-sm" onclick="loadClawHub()">Refresh</button>
+          <button class="btn btn-sm btn-primary" onclick="syncClawHub()">Sync Catalog</button>
+        </div>
+        <div id="hub-skill-grid" class="worker-grid">
+          <div class="loading">Click ClawHub tab to load skills</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- TAB: SYSTEM                                             -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div id="tab-system" class="tab-panel">
+      <div class="subtab-nav">
+        <button class="subtab-btn active" data-subtab="sys-health">Health</button>
+        <button class="subtab-btn" data-subtab="sys-services">Services</button>
+        <button class="subtab-btn" data-subtab="sys-logs">Logs</button>
+        <button class="subtab-btn" data-subtab="sys-suggestions">Suggestions</button>
+        <button class="subtab-btn" data-subtab="sys-bottlenecks">Bottlenecks</button>
+        <button class="subtab-btn" data-subtab="sys-settings">Settings</button>
+      </div>
+
+      <div id="subtab-sys-health" class="subtab-panel active">
+        <div id="health-grid" class="health-grid">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+
+      <div id="subtab-sys-services" class="subtab-panel">
+        <div id="services-list" class="services-list">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+
+      <div id="subtab-sys-logs" class="subtab-panel">
+        <div class="toolbar">
+          <input type="text" id="log-filter" class="search-input" placeholder="Filter logs...">
+          <button class="btn btn-sm" id="log-pause-btn" onclick="toggleLogPause()">Pause</button>
+          <button class="btn btn-sm" onclick="clearLogs()">Clear</button>
+        </div>
+        <div id="log-container" class="log-container"></div>
+      </div>
+
+      <div id="subtab-sys-suggestions" class="subtab-panel">
+        <div id="suggestions-list">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+
+      <div id="subtab-sys-bottlenecks" class="subtab-panel">
+        <div class="toolbar">
+          <button class="btn btn-sm btn-primary" onclick="scanBottlenecks()">Scan Now</button>
+          <button class="btn btn-sm" onclick="loadBottlenecks()">Refresh</button>
+          <span id="bn-stats-line" class="text-muted" style="margin-left:auto;font-size:.85rem"></span>
+        </div>
+        <div id="bn-suggestions" class="feedback-list"></div>
+        <h4 style="margin:1.5rem 0 .75rem;color:var(--text-dim)">Approval Tracker</h4>
+        <div id="bn-tracker-table" class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Type</th>
+                <th>Source</th>
+                <th>Action</th>
+                <th>Outcome</th>
+                <th>Wait</th>
+              </tr>
+            </thead>
+            <tbody id="bn-tracker-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="subtab-sys-settings" class="subtab-panel">
+        <div id="settings-content">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ClawHub Skill Modal -->
+  <div id="hub-modal" class="modal-overlay" onclick="if(event.target===this)closeHubModal()">
+    <div class="modal-panel" style="max-width:700px">
+      <div class="modal-header">
+        <h3 id="hub-modal-title">Skill Detail</h3>
+        <button class="modal-close" onclick="closeHubModal()">&times;</button>
+      </div>
+      <div id="hub-modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Task Detail Modal -->
+  <div id="task-modal" class="modal-overlay" onclick="if(event.target===this)closeTaskModal()">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="modal-title">Task Detail</h3>
+        <button class="modal-close" onclick="closeTaskModal()">&times;</button>
+      </div>
+      <div id="task-modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Auth bootstrap -->
+  <script>
+    (async () => {
+      try {
+        const r = await fetch('/auth/config');
+        const cfg = await r.json();
+        window.OPAI_SUPABASE_URL = cfg.supabase_url;
+        window.OPAI_SUPABASE_ANON_KEY = cfg.supabase_anon_key;
+      } catch(e) {
+        console.warn('Auth config unavailable:', e);
+      }
+    })();
+  </script>
+  <script src="/auth/static/js/auth-v3.js" defer></script>
+  <script src="/auth/static/js/navbar.js" defer></script>
+  <script src="static/js/app.js?v=20260228" type="module"></script>
+</body>
+</html>

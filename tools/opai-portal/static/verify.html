@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI — Verify Invite</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-body">
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-logo">
+                <div class="logo-3d">OP</div>
+            </div>
+            <h1 class="login-title">Welcome to OPAI</h1>
+            <p class="login-subtitle" id="status-text">Verifying your invite...</p>
+            <div id="error-box" class="error-message hidden"></div>
+            <div id="spinner-box" style="display:flex;justify-content:center;margin-top:1rem;">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        (async () => {
+            const statusEl = document.getElementById('status-text');
+            const errorEl = document.getElementById('error-box');
+            const spinnerEl = document.getElementById('spinner-box');
+
+            function showError(msg) {
+                spinnerEl.classList.add('hidden');
+                errorEl.textContent = msg;
+                errorEl.classList.remove('hidden');
+                statusEl.textContent = 'Verification failed';
+            }
+
+            try {
+                // Get Supabase config
+                const cfgResp = await fetch('/auth/config');
+                const cfg = await cfgResp.json();
+
+                if (!cfg.supabase_url || !cfg.supabase_anon_key) {
+                    showError('Auth not configured');
+                    return;
+                }
+
+                const sb = window.supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
+
+                // Parse URL params
+                const params = new URLSearchParams(window.location.search);
+                const hashParams = new URLSearchParams(window.location.hash.substring(1));
+
+                // ── Method 1: PKCE flow (new default) — ?code=xxx ──
+                const code = params.get('code');
+                if (code) {
+                    statusEl.textContent = 'Exchanging authorization code...';
+                    const { data, error } = await sb.auth.exchangeCodeForSession(code);
+                    if (error) {
+                        showError(error.message);
+                        return;
+                    }
+                    statusEl.textContent = 'Verified! Redirecting...';
+                    window.location.href = '/onboard/';
+                    return;
+                }
+
+                // ── Method 2: Hash fragment — #access_token=xxx&refresh_token=xxx ──
+                const accessToken = hashParams.get('access_token');
+                const refreshToken = hashParams.get('refresh_token');
+                if (accessToken && refreshToken) {
+                    statusEl.textContent = 'Setting up your session...';
+                    const { error } = await sb.auth.setSession({
+                        access_token: accessToken,
+                        refresh_token: refreshToken,
+                    });
+                    if (error) {
+                        showError(error.message);
+                        return;
+                    }
+                    window.location.href = '/onboard/';
+                    return;
+                }
+
+                // ── Method 3: Token hash — ?token_hash=xxx&type=invite ──
+                const tokenHash = params.get('token_hash');
+                if (tokenHash) {
+                    const type = params.get('type') || 'invite';
+                    statusEl.textContent = 'Verifying your invite...';
+                    const { data, error } = await sb.auth.verifyOtp({
+                        token_hash: tokenHash,
+                        type: type === 'invite' ? 'invite' : 'email',
+                    });
+                    if (error) {
+                        showError(error.message);
+                        return;
+                    }
+                    statusEl.textContent = 'Verified! Redirecting...';
+                    window.location.href = '/onboard/';
+                    return;
+                }
+
+                // ── Method 4: Already has a session (re-visiting) ──
+                const { data: { session: existing } } = await sb.auth.getSession();
+                if (existing) {
+                    statusEl.textContent = 'Session found! Redirecting...';
+                    window.location.href = '/onboard/';
+                    return;
+                }
+
+                // No token found at all
+                showError('No verification token found. Please use the link from your invite email.');
+
+            } catch (err) {
+                showError('An unexpected error occurred: ' + err.message);
+            }
+        })();
+    </script>
+</body>
+</html>

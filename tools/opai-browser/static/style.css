@@ -1,0 +1,151 @@
+/* OPAI Browser — Admin Debug UI */
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --text-dim: #484f58;
+  --accent: #4a56e6;
+  --success: #3fb950;
+  --warning: #d29922;
+  --error: #f85149;
+  --radius: 8px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+h1 { font-size: 1.5rem; margin-bottom: 4px; }
+.subtitle { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 24px; }
+
+.section { margin-bottom: 32px; }
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+input, textarea, select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+textarea { min-height: 80px; resize: vertical; width: 100%; }
+input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+
+.btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: inherit;
+}
+.btn:hover { border-color: var(--text-muted); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { opacity: 0.9; }
+.btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+.btn-danger { color: var(--error); border-color: var(--error); }
+.btn-danger:hover { background: var(--error); color: #fff; }
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.card-title { font-weight: 600; font-size: 0.95rem; }
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.badge-queued { background: var(--text-dim); color: var(--text); }
+.badge-running { background: var(--accent); color: #fff; }
+.badge-completed { background: var(--success); color: #000; }
+.badge-failed { background: var(--error); color: #fff; }
+.badge-cancelled { background: var(--warning); color: #000; }
+
+.card-meta { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 6px; }
+
+.card-result {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-top: 8px;
+}
+
+.session-list { display: flex; flex-direction: column; gap: 8px; }
+.session-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+}
+.session-name { font-weight: 500; }
+.session-info { color: var(--text-muted); font-size: 0.8rem; }
+
+.empty { color: var(--text-dim); text-align: center; padding: 24px; }
+.error-msg { color: var(--error); font-size: 0.85rem; margin-top: 8px; }
+
+.form-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: flex-end; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 0.8rem; color: var(--text-muted); }
+
+.checkbox-row {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.85rem; color: var(--text-muted);
+}
+.checkbox-row input[type="checkbox"] { width: auto; }

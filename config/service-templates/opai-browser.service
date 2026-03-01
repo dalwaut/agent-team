@@ -1,0 +1,24 @@
+[Unit]
+Description=OPAI Browser Automation — headless Playwright via Claude CLI
+After=network.target opai-vault.service
+Wants=opai-vault.service
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-browser
+Environment=PATH=/home/dallas/.nvm/versions/node/v20.19.5/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/dallas/bin
+Environment=PYTHONUNBUFFERED=1
+
+# Load vault credentials (shared + service-specific)
+EnvironmentFile=-/workspace/synced/opai/tools/opai-browser/.env
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-browser
+EnvironmentFile=-%t/opai-vault/opai-browser.env
+
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8107
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

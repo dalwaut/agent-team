@@ -1,0 +1,14 @@
+{
+  "name": "opai-discord-bridge",
+  "version": "3.1.0",
+  "description": "Discord bot → Claude Code CLI with async queue, session reuse, log review, and self-update",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.4.0"
+  }
+}

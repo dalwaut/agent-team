@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>WordPress Manager</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--tg-theme-bg-color, #fff);
+    color: var(--tg-theme-text-color, #000);
+    padding: 0 0 80px 0;
+    min-height: 100vh;
+  }
+
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--tg-theme-hint-color, #999);
+  }
+  .header h1 { font-size: 18px; font-weight: 600; }
+  .header .subtitle {
+    font-size: 12px;
+    color: var(--tg-theme-hint-color, #999);
+    margin-top: 2px;
+  }
+
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--tg-theme-hint-color, #999);
+  }
+  .spinner {
+    width: 20px; height: 20px;
+    border: 2px solid var(--tg-theme-hint-color, #ccc);
+    border-top-color: var(--tg-theme-button-color, #2481cc);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error {
+    padding: 20px;
+    text-align: center;
+    color: #e53935;
+  }
+
+  /* Site List */
+  .site-list { padding: 8px; }
+  .site-card {
+    background: var(--tg-theme-secondary-bg-color, #f7f7f7);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: transform 0.1s;
+  }
+  .site-card:active { transform: scale(0.98); }
+  .site-card .row { display: flex; align-items: center; justify-content: space-between; }
+  .site-card .name { font-weight: 600; font-size: 15px; }
+  .site-card .status-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .site-card .url {
+    font-size: 12px;
+    color: var(--tg-theme-hint-color, #999);
+    margin-top: 2px;
+  }
+  .site-card .meta {
+    display: flex; gap: 12px; margin-top: 8px;
+    font-size: 12px;
+    color: var(--tg-theme-hint-color, #999);
+  }
+  .site-card .badge {
+    background: var(--tg-theme-button-color, #2481cc);
+    color: var(--tg-theme-button-text-color, #fff);
+    border-radius: 10px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge.warn { background: #ff9800; }
+
+  /* Site Detail */
+  .detail { padding: 8px 16px; }
+  .detail .back {
+    font-size: 14px;
+    color: var(--tg-theme-link-color, #2481cc);
+    cursor: pointer;
+    padding: 8px 0;
+  }
+  .detail h2 { font-size: 20px; margin: 8px 0 4px; }
+  .detail .url-link {
+    font-size: 13px;
+    color: var(--tg-theme-link-color, #2481cc);
+    text-decoration: none;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 16px 0;
+  }
+  .info-box {
+    background: var(--tg-theme-secondary-bg-color, #f7f7f7);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .info-box .label {
+    font-size: 11px;
+    color: var(--tg-theme-hint-color, #999);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .info-box .value {
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 2px;
+  }
+
+  .section { margin: 16px 0; }
+  .section h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--tg-theme-hint-color, #999);
+  }
+
+  .update-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--tg-theme-secondary-bg-color, #f7f7f7);
+    border-radius: 8px;
+    margin-bottom: 4px;
+    font-size: 13px;
+  }
+  .update-item .name { font-weight: 500; }
+  .update-item .version { color: var(--tg-theme-hint-color, #999); font-size: 12px; }
+
+  .plugin-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  .plugin-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+
+  /* Action buttons */
+  .actions {
+    display: flex; gap: 8px;
+    margin: 16px 0;
+  }
+  .btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+  }
+  .btn-primary {
+    background: var(--tg-theme-button-color, #2481cc);
+    color: var(--tg-theme-button-text-color, #fff);
+  }
+  .btn-secondary {
+    background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+    color: var(--tg-theme-text-color, #000);
+  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .toast {
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+    background: #333; color: #fff; padding: 10px 20px; border-radius: 8px;
+    font-size: 13px; z-index: 100; display: none;
+  }
+  .toast.show { display: block; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div class="loading" id="loader"><div class="spinner"></div>Connecting...</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const tg = window.Telegram.WebApp;
+tg.ready();
+tg.expand();
+
+const API_BASE = '/telegram/api/wp';
+let authToken = null;
+let sites = [];
+let currentSite = null;
+
+// --- Auth ---
+
+async function authenticate() {
+  try {
+    const payload = {};
+
+    if (tg.initData) {
+      payload.initData = tg.initData;
+    } else if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+      // Fallback for tdesktop: initData is empty but initDataUnsafe has user info
+      payload.initDataUnsafe = tg.initDataUnsafe;
+    } else {
+      showError('No Telegram identity available. Open this app from a Telegram web_app button.');
+      return false;
+    }
+
+    const res = await fetch('/telegram/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { throw new Error('Non-JSON response: ' + text.substring(0, 200)); }
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Auth failed (HTTP ' + res.status + ')');
+    }
+
+    authToken = data.token;
+
+    if (!data.user.isAdmin) {
+      showError('Admin access required for WordPress management.');
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    showError('Authentication failed: ' + err.message);
+    return false;
+  }
+}
+
+// --- API Helper ---
+
+async function api(path, opts = {}) {
+  const res = await fetch(API_BASE + path, {
+    ...opts,
+    headers: {
+      'Authorization': 'Bearer ' + authToken,
+      'Content-Type': 'application/json',
+      ...(opts.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
+// --- Views ---
+
+function showError(msg) {
+  document.getElementById('app').innerHTML = '<div class="error">' + msg + '</div>';
+}
+
+function showLoading(msg) {
+  document.getElementById('app').innerHTML =
+    '<div class="loading"><div class="spinner"></div>' + (msg || 'Loading...') + '</div>';
+}
+
+function toast(msg, duration = 2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), duration);
+}
+
+// --- Site List View ---
+
+async function showSiteList() {
+  showLoading('Loading sites...');
+  tg.BackButton.hide();
+  tg.MainButton.hide();
+  currentSite = null;
+
+  try {
+    sites = await api('/sites');
+    if (!Array.isArray(sites) || sites.length === 0) {
+      document.getElementById('app').innerHTML =
+        '<div class="header"><h1>WordPress Manager</h1><div class="subtitle">No sites connected</div></div>';
+      return;
+    }
+
+    let html = '<div class="header"><h1>WordPress Manager</h1>' +
+      '<div class="subtitle">' + sites.length + ' connected site(s)</div></div>';
+    html += '<div class="site-list">';
+
+    for (const site of sites) {
+      const statusColor = { healthy: '#4caf50', degraded: '#ff9800', offline: '#e53935' }[site.status] || '#999';
+      const updates = (site.plugins_updates || 0) + (site.themes_updates || 0);
+
+      html += '<div class="site-card" onclick="showSiteDetail(\'' + site.id + '\')">';
+      html += '<div class="row">';
+      html += '<span class="name">' + esc(site.name) + '</span>';
+      html += '<span class="status-dot" style="background:' + statusColor + '"></span>';
+      html += '</div>';
+      html += '<div class="url">' + esc(site.url) + '</div>';
+      html += '<div class="meta">';
+      html += '<span>WP ' + esc(site.wp_version || '?') + '</span>';
+      html += '<span>' + esc(site.theme || '?') + '</span>';
+      if (updates > 0) html += '<span class="badge warn">' + updates + ' updates</span>';
+      else html += '<span class="badge">Up to date</span>';
+      html += '</div></div>';
+    }
+
+    html += '</div>';
+    document.getElementById('app').innerHTML = html;
+  } catch (err) {
+    showError('Failed to load sites: ' + err.message);
+  }
+}
+
+// --- Site Detail View ---
+
+async function showSiteDetail(siteId) {
+  const site = sites.find(s => s.id === siteId);
+  if (!site) return;
+  currentSite = site;
+
+  showLoading('Loading ' + site.name + '...');
+
+  tg.BackButton.show();
+  tg.BackButton.onClick(showSiteList);
+
+  try {
+    const [detail, updates] = await Promise.all([
+      api('/sites/' + siteId).catch(() => site),
+      api('/sites/' + siteId + '/updates').catch(() => ({ plugins: [], themes: [] })),
+    ]);
+
+    const statusColor = { healthy: '#4caf50', degraded: '#ff9800', offline: '#e53935' }[detail.status] || '#999';
+    const plugins = updates.plugins || [];
+    const themes = updates.themes || [];
+    const totalUpdates = plugins.length + themes.length;
+
+    let html = '<div class="detail">';
+
+    // Header
+    html += '<h2>' + esc(detail.name) + '</h2>';
+    html += '<a class="url-link" href="' + esc(detail.url) + '" target="_blank">' + esc(detail.url) + '</a>';
+
+    // Info grid
+    html += '<div class="info-grid">';
+    html += infoBox('Status', '<span style="color:' + statusColor + '">' + esc(detail.status || 'unknown') + '</span>');
+    html += infoBox('WordPress', esc(detail.wp_version || '?'));
+    html += infoBox('PHP', esc(detail.php_version || '?'));
+    html += infoBox('Theme', esc(detail.theme || '?'));
+    html += infoBox('Plugins', String(detail.plugins_total || '?'));
+    html += infoBox('Updates', totalUpdates > 0 ? '<span style="color:#ff9800">' + totalUpdates + ' pending</span>' : 'Up to date');
+    html += '</div>';
+
+    // Actions
+    html += '<div class="actions">';
+    html += '<button class="btn btn-primary" onclick="applyUpdates(\'' + siteId + '\')"' +
+      (totalUpdates === 0 ? ' disabled' : '') + '>Update All (' + totalUpdates + ')</button>';
+    html += '<button class="btn btn-secondary" onclick="createBackup(\'' + siteId + '\')">Backup</button>';
+    html += '</div>';
+
+    // Plugin updates
+    if (plugins.length > 0) {
+      html += '<div class="section"><h3>Plugin Updates (' + plugins.length + ')</h3>';
+      for (const p of plugins) {
+        html += '<div class="update-item">';
+        html += '<span class="name">' + esc(p.title || p.name || p.slug || '?') + '</span>';
+        html += '<span class="version">' + esc(p.version || '?') + ' &rarr; ' + esc(p.new_version || '?') + '</span>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    // Theme updates
+    if (themes.length > 0) {
+      html += '<div class="section"><h3>Theme Updates (' + themes.length + ')</h3>';
+      for (const t of themes) {
+        html += '<div class="update-item">';
+        html += '<span class="name">' + esc(t.title || t.name || '?') + '</span>';
+        html += '<span class="version">' + esc(t.version || '?') + ' &rarr; ' + esc(t.new_version || '?') + '</span>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
+    document.getElementById('app').innerHTML = html;
+
+    // Show MainButton for updates
+    if (totalUpdates > 0) {
+      tg.MainButton.setText('Apply All Updates');
+      tg.MainButton.show();
+      tg.MainButton.onClick(() => applyUpdates(siteId));
+    } else {
+      tg.MainButton.hide();
+    }
+  } catch (err) {
+    showError('Failed to load site: ' + err.message);
+  }
+}
+
+// --- Actions ---
+
+async function applyUpdates(siteId) {
+  if (!confirm('Apply all updates to this site?')) return;
+
+  tg.MainButton.showProgress();
+  tg.MainButton.setText('Updating...');
+
+  try {
+    await api('/sites/' + siteId + '/updates/all', { method: 'POST' });
+    toast('Updates applied successfully!');
+    tg.MainButton.hideProgress();
+
+    // Send result back to chat
+    tg.sendData(JSON.stringify({
+      action: 'wp_updated',
+      siteId,
+      siteName: currentSite?.name,
+    }));
+
+    // Refresh
+    setTimeout(() => showSiteDetail(siteId), 1000);
+  } catch (err) {
+    tg.MainButton.hideProgress();
+    toast('Update failed: ' + err.message, 4000);
+  }
+}
+
+async function createBackup(siteId) {
+  if (!confirm('Create a full backup of this site?')) return;
+  toast('Starting backup...');
+
+  try {
+    await api('/sites/' + siteId + '/backups', {
+      method: 'POST',
+      body: JSON.stringify({ backup_type: 'full' }),
+    });
+    toast('Backup started! Check /wp backups for progress.');
+
+    tg.sendData(JSON.stringify({
+      action: 'wp_backup',
+      siteId,
+      siteName: currentSite?.name,
+    }));
+  } catch (err) {
+    toast('Backup failed: ' + err.message, 4000);
+  }
+}
+
+// --- Helpers ---
+
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str || '';
+  return d.innerHTML;
+}
+
+function infoBox(label, value) {
+  return '<div class="info-box"><div class="label">' + label + '</div><div class="value">' + value + '</div></div>';
+}
+
+// --- Init ---
+
+async function init() {
+  try {
+    const ok = await authenticate();
+    if (ok) await showSiteList();
+  } catch (err) {
+    showError('Init error: ' + err.message);
+  }
+}
+
+init();
+</script>
+</body>
+</html>

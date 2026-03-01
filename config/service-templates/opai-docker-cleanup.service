@@ -1,0 +1,11 @@
+[Unit]
+Description=OPAI Docker Cleanup — prune dangling images and exited containers
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/workspace/synced/opai
+ExecStart=/workspace/synced/opai/scripts/docker-cleanup.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=opai-docker-cleanup

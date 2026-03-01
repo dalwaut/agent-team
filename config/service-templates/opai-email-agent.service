@@ -1,0 +1,17 @@
+[Unit]
+Description=OPAI Email Agent — autonomous email monitoring and response for agent@paradisewebfl.com
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-email-agent
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-email-agent
+ExecStart=/usr/bin/node index.js
+Restart=on-failure
+RestartSec=10
+Environment=NODE_ENV=production
+EnvironmentFile=-/workspace/synced/opai/tools/opai-email-agent/.env
+
+EnvironmentFile=-%t/opai-vault/opai-email-agent.env
+[Install]
+WantedBy=default.target

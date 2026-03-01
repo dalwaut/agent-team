@@ -1,0 +1,17 @@
+[Unit]
+Description=OPAI Messenger - Internal team messaging
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-messenger
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-messenger
+ExecStart=/workspace/synced/opai/tools/opai-messenger/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8083
+Restart=always
+RestartSec=10
+Environment="PATH=/usr/bin:/usr/local/bin"
+EnvironmentFile=-/workspace/synced/opai/tools/opai-messenger/.env
+
+EnvironmentFile=-%t/opai-vault/opai-messenger.env
+[Install]
+WantedBy=default.target

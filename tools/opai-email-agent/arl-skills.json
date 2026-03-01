@@ -1,0 +1,238 @@
+{
+  "arlEnabled": true,
+  "defaultModel": "sonnet",
+  "plannerModel": "haiku",
+  "maxSkillsPerRequest": 5,
+  "globalTimeout": 300,
+  "replyWindowMinutes": 10,
+  "fastPollSeconds": 30,
+  "skills": [
+    {
+      "id": "create-task",
+      "name": "Create TeamHub Task",
+      "description": "Creates a task in TeamHub from email instructions",
+      "enabled": true,
+      "type": "structured",
+      "builtIn": true,
+      "intentPatterns": [
+        "create.*task",
+        "add.*task",
+        "new task",
+        "make.*task",
+        "add.*to.*teamhub",
+        "add.*to.*team hub",
+        "add.*to.*hub",
+        "task for dallas",
+        "task for denise",
+        "assign.*task"
+      ],
+      "timeout": 30
+    },
+    {
+      "id": "system-change",
+      "name": "System Change Request",
+      "description": "Requests system changes (architecture, config, statuses, tags) with Telegram approval gate",
+      "enabled": true,
+      "type": "gated",
+      "builtIn": true,
+      "gate": "telegram-approval",
+      "intentPatterns": [
+        "update.*status",
+        "change.*status",
+        "update.*tags",
+        "add.*tag",
+        "modify.*config",
+        "change.*setting",
+        "update.*team.?hub.*status",
+        "update.*teamhub.*status"
+      ],
+      "timeout": 600
+    },
+    {
+      "id": "remember-context",
+      "name": "Remember Prior Context",
+      "description": "Loads prior email chain context for follow-up processing",
+      "enabled": true,
+      "type": "context-loader",
+      "builtIn": true,
+      "intentPatterns": [
+        "^remember",
+        "recall.*previous",
+        "look at.*previous",
+        "check.*earlier.*email",
+        "refer.*to.*chain",
+        "as I mentioned",
+        "like I said"
+      ],
+      "timeout": 30
+    },
+    {
+      "id": "manage-files",
+      "name": "Manage Files",
+      "description": "Save, list, or send files from user's NAS workspace",
+      "enabled": true,
+      "type": "structured",
+      "builtIn": true,
+      "intentPatterns": [
+        "save.*file",
+        "add.*to.*files",
+        "list.*files",
+        "send.*file",
+        "zip.*files",
+        "my files",
+        "attach.*file"
+      ],
+      "timeout": 30
+    },
+    {
+      "id": "generate-report",
+      "name": "Generate Report",
+      "description": "Generate and email a report to the requesting user",
+      "enabled": true,
+      "type": "structured",
+      "builtIn": true,
+      "intentPatterns": [
+        "send.*report",
+        "generate.*report",
+        "email.*report",
+        "get.*report",
+        "summary report"
+      ],
+      "timeout": 60
+    },
+    {
+      "id": "diagnose",
+      "name": "Diagnose",
+      "description": "Diagnose system issues, service failures, and errors. Reads logs, checks service status, traces error paths.",
+      "enabled": true,
+      "type": "claude",
+      "builtIn": true,
+      "intentPatterns": [
+        "diagnose",
+        "what's wrong",
+        "fix this",
+        "broken",
+        "not working",
+        "error",
+        "failing",
+        "debug",
+        "troubleshoot"
+      ],
+      "model": "sonnet",
+      "promptTemplate": "You are OPAI's diagnostic agent. Analyze the following issue. Use read-only tools (file reads, grep, bash for status checks, logs). Do NOT modify any files.\n\nSender: {{sender}}\nSubject: {{subject}}\n\n{{body}}\n\nProvide a structured diagnosis with: 1) What you found, 2) Root cause, 3) Recommended fix.",
+      "timeout": 120
+    },
+    {
+      "id": "research",
+      "name": "Research",
+      "description": "Research topics using the OPAI codebase, wiki, and available context",
+      "enabled": true,
+      "type": "claude",
+      "builtIn": true,
+      "intentPatterns": [
+        "research",
+        "look into",
+        "find out",
+        "investigate",
+        "what is",
+        "how does",
+        "can you check"
+      ],
+      "model": "sonnet",
+      "promptTemplate": "Research the following topic within the OPAI workspace at /workspace/synced/opai. Search the codebase, wiki (Library/opai-wiki/), config files, and notes. Provide a comprehensive summary.\n\nRequest from: {{sender}}\nSubject: {{subject}}\n\n{{body}}",
+      "timeout": 120
+    },
+    {
+      "id": "explain",
+      "name": "Explain",
+      "description": "Explain code, architecture, or OPAI concepts clearly",
+      "enabled": true,
+      "type": "claude",
+      "builtIn": true,
+      "intentPatterns": [
+        "explain",
+        "clarify",
+        "what does .* mean",
+        "how does .* work",
+        "walk me through",
+        "tell me about"
+      ],
+      "model": "sonnet",
+      "promptTemplate": "Explain the following concept, code, or architecture within the OPAI system at /workspace/synced/opai. Be clear, concise, and practical.\n\nQuestion from: {{sender}}\nSubject: {{subject}}\n\n{{body}}",
+      "timeout": 90
+    },
+    {
+      "id": "codebase-search",
+      "name": "Codebase Search",
+      "description": "Find files, functions, and patterns across the OPAI codebase",
+      "enabled": true,
+      "type": "claude",
+      "builtIn": true,
+      "intentPatterns": [
+        "find .* in (the )?(code|codebase)",
+        "search for",
+        "where is",
+        "grep",
+        "look for .* in"
+      ],
+      "model": "haiku",
+      "promptTemplate": "Search the OPAI codebase at /workspace/synced/opai for the following. List matching files, relevant code snippets, and their locations.\n\nSearch request: {{subject}} {{body}}",
+      "timeout": 60
+    },
+    {
+      "id": "service-status",
+      "name": "Service Status",
+      "description": "Check OPAI service health and uptime",
+      "enabled": true,
+      "type": "direct",
+      "builtIn": true,
+      "intentPatterns": [
+        "^service status$",
+        "is .* running",
+        "health check",
+        "^uptime$",
+        "^services$"
+      ],
+      "command": "systemctl --user list-units 'opai-*' --no-pager --no-legend 2>/dev/null; echo '---'; systemctl --user list-timers --no-pager --no-legend 2>/dev/null",
+      "timeout": 10
+    },
+    {
+      "id": "dns-lookup",
+      "name": "DNS Lookup",
+      "description": "Resolve DNS records for domains (MX, A, NS, TXT)",
+      "enabled": true,
+      "type": "direct",
+      "builtIn": true,
+      "intentPatterns": [
+        "dns",
+        "domain",
+        "resolve",
+        "nameserver",
+        "mx record",
+        "dig",
+        "email delivery",
+        "bounced"
+      ],
+      "command": "echo '=== MX ===' && dig {{domain}} MX +short; echo '=== A ===' && dig {{domain}} A +short; echo '=== NS ===' && dig {{domain}} NS +short; echo '=== TXT ===' && dig {{domain}} TXT +short",
+      "timeout": 10
+    },
+    {
+      "id": "log-analysis",
+      "name": "Log Analysis",
+      "description": "Analyze recent service logs for errors and patterns",
+      "enabled": true,
+      "type": "direct",
+      "builtIn": true,
+      "intentPatterns": [
+        "logs?$",
+        "check the log",
+        "error log",
+        "recent errors",
+        "recent warnings",
+        "what happened"
+      ],
+      "command": "journalctl --user --since '1 hour ago' --no-pager --priority=err 2>/dev/null | tail -50; echo '---WARN---'; journalctl --user --since '1 hour ago' --no-pager --priority=warning 2>/dev/null | tail -30",
+      "timeout": 15
+    }
+  ]
+}

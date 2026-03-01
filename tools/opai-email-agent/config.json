@@ -1,0 +1,175 @@
+{
+  "activeAccountId": "acc-dalwaut",
+  "accounts": [
+    {
+      "id": "acc-paradise",
+      "name": "Paradise Web Agent",
+      "email": "agent@paradisewebfl.com",
+      "envPrefix": "AGENT",
+      "mode": "suggestion",
+      "permissions": {
+        "classify": true,
+        "tag": true,
+        "organize": true,
+        "draft": true,
+        "send": true,
+        "moveEmails": true
+      },
+      "whitelist": {
+        "domains": [
+          "paradisewebfl.com",
+          "boutabyte.com",
+          "boutacare.com",
+          "wautersedge.com",
+          "evergladesit.com",
+          "visitevergladescity.com",
+          "morningdewhomestead.com",
+          "shopholisticmedicine.com"
+        ],
+        "addresses": [
+          "dalwaut@gmail.com",
+          "artistatlg@gmail.com"
+        ]
+      },
+      "voiceProfile": "paradise-web-agent",
+      "imapFolders": [
+        "INBOX"
+      ],
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "notifications": {
+        "telegramUserId": 1666403499
+      },
+      "checkIntervalMinutes": 30,
+      "rateLimitPerHour": 5,
+      "lookbackMinutes": 60,
+      "needsSetup": false,
+      "enabled": true
+    },
+    {
+      "id": "acc-dalwaut",
+      "name": "Dallas Personal",
+      "email": "dalwaut@gmail.com",
+      "imap": {
+        "host": "imap.gmail.com",
+        "port": 993,
+        "user": "dalwaut@gmail.com",
+        "pass": "ambm nywv bcgd exmz"
+      },
+      "smtp": {
+        "host": "smtp.gmail.com",
+        "port": 465,
+        "user": "dalwaut@gmail.com",
+        "pass": "ambm nywv bcgd exmz"
+      },
+      "mode": "suggestion",
+      "permissions": {
+        "classify": true,
+        "tag": true,
+        "organize": false,
+        "draft": false,
+        "send": false,
+        "moveEmails": false
+      },
+      "whitelist": {
+        "domains": [],
+        "addresses": [
+          "richwpukl@gmail.com"
+        ]
+      },
+      "voiceProfile": "dallas-personal",
+      "imapFolders": [
+        "INBOX"
+      ],
+      "notifications": {
+        "telegramUserId": 1666403499
+      },
+      "checkIntervalMinutes": 30,
+      "rateLimitPerHour": 5,
+      "lookbackMinutes": 60,
+      "createdAt": "2026-02-24T00:00:00.000Z",
+      "needsSetup": false,
+      "enabled": true
+    },
+    {
+      "id": "acc-artist",
+      "name": "Artist Personal",
+      "email": "artistatlg@gmail.com",
+      "imap": {
+        "host": "imap.gmail.com",
+        "port": 993,
+        "user": "artistatlg@gmail.com",
+        "pass": ""
+      },
+      "smtp": {
+        "host": "smtp.gmail.com",
+        "port": 465,
+        "user": "artistatlg@gmail.com",
+        "pass": ""
+      },
+      "mode": "suggestion",
+      "permissions": {
+        "classify": false,
+        "tag": false,
+        "organize": false,
+        "draft": false,
+        "send": false,
+        "moveEmails": false
+      },
+      "whitelist": {
+        "domains": [],
+        "addresses": []
+      },
+      "voiceProfile": "artist-personal",
+      "imapFolders": [
+        "INBOX"
+      ],
+      "checkIntervalMinutes": 30,
+      "rateLimitPerHour": 5,
+      "lookbackMinutes": 60,
+      "createdAt": "2026-02-24T00:00:00.000Z",
+      "needsSetup": true,
+      "enabled": false
+    },
+    {
+      "id": "acc-dallas-pw",
+      "name": "Dallas (ParadiseWeb)",
+      "email": "dallas@paradisewebfl.com",
+      "envPrefix": "DALLAS_PW",
+      "mode": "internal",
+      "permissions": {
+        "classify": true,
+        "tag": true,
+        "organize": true,
+        "draft": true,
+        "send": false,
+        "moveEmails": true
+      },
+      "whitelist": {
+        "domains": [
+          "paradisewebfl.com",
+          "boutabyte.com",
+          "boutacare.com",
+          "wautersedge.com",
+          "mindzoo.com"
+        ],
+        "addresses": [
+          "dalwaut@gmail.com",
+          "artistatlg@gmail.com"
+        ]
+      },
+      "voiceProfile": "dallas-personal",
+      "imapFolders": [
+        "INBOX"
+      ],
+      "checkIntervalMinutes": 10,
+      "rateLimitPerHour": 5,
+      "lookbackMinutes": 60,
+      "createdAt": "2026-02-27T00:00:00.000Z",
+      "needsSetup": false,
+      "enabled": true,
+      "notifications": {
+        "telegramUserId": 1666403499
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+[Unit]
+Description=OPAI Terminal — Admin Web Shell
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-terminal
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-terminal
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8082
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/workspace/synced/opai/tools/opai-terminal/.env
+
+EnvironmentFile=-%t/opai-vault/opai-terminal.env
+[Install]
+WantedBy=default.target

@@ -1,0 +1,20 @@
+[Unit]
+Description=OPAI Engine — Unified scheduler, monitor, and task manager
+After=network.target opai-vault.service
+Requires=opai-vault.service
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-engine
+ExecStartPre=/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-engine
+EnvironmentFile=-/run/user/1000/opai-vault/opai-engine.env
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8080
+Restart=always
+RestartSec=10
+MemoryMax=512M
+CPUQuota=50%
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/workspace/synced/opai/tools/opai-engine:/workspace/synced/opai/tools/shared
+
+[Install]
+WantedBy=default.target

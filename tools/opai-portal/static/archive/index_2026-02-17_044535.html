@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI — Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="dashboard-body">
+    <!-- Loading state -->
+    <div id="loading" class="loading-screen">
+        <div class="logo-3d">OP</div>
+        <p>Loading...</p>
+    </div>
+
+    <!-- User dashboard (shown to regular users) -->
+    <div id="user-dashboard" class="dashboard hidden">
+        <header class="dash-header">
+            <div class="header-left">
+                <div class="logo-3d small">OP</div>
+                <h1>OPAI</h1>
+            </div>
+            <div class="header-right">
+                <span id="user-name" class="user-name"></span>
+                <button onclick="opaiAuth.signOut()" class="btn-logout">Sign Out</button>
+            </div>
+        </header>
+        <div class="welcome-msg" id="user-welcome"></div>
+
+        <!-- Mozart Orchestra — User-facing -->
+        <div class="mozart-section">
+            <div class="mozart-header">
+                <div class="mozart-icon">&#127932;</div>
+                <div>
+                    <h2>Meet Mozart &mdash; Your AI Orchestra</h2>
+                    <p class="mozart-subtitle">OPAI doesn't run pipelines. It conducts <em>performances</em>.</p>
+                </div>
+            </div>
+            <p class="mozart-desc">Every task you submit becomes a <strong>score</strong>. Mozart, the orchestrator, reads it, assembles the right <strong>ensemble</strong> of specialist AI agents, and conducts them through coordinated execution &mdash; each agent playing its part, in harmony, on tempo.</p>
+            <div class="orchestra-flow">
+                <div class="flow-step">
+                    <div class="flow-icon">&#127929;</div>
+                    <div class="flow-label">Composer</div>
+                    <div class="flow-detail">You write the score</div>
+                </div>
+                <div class="flow-arrow">&#10230;</div>
+                <div class="flow-step">
+                    <div class="flow-icon">&#128220;</div>
+                    <div class="flow-label">Score</div>
+                    <div class="flow-detail">Prompts &amp; configs</div>
+                </div>
+                <div class="flow-arrow">&#10230;</div>
+                <div class="flow-step step-highlight">
+                    <div class="flow-icon">&#127931;</div>
+                    <div class="flow-label">Mozart</div>
+                    <div class="flow-detail">Orchestrates agents</div>
+                </div>
+                <div class="flow-arrow">&#10230;</div>
+                <div class="flow-step">
+                    <div class="flow-icon">&#127931;</div>
+                    <div class="flow-label">Ensemble</div>
+                    <div class="flow-detail">Specialist AI agents</div>
+                </div>
+                <div class="flow-arrow">&#10230;</div>
+                <div class="flow-step">
+                    <div class="flow-icon">&#127926;</div>
+                    <div class="flow-label">Performance</div>
+                    <div class="flow-detail">Results &amp; reports</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-grid" id="user-card-grid"></div>
+
+        <div class="workspace-note">
+            <span class="note-icon">&#128274;</span>
+            Each account includes <strong>1 dedicated workspace</strong>. Collaborate by inviting other OPAI members through Team Hub.
+        </div>
+    </div>
+
+    <!-- Admin dashboard -->
+    <div id="admin-dashboard" class="dashboard hidden">
+        <header class="dash-header">
+            <div class="header-left">
+                <div class="logo-3d small">OP</div>
+                <h1>OPAI <span class="admin-badge">Admin</span></h1>
+            </div>
+            <div class="header-right">
+                <span id="admin-name" class="user-name"></span>
+                <button onclick="opaiAuth.signOut()" class="btn-logout">Sign Out</button>
+            </div>
+        </header>
+
+        <!-- System status bar -->
+        <div class="status-bar" id="status-bar">
+            <div class="status-bar-left">
+                <span class="health-dot dot-gray" id="overall-health-dot"></span>
+                <span class="status-bar-text" id="overall-health-text">Checking systems...</span>
+            </div>
+            <div class="status-bar-right" id="status-bar-services"></div>
+        </div>
+
+        <!-- Quick system stats row -->
+        <div class="quick-stats" id="quick-stats">
+            <div class="qs-card">
+                <div class="qs-label">CPU</div>
+                <div class="qs-value" id="qs-cpu">--</div>
+                <div class="qs-bar"><div class="qs-fill" id="qs-cpu-bar" style="width:0%"></div></div>
+            </div>
+            <div class="qs-card">
+                <div class="qs-label">Memory</div>
+                <div class="qs-value" id="qs-mem">--</div>
+                <div class="qs-bar"><div class="qs-fill" id="qs-mem-bar" style="width:0%"></div></div>
+            </div>
+            <div class="qs-card">
+                <div class="qs-label">Disk</div>
+                <div class="qs-value" id="qs-disk">--</div>
+                <div class="qs-bar"><div class="qs-fill" id="qs-disk-bar" style="width:0%"></div></div>
+            </div>
+            <div class="qs-card">
+                <div class="qs-label">Uptime</div>
+                <div class="qs-value" id="qs-uptime">--</div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════
+             MOZART — AI ORCHESTRA SECTION
+             ═══════════════════════════════════════════════════ -->
+        <div class="mozart-section">
+            <div class="mozart-header">
+                <div class="mozart-icon">&#127932;</div>
+                <div>
+                    <h2>Mozart &mdash; The AI Orchestra</h2>
+                    <p class="mozart-subtitle">Not pipelines. Not chains. <em>Performances.</em></p>
+                </div>
+            </div>
+            <p class="mozart-desc">
+                OPAI reimagines AI orchestration through the language of music. Every task is a <strong>score</strong>.
+                You are the <strong>composer</strong>. Mozart &mdash; the orchestrator &mdash; reads your intent, assembles the right
+                <strong>ensemble</strong> of specialist agents, and conducts them through coordinated execution. Each agent plays its part,
+                in harmony, on tempo. The result is a <strong>performance</strong> &mdash; delivered as actionable reports, completed code,
+                or decisions ready for your review.
+            </p>
+
+            <!-- Orchestra flow diagram -->
+            <div class="orchestra-flow">
+                <div class="flow-step">
+                    <div class="flow-icon">&#127929;</div>
+                    <div class="flow-label">Composer</div>
+                    <div class="flow-detail">You define the work</div>
+                </div>
+                <div class="flow-arrow">&#10230;</div>
+                <div class="flow-step">
+                    <div class="flow-icon">&#128220;</div>
+                    <div class="flow-label">Score</div>
+                    <div class="flow-detail">Prompts, configs, intent</div>
+                </div>
+                <div class="flow-arrow">&#10230;</div>
+                <div class="flow-step step-highlight">
+                    <div class="flow-icon">&#127931;</div>
+                    <div class="flow-label">Conductor</div>
+                    <div class="flow-detail">Mozart orchestrates</div>
+                </div>
+                <div class="flow-arrow">&#10230;</div>
+                <div class="flow-step">
+                    <div class="flow-icon">&#127930;</div>
+                    <div class="flow-label">Ensemble</div>
+                    <div class="flow-detail">25 specialist agents</div>
+                </div>
+                <div class="flow-arrow">&#10230;</div>
+                <div class="flow-step">
+                    <div class="flow-icon">&#127926;</div>
+                    <div class="flow-label">Performance</div>
+                    <div class="flow-detail">Reports &amp; deliverables</div>
+                </div>
+            </div>
+
+            <!-- Orchestra capabilities -->
+            <div class="orchestra-details">
+                <div class="orch-card">
+                    <div class="orch-icon">&#127932;</div>
+                    <h3>17 Squads</h3>
+                    <p>Pre-composed ensembles for common workflows &mdash; audit, ship, review, plan, evolve, and more. From a string quartet to a full symphony.</p>
+                </div>
+                <div class="orch-card">
+                    <div class="orch-icon">&#128161;</div>
+                    <h3>Resource-Aware</h3>
+                    <p>Mozart monitors CPU, memory, and disk in real time. When the system is under load, it defers non-critical work automatically &mdash; no dropped notes.</p>
+                </div>
+                <div class="orch-card">
+                    <div class="orch-icon">&#128101;</div>
+                    <h3>Human-in-the-Loop</h3>
+                    <p>The composer always has final say. Non-trivial decisions surface to you for approval before execution. Rehearsal before opening night.</p>
+                </div>
+                <div class="orch-card">
+                    <div class="orch-icon">&#128260;</div>
+                    <h3>Self-Evolving</h3>
+                    <p>The orchestra assesses its own gaps and proposes new specialist agents. It doesn't just run &mdash; it improves with every performance.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════
+             AI & INTELLIGENCE
+             ═══════════════════════════════════════════════════ -->
+        <div class="section-header">
+            <h2>AI &amp; Intelligence</h2>
+            <p>Conversational AI, autonomous coding, and intelligent agent teams that work while you sleep.</p>
+        </div>
+        <div class="card-grid admin-grid">
+            <a href="/chat/" class="dash-card card-chat">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128172;</div>
+                    <span class="health-dot dot-gray" id="health-chat" title="Checking..."></span>
+                </div>
+                <h2>OPAI Chat</h2>
+                <p>Your AI-powered assistant. Ask questions, generate code, analyze data, and brainstorm ideas &mdash; all through natural conversation powered by Claude.</p>
+                <div class="card-meta" id="meta-chat"></div>
+            </a>
+            <a href="/claude/" class="dash-card card-claude">
+                <div class="card-header-row">
+                    <div class="card-icon">&#129302;</div>
+                    <span class="health-dot dot-gray" id="health-claude" title="Checking..."></span>
+                </div>
+                <h2>Claude Code</h2>
+                <p>Advanced AI coding agent with full codebase awareness. Write, refactor, debug, and deploy through an interactive CLI &mdash; directly in your workspace.</p>
+                <div class="card-meta" id="meta-claude"></div>
+            </a>
+            <a href="/agents/" class="dash-card card-agents">
+                <div class="card-header-row">
+                    <div class="card-icon">&#129516;</div>
+                    <span class="health-dot dot-gray" id="health-agents" title="Checking..."></span>
+                </div>
+                <h2>Agent Studio</h2>
+                <p>Design, configure, and deploy custom AI agent teams. Build specialized squads for any workflow &mdash; from code review to content creation to full release pipelines.</p>
+                <div class="card-meta" id="meta-agents"></div>
+            </a>
+            <a href="/email-agent/" class="dash-card card-email-agent">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128231;</div>
+                    <span class="health-dot dot-gray" id="health-email-agent" title="Checking..."></span>
+                </div>
+                <h2>Email Agent</h2>
+                <p>Autonomous email intelligence. Monitors your inboxes, drafts contextual responses, extracts action items, and manages follow-ups &mdash; without lifting a finger.</p>
+                <div class="card-meta" id="meta-email-agent"></div>
+            </a>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════
+             DEVELOPMENT & WORKSPACE
+             ═══════════════════════════════════════════════════ -->
+        <div class="section-header">
+            <h2>Development &amp; Workspace</h2>
+            <p>A complete cloud development environment. Edit code, run commands, manage files, and track work &mdash; all from your browser.</p>
+        </div>
+        <div class="card-grid admin-grid">
+            <a href="/dev/" class="dash-card card-dev">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128187;</div>
+                    <span class="health-dot dot-gray" id="health-dev" title="Checking..."></span>
+                </div>
+                <h2>OP IDE</h2>
+                <p>Full-featured browser-based code editor. Edit files, run integrated terminals, and collaborate with AI assistance &mdash; no local setup required. Your entire workspace, accessible anywhere.</p>
+                <div class="card-meta" id="meta-dev"></div>
+            </a>
+            <a href="/terminal/" class="dash-card card-terminal">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128421;</div>
+                    <span class="health-dot dot-gray" id="health-terminal" title="Checking..."></span>
+                </div>
+                <h2>Terminal</h2>
+                <p>Direct server shell access. Execute commands, manage services, run scripts, and interact with the full OPAI infrastructure from a secure web terminal.</p>
+                <div class="card-meta" id="meta-terminal"></div>
+            </a>
+            <a href="/tasks/" class="dash-card card-tasks">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128203;</div>
+                    <span class="health-dot dot-gray" id="health-tasks" title="Checking..."></span>
+                </div>
+                <h2>Task Control</h2>
+                <p>Centralized task management and delegation. Queue, prioritize, assign, and track work across AI agents and team members with real-time status updates.</p>
+                <div class="card-meta" id="meta-tasks"></div>
+            </a>
+            <a href="/files/" class="dash-card card-files">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128193;</div>
+                    <span class="health-dot dot-gray" id="health-files" title="Checking..."></span>
+                </div>
+                <h2>OPAI Files</h2>
+                <p>Browse, edit, and manage your workspace files through a clean, intuitive file explorer. Upload, download, organize projects &mdash; your cloud file system.</p>
+                <div class="card-meta" id="meta-files"></div>
+            </a>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════
+             COLLABORATION & COMMUNITY
+             ═══════════════════════════════════════════════════ -->
+        <div class="section-header">
+            <h2>Collaboration &amp; Community</h2>
+            <p>Connect with your team and the broader OPAI community. Share work, exchange ideas, and build together.</p>
+        </div>
+        <div class="card-grid admin-grid">
+            <a href="/messenger/" class="dash-card card-messenger">
+                <div class="card-header-row">
+                    <div class="card-icon">&#9993;</div>
+                    <span class="health-dot dot-gray" id="health-messenger" title="Checking..."></span>
+                </div>
+                <h2>Messenger</h2>
+                <p>Real-time team messaging. Direct messages, group conversations, and file sharing &mdash; built into your workspace for seamless communication.</p>
+                <div class="card-meta" id="meta-messenger"></div>
+            </a>
+            <a href="/forum/" class="dash-card card-forum">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128227;</div>
+                    <span class="health-dot dot-gray" id="health-forum" title="Checking..."></span>
+                </div>
+                <h2>Forum</h2>
+                <p>Developer community hub. Share posts, start discussions, run polls, and drop code snippets. A living knowledge base built by the people using it.</p>
+                <div class="card-meta" id="meta-forum"></div>
+            </a>
+            <a href="/team-hub/" class="dash-card card-team-hub">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128101;</div>
+                    <span class="health-dot dot-gray" id="health-team-hub" title="Checking..."></span>
+                </div>
+                <h2>Team Hub</h2>
+                <p>Collaborative workspace sharing. Invite other OPAI members to your projects, coordinate tasks, and manage team workflows &mdash; all from one central hub.</p>
+                <div class="card-meta" id="meta-team-hub"></div>
+            </a>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════
+             PLATFORM & OPERATIONS
+             ═══════════════════════════════════════════════════ -->
+        <div class="section-header">
+            <h2>Platform &amp; Operations</h2>
+            <p>System health, user management, documentation, billing, and the tools that keep OPAI running smoothly.</p>
+        </div>
+        <div class="card-grid admin-grid">
+            <a href="/monitor/" class="dash-card card-monitor">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128200;</div>
+                    <span class="health-dot dot-gray" id="health-monitor" title="Checking..."></span>
+                </div>
+                <h2>System Monitor</h2>
+                <p>Live system health dashboard. Track every service, review agent reports, monitor performance metrics, and tail logs in real time.</p>
+                <div class="card-meta" id="meta-monitor"></div>
+            </a>
+            <a href="/users/" class="dash-card card-users">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128101;</div>
+                    <span class="health-dot dot-gray" id="health-users" title="Checking..."></span>
+                </div>
+                <h2>User Controls</h2>
+                <p>Manage users, roles, permissions, and access levels. Configure preface prompts, onboarding settings, and workspace provisioning.</p>
+                <div class="card-meta" id="meta-users"></div>
+            </a>
+            <a href="/docs/" class="dash-card card-docs">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128214;</div>
+                    <span class="health-dot dot-gray" id="health-docs" title="Checking..."></span>
+                </div>
+                <h2>Docs</h2>
+                <p>Auto-generated platform documentation. Always current, always comprehensive &mdash; updated automatically as the system evolves. Searchable and browsable.</p>
+                <div class="card-meta" id="meta-docs"></div>
+            </a>
+            <a href="/marketplace/" class="dash-card card-marketplace">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128722;</div>
+                    <span class="health-dot dot-gray" id="health-marketplace" title="Checking..."></span>
+                </div>
+                <h2>Marketplace</h2>
+                <p>BoutaByte product catalog. Browse and deploy apps, workflow automation templates, WordPress plugins, and integrations from the growing ecosystem.</p>
+                <div class="card-meta" id="meta-marketplace"></div>
+            </a>
+            <a href="/billing/" class="dash-card card-billing">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128179;</div>
+                    <span class="health-dot dot-gray" id="health-billing" title="Checking..."></span>
+                </div>
+                <h2>Billing</h2>
+                <p>Subscription and payment management powered by Stripe. View plans, track usage, manage invoices, and handle team billing from one place.</p>
+                <div class="card-meta" id="meta-billing"></div>
+            </a>
+            <a href="/forumbot/" class="dash-card card-forumbot">
+                <div class="card-header-row">
+                    <div class="card-icon">&#129302;</div>
+                    <span class="health-dot dot-gray" id="health-forumbot" title="Checking..."></span>
+                </div>
+                <h2>Forum Bot</h2>
+                <p>AI content generation, scheduling, and moderation for the community forum. Create dev notes, polls, and announcements on autopilot.</p>
+                <div class="card-meta" id="meta-forumbot"></div>
+            </a>
+            <a href="https://n8n.boutabyte.com" target="_blank" class="dash-card card-n8n">
+                <div class="card-header-row">
+                    <div class="card-icon">&#9881;</div>
+                </div>
+                <h2>n8n Automations</h2>
+                <p>Visual workflow automation. Build triggers, schedule jobs, connect APIs, and chain actions with a powerful drag-and-drop builder. 100+ templates included.</p>
+            </a>
+            <a href="/archive/" class="dash-card card-archive">
+                <div class="card-header-row">
+                    <div class="card-icon">&#128451;</div>
+                </div>
+                <h2>Page Archive</h2>
+                <p>Version snapshots of the portal page. Preview previous designs, rollback instantly, or use archived versions as influence for future iterations.</p>
+            </a>
+        </div>
+
+        <!-- Workspace note -->
+        <div class="workspace-note">
+            <span class="note-icon">&#128274;</span>
+            Each account includes <strong>1 dedicated workspace</strong> &mdash; a fully isolated environment with its own files, agents, and configuration. Collaborate by inviting other OPAI members through <strong>Team Hub</strong>.
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        function formatUptime(seconds) {
+            const d = Math.floor(seconds / 86400);
+            const h = Math.floor((seconds % 86400) / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            if (d > 0) return d + 'd ' + h + 'h';
+            if (h > 0) return h + 'h ' + m + 'm';
+            return m + 'm';
+        }
+
+        function formatBytes(bytes) {
+            if (!bytes) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
+        }
+
+        function setDot(id, healthy) {
+            const dot = document.getElementById(id);
+            if (!dot) return;
+            if (healthy === true) {
+                dot.className = 'health-dot dot-green';
+                dot.title = 'Healthy';
+            } else if (healthy === false) {
+                dot.className = 'health-dot dot-red';
+                dot.title = 'Unreachable';
+            } else {
+                dot.className = 'health-dot dot-gray';
+                dot.title = 'Unknown';
+            }
+        }
+
+        function setMeta(id, svc) {
+            const el = document.getElementById(id);
+            if (!el || !svc) return;
+            const parts = [];
+            if (svc.uptime_seconds != null) parts.push('Up ' + formatUptime(svc.uptime_seconds));
+            if (svc.memory_mb != null) parts.push(svc.memory_mb + ' MB');
+            el.textContent = parts.join(' \u00b7 ');
+        }
+
+        async function fetchHealth(isAdmin) {
+            try {
+                const resp = await fetch('/monitor/api/health/summary');
+                const data = await resp.json();
+                const svcs = data.services || {};
+
+                if (isAdmin) {
+                    const allHealthy = data.status === 'healthy';
+                    setDot('overall-health-dot', allHealthy);
+                    document.getElementById('overall-health-text').textContent =
+                        allHealthy ? 'All Systems Operational' : 'Some Systems Degraded';
+
+                    const barRight = document.getElementById('status-bar-services');
+                    let dotsHtml = '';
+                    for (const [name, info] of Object.entries(svcs)) {
+                        const ok = info.status === 'healthy';
+                        const cls = ok ? 'dot-green' : 'dot-red';
+                        dotsHtml += '<span class="health-dot-mini ' + cls + '" title="' + name + ': ' + info.status + '"></span>';
+                    }
+                    barRight.innerHTML = dotsHtml;
+
+                    // Card health dots
+                    setDot('health-chat', svcs.chat?.status === 'healthy');
+                    setDot('health-monitor', svcs.monitor?.status === 'healthy');
+                    setDot('health-tasks', svcs.tasks?.status === 'healthy');
+                    setDot('health-terminal', svcs.terminal?.status === 'healthy');
+                    setDot('health-claude', svcs.terminal?.status === 'healthy');
+                    setDot('health-messenger', svcs.messenger?.status === 'healthy');
+                    setDot('health-users', svcs.users?.status === 'healthy');
+                    setDot('health-dev', svcs.dev?.status === 'healthy');
+                    setDot('health-files', svcs.files?.status === 'healthy');
+                    setDot('health-forum', svcs.forum?.status === 'healthy');
+                    setDot('health-agents', svcs.agents?.status === 'healthy');
+                    setDot('health-docs', svcs.docs?.status === 'healthy');
+                    setDot('health-marketplace', svcs.marketplace?.status === 'healthy');
+                    setDot('health-email-agent', svcs['email-agent']?.status === 'healthy');
+                    setDot('health-team-hub', svcs['team-hub']?.status === 'healthy');
+                    setDot('health-billing', svcs.billing?.status === 'healthy');
+                    setDot('health-forumbot', svcs.forumbot?.status === 'healthy');
+
+                    // Card meta
+                    setMeta('meta-chat', svcs.chat);
+                    setMeta('meta-monitor', svcs.monitor);
+                    setMeta('meta-tasks', svcs.tasks);
+                    setMeta('meta-terminal', svcs.terminal);
+                    setMeta('meta-claude', svcs.terminal);
+                    setMeta('meta-messenger', svcs.messenger);
+                    setMeta('meta-users', svcs.users);
+                    setMeta('meta-dev', svcs.dev);
+                    setMeta('meta-files', svcs.files);
+                    setMeta('meta-forum', svcs.forum);
+                    setMeta('meta-agents', svcs.agents);
+                    setMeta('meta-docs', svcs.docs);
+                    setMeta('meta-marketplace', svcs.marketplace);
+                    setMeta('meta-email-agent', svcs['email-agent']);
+                    setMeta('meta-team-hub', svcs['team-hub']);
+                    setMeta('meta-billing', svcs.billing);
+                    setMeta('meta-forumbot', svcs.forumbot);
+                } else {
+                    for (const [name, info] of Object.entries(svcs)) {
+                        setDot('health-user-' + name, info.status === 'healthy');
+                    }
+                }
+            } catch (e) {
+                if (isAdmin) {
+                    document.getElementById('overall-health-text').textContent = 'Monitor unreachable';
+                }
+            }
+        }
+
+        async function fetchStats() {
+            try {
+                const token = window._opaiToken;
+                const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+                const resp = await fetch('/monitor/api/system/stats', { headers: headers });
+                if (!resp.ok) return;
+                const data = await resp.json();
+
+                const cpuPct = data.cpu_percent || 0;
+                const memPct = data.memory?.percent || 0;
+                const diskPct = data.disk?.percent || 0;
+
+                document.getElementById('qs-cpu').textContent = cpuPct.toFixed(0) + '%';
+                document.getElementById('qs-cpu-bar').style.width = cpuPct + '%';
+
+                document.getElementById('qs-mem').textContent = memPct.toFixed(0) + '%';
+                document.getElementById('qs-mem-bar').style.width = memPct + '%';
+
+                document.getElementById('qs-disk').textContent = diskPct.toFixed(0) + '%';
+                document.getElementById('qs-disk-bar').style.width = diskPct + '%';
+
+                if (data.uptime_seconds) {
+                    document.getElementById('qs-uptime').textContent = formatUptime(data.uptime_seconds);
+                }
+            } catch (e) {
+                // Silently degrade
+            }
+        }
+
+        // App card definitions for user dashboard
+        const APP_CARDS = {
+            chat:      { href: '/chat/',      icon: '&#128172;', title: 'OPAI Chat',     desc: 'Your AI-powered assistant. Ask questions, generate code, analyze data, and brainstorm &mdash; all through natural conversation.', css: 'card-chat' },
+            messenger: { href: '/messenger/', icon: '&#9993;',   title: 'Messenger',     desc: 'Real-time team messaging. Direct messages, group conversations, and file sharing across your workspace.',                        css: 'card-messenger' },
+            files:     { href: '/files/',     icon: '&#128193;', title: 'My Files',      desc: 'Browse, edit, and manage your workspace files. Upload, download, and organize projects through an intuitive file explorer.',       css: 'card-files' },
+            forum:     { href: '/forum/',     icon: '&#128227;', title: 'Forum',         desc: 'Developer community hub. Share posts, start discussions, run polls, and drop code snippets with the OPAI community.',              css: 'card-forum' },
+            monitor:   { href: '/monitor/',   icon: '&#128200;', title: 'Monitor',       desc: 'Live system health dashboard. Track services, review agent reports, and monitor performance metrics.',                             css: 'card-monitor' },
+            tasks:     { href: '/tasks/',     icon: '&#128203;', title: 'Task Control',  desc: 'Centralized task management. Queue, prioritize, assign, and track work across AI agents and team members.',                        css: 'card-tasks' },
+            terminal:  { href: '/terminal/',  icon: '&#128421;', title: 'Terminal',      desc: 'Direct server shell access. Execute commands, manage services, and interact with the OPAI infrastructure.',                        css: 'card-terminal' },
+            users:     { href: '/users/',     icon: '&#128101;', title: 'User Controls', desc: 'Manage users, roles, permissions, and access levels. Configure preface prompts and onboarding.',                                   css: 'card-users' },
+            dev:       { href: '/dev/',       icon: '&#128187;', title: 'OP IDE',        desc: 'Full-featured browser-based code editor. Edit files, run terminals, and collaborate with AI &mdash; no local setup required.',      css: 'card-dev' },
+            claude:    { href: '/claude/',    icon: '&#129302;', title: 'Claude Code',   desc: 'Advanced AI coding agent with full codebase awareness. Write, refactor, debug, and deploy through an interactive CLI.',            css: 'card-claude' },
+            agents:    { href: '/agents/',    icon: '&#129516;', title: 'Agent Studio',  desc: 'Design, configure, and deploy custom AI agent teams. Build specialized squads for any workflow.',                                  css: 'card-agents' },
+            docs:      { href: '/docs/',      icon: '&#128214;', title: 'Docs',          desc: 'Auto-generated platform documentation. Always current, always comprehensive &mdash; updated as the system evolves.',               css: 'card-docs' },
+            marketplace:{ href: '/marketplace/',icon: '&#128722;', title: 'Marketplace', desc: 'BoutaByte product catalog. Browse and deploy apps, automation templates, plugins, and integrations.',                              css: 'card-marketplace' },
+            'email-agent': { href: '/email-agent/', icon: '&#128231;', title: 'Email Agent', desc: 'Autonomous email intelligence. Monitors inboxes, drafts responses, extracts action items, and manages follow-ups.',           css: 'card-email-agent' },
+            'team-hub': { href: '/team-hub/', icon: '&#128101;', title: 'Team Hub',      desc: 'Collaborative workspace sharing. Invite other OPAI members, coordinate tasks, and manage team workflows.',                        css: 'card-team-hub' },
+            n8n:       { href: 'https://n8n.boutabyte.com', icon: '&#9881;', title: 'n8n Automations', desc: 'Visual workflow automation. Build triggers, schedule jobs, connect APIs with a drag-and-drop builder.',               css: 'card-n8n', external: true },
+        };
+
+        const _cb = '?_=' + Date.now();
+
+        function renderUserCards(allowedApps) {
+            const grid = document.getElementById('user-card-grid');
+            if (!allowedApps || !allowedApps.length) {
+                grid.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:2rem;">No apps assigned. Contact your admin.</p>';
+                return;
+            }
+            grid.innerHTML = allowedApps
+                .filter(function(id) { return APP_CARDS[id]; })
+                .map(function(id) {
+                    var c = APP_CARDS[id];
+                    var href = c.external ? c.href : c.href + _cb;
+                    var target = c.external ? ' target="_blank" rel="noopener"' : '';
+                    return '<a href="' + href + '"' + target + ' class="dash-card ' + c.css + '">'
+                        + '<div class="card-header-row">'
+                        + '<div class="card-icon">' + c.icon + '</div>'
+                        + '<span class="health-dot dot-gray" id="health-user-' + id + '" title="Checking..."></span>'
+                        + '</div>'
+                        + '<h2>' + c.title + '</h2>'
+                        + '<p>' + c.desc + '</p>'
+                        + '</a>';
+                }).join('');
+        }
+
+        // Auth check
+        (async () => {
+            const resp = await fetch('/auth/config');
+            const cfg = await resp.json();
+
+            if (!cfg.supabase_url || !cfg.supabase_anon_key) {
+                document.getElementById('loading').innerHTML = '<p>Auth not configured</p>';
+                return;
+            }
+
+            window.OPAI_SUPABASE_URL = cfg.supabase_url;
+            window.OPAI_SUPABASE_ANON_KEY = cfg.supabase_anon_key;
+
+            const sb = window.supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
+            const { data: { session } } = await sb.auth.getSession();
+
+            if (!session) {
+                window.location.href = '/auth/login';
+                return;
+            }
+
+            const user = session.user;
+            const role = user.app_metadata?.role || 'user';
+            const displayName = user.user_metadata?.display_name || user.email.split('@')[0];
+
+            if (role !== 'admin') {
+                try {
+                    const obResp = await fetch('/onboard/status', {
+                        headers: { 'Authorization': 'Bearer ' + session.access_token },
+                    });
+                    if (obResp.ok) {
+                        const obData = await obResp.json();
+                        if (!obData.onboarded) {
+                            window.location.href = '/onboard/';
+                            return;
+                        }
+                    }
+                } catch (e) { /* proceed */ }
+            }
+
+            window._opaiToken = session.access_token;
+            sb.auth.onAuthStateChange(function(_event, sess) {
+                if (sess) window._opaiToken = sess.access_token;
+            });
+
+            document.getElementById('loading').classList.add('hidden');
+
+            const isAdmin = role === 'admin';
+
+            if (isAdmin) {
+                document.getElementById('admin-name').textContent = displayName;
+                document.getElementById('admin-dashboard').classList.remove('hidden');
+                fetchHealth(true);
+                fetchStats();
+                setInterval(function() { fetchHealth(true); }, 30000);
+                setInterval(fetchStats, 10000);
+            } else {
+                document.getElementById('user-name').textContent = displayName;
+                document.getElementById('user-welcome').textContent = 'Welcome, ' + displayName;
+
+                let allowedApps = ['chat', 'messenger', 'files', 'forum'];
+                try {
+                    const appsResp = await fetch('/api/me/apps', {
+                        headers: { 'Authorization': 'Bearer ' + session.access_token },
+                    });
+                    if (appsResp.ok) {
+                        const appsData = await appsResp.json();
+                        if (appsData.allowed_apps && appsData.allowed_apps.length) {
+                            allowedApps = appsData.allowed_apps;
+                        }
+                    }
+                } catch (e) { /* use fallback */ }
+
+                renderUserCards(allowedApps);
+                document.getElementById('user-dashboard').classList.remove('hidden');
+                fetchHealth(false);
+                setInterval(function() { fetchHealth(false); }, 30000);
+            }
+
+            window.opaiAuth = {
+                signOut: async function() {
+                    await sb.auth.signOut();
+                    window.location.href = '/auth/login';
+                }
+            };
+        })();
+    </script>
+    <script src="/messenger/static/js/widget.js" defer></script>
+    <script src="/docs/static/js/docs-widget.js" defer></script>
+</body>
+</html>

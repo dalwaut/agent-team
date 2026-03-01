@@ -1,0 +1,18 @@
+[Unit]
+Description=OPAI Dev — Browser IDE Workspace Manager
+After=network.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-dev
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-dev
+ExecStart=/home/dallas/.nvm/versions/node/v20.19.5/bin/node index.js
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=-/workspace/synced/opai/tools/opai-dev/.env
+MemoryMax=512M
+CPUQuota=50%
+
+EnvironmentFile=-%t/opai-vault/opai-dev.env
+[Install]
+WantedBy=default.target

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bx4 -- BoutaByte Business Bot</title>
+    <link rel="stylesheet" href="/bx4/static/style.css?v=1">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="/auth/static/js/navbar.js" defer></script>
+</head>
+<body>
+
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="loading-overlay">
+    <div class="loading-content">
+        <div class="loading-icon">BX4</div>
+        <div class="loading-sub">Initializing Business Intelligence...</div>
+        <div class="loading-bar"><div class="loading-fill"></div></div>
+    </div>
+</div>
+
+<!-- Triage Mode Banner (hidden by default) -->
+<div id="triage-banner" class="triage-banner hidden">
+    <span class="triage-icon">!</span>
+    <span>TRIAGE MODE -- Financial Stabilization Priority</span>
+</div>
+
+<!-- App Shell -->
+<div id="app" class="app hidden">
+
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
+                <span class="hamburger"></span>
+            </button>
+            <a href="/bx4/" class="top-bar-logo">BX4</a>
+        </div>
+        <div class="top-bar-center">
+            <div class="company-switcher">
+                <select id="company-select" class="company-select">
+                    <option value="">-- No companies --</option>
+                </select>
+            </div>
+            <button class="btn btn-sm btn-outline" id="add-company-btn" title="Add Company">+ Add Company</button>
+        </div>
+        <div class="top-bar-right">
+            <span class="user-display" id="user-display"></span>
+        </div>
+    </header>
+
+    <div class="app-body">
+
+        <!-- Sidebar -->
+        <nav class="sidebar" id="sidebar">
+            <ul class="nav-list">
+                <li class="nav-item active" data-view="dashboard">
+                    <span class="nav-icon">&#x1F4CA;</span>
+                    <span class="nav-label">Dashboard</span>
+                </li>
+                <li class="nav-item" data-view="financial">
+                    <span class="nav-icon">&#x1F4B0;</span>
+                    <span class="nav-label">Financial</span>
+                </li>
+                <li class="nav-item" data-view="market">
+                    <span class="nav-icon">&#x1F4C8;</span>
+                    <span class="nav-label">Market</span>
+                </li>
+                <li class="nav-item" data-view="social">
+                    <span class="nav-icon">&#x1F4F1;</span>
+                    <span class="nav-label">Social</span>
+                </li>
+                <li class="nav-item" data-view="operations">
+                    <span class="nav-icon">&#x2699;&#xFE0F;</span>
+                    <span class="nav-label">Operations</span>
+                </li>
+                <li class="nav-item" data-view="advisor">
+                    <span class="nav-icon">&#x1F916;</span>
+                    <span class="nav-label">Advisor</span>
+                </li>
+                <li class="nav-item" data-view="briefings">
+                    <span class="nav-icon">&#x1F4CB;</span>
+                    <span class="nav-label">Briefings</span>
+                </li>
+                <li class="nav-item nav-admin-only" data-view="portfolio" style="display:none;">
+                    <span class="nav-icon">&#x1F3DB;</span>
+                    <span class="nav-label">Portfolio</span>
+                </li>
+                <li class="nav-item" data-view="settings">
+                    <span class="nav-icon">&#x2699;</span>
+                    <span class="nav-label">Settings</span>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div id="view-root"></div>
+        </main>
+
+    </div>
+</div>
+
+<!-- Add Company Modal -->
+<div id="add-company-modal" class="modal-overlay hidden">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h2>Add Company</h2>
+            <button class="modal-close" onclick="closeAddCompanyModal()">&times;</button>
+        </div>
+        <form id="add-company-form" class="form">
+            <label class="form-label">
+                Company Name
+                <input type="text" id="new-company-name" class="form-input" placeholder="e.g. BoutaByte LLC" required>
+            </label>
+            <label class="form-label">
+                Industry
+                <input type="text" id="new-company-industry" class="form-input" placeholder="e.g. SaaS, E-commerce">
+            </label>
+            <label class="form-label">
+                Stage
+                <select id="new-company-stage" class="form-select">
+                    <option value="idea">Idea</option>
+                    <option value="mvp">MVP</option>
+                    <option value="growth" selected>Growth</option>
+                    <option value="scale">Scale</option>
+                    <option value="mature">Mature</option>
+                </select>
+            </label>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" onclick="closeAddCompanyModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Company</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toast-container" class="toast-container"></div>
+
+<!-- Scripts -->
+<script src="/bx4/static/js/app.js?v=1"></script>
+<script src="/bx4/static/js/dashboard.js?v=1"></script>
+<script src="/bx4/static/js/financial.js?v=1"></script>
+<script src="/bx4/static/js/market.js?v=1"></script>
+<script src="/bx4/static/js/social.js?v=1"></script>
+<script src="/bx4/static/js/operations.js?v=1"></script>
+<script src="/bx4/static/js/advisor.js?v=1"></script>
+<script src="/bx4/static/js/briefings.js?v=1"></script>
+<script src="/bx4/static/js/settings.js?v=1"></script>
+<script src="/bx4/static/js/portfolio.js?v=1"></script>
+<script src="/bx4/static/js/intake.js?v=1"></script>
+
+</body>
+</html>

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI Files</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/files/static/style.css">
+    <!-- highlight.js theme -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css">
+    <!-- KaTeX styles -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
+    <script src="/auth/static/js/navbar.js" defer></script>
+    <script src="/docs/static/js/docs-widget.js" defer></script>
+</head>
+<body>
+    <!-- Loading -->
+    <div id="loading-screen">Loading...</div>
+
+    <!-- Main app -->
+    <div id="app" class="hidden">
+        <!-- Header -->
+        <div class="fm-header">
+            <a href="/" class="logo">OPAI <span>Files</span></a>
+            <div class="breadcrumbs" id="breadcrumbs"></div>
+            <div class="search-box">
+                <input type="text" id="search-input" placeholder="Search files..." autocomplete="off">
+                <button class="search-mode-toggle" onclick="toggleSearchMode(); toast('Search: ' + searchMode, 'info')" title="Toggle filename/content search">Aa</button>
+                <div class="search-results" id="search-results"></div>
+            </div>
+            <span class="user-info" id="user-display"></span>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="fm-toolbar">
+            <button class="btn" onclick="goUp()" title="Go up (Backspace)">⬆️ Up</button>
+            <button class="btn" onclick="loadDirectory()" title="Refresh">🔄 Refresh</button>
+            <button class="btn" onclick="showNewFolderModal()">📁 New Folder</button>
+            <button class="btn" onclick="showNewFileModal()">📄 New File</button>
+            <button class="btn" onclick="triggerUpload()">⬆️ Upload</button>
+            <input type="file" id="upload-input" multiple style="display:none">
+            <button class="btn" id="btn-paste" onclick="pasteItems()" style="display:none">📌 Paste</button>
+            <span class="clipboard-info" id="clipboard-info" style="display:none"></span>
+            <span class="toolbar-sep"></span>
+            <button class="btn btn-ai" onclick="showAIModal(currentPath, '')" title="Instruct AI on current directory">🤖 Instruct AI</button>
+            <button class="btn" onclick="openGraph()" title="Knowledge Graph">🕸️ Graph</button>
+            <span class="toolbar-spacer"></span>
+            <span class="path-info" id="path-info"></span>
+        </div>
+
+        <!-- Content -->
+        <div class="fm-content">
+            <!-- File list -->
+            <div class="file-list-container">
+                <table class="file-list">
+                    <thead>
+                        <tr>
+                            <th data-sort="name" class="sorted" onclick="sortBy('name')">Name</th>
+                            <th data-sort="size" onclick="sortBy('size')">Size</th>
+                            <th data-sort="modified" onclick="sortBy('modified')">Modified</th>
+                        </tr>
+                    </thead>
+                    <tbody id="file-list-body"></tbody>
+                </table>
+            </div>
+
+            <!-- Editor panel (slides open) -->
+            <div id="editor-panel" class="editor-panel">
+                <div class="editor-header">
+                    <span class="editor-title" id="editor-title"></span>
+                    <span class="editor-badge" id="editor-badge"></span>
+                    <button class="btn" id="btn-toggle-preview" onclick="togglePreview()" title="Toggle Edit/Preview" style="display:none">📝 Edit</button>
+                    <button class="btn" id="btn-team-task" onclick="showTeamTaskModal()" title="Create Team Hub task" style="display:none">📋 TeamTask</button>
+                    <button class="btn" onclick="saveFile()" title="Save (Ctrl+S)">💾 Save</button>
+                    <button class="btn" onclick="downloadFile(editorPath)" title="Download">⬇️</button>
+                    <button class="btn btn-danger" onclick="deleteEditorFile()" title="Delete file">🗑️</button>
+                    <button class="btn" onclick="closeEditor()" title="Close (Esc)">✕</button>
+                </div>
+                <!-- Markdown toolbar (shown for .md files in edit mode) -->
+                <div class="md-toolbar" id="md-toolbar">
+                    <button onclick="mdInsert('**','**')" title="Bold (Ctrl+B)"><b>B</b></button>
+                    <button onclick="mdInsert('*','*')" title="Italic (Ctrl+I)"><i>I</i></button>
+                    <button onclick="mdInsert('~~','~~')" title="Strikethrough"><s>S</s></button>
+                    <span class="sep"></span>
+                    <button onclick="mdInsertLine('# ')" title="Heading 1">H1</button>
+                    <button onclick="mdInsertLine('## ')" title="Heading 2">H2</button>
+                    <button onclick="mdInsertLine('### ')" title="Heading 3">H3</button>
+                    <span class="sep"></span>
+                    <button onclick="mdInsert('[','](url)')" title="Link">[&#x1F517;]</button>
+                    <button onclick="mdInsert('`','`')" title="Inline Code">&lt;/&gt;</button>
+                    <button onclick="mdInsertBlock('```\n','\n```')" title="Code Block">{ }</button>
+                    <button onclick="mdInsert('[[',']]')" title="Wikilink">[[]]</button>
+                    <span class="sep"></span>
+                    <button onclick="mdInsertLine('- ')" title="Bullet List">&#x2022;</button>
+                    <button onclick="mdInsertLine('1. ')" title="Numbered List">1.</button>
+                    <button onclick="mdInsertLine('- [ ] ')" title="Task">&#x2610;</button>
+                </div>
+                <div id="editor-wrap" style="position:relative;flex:1;display:flex;flex-direction:column;min-height:0">
+                    <textarea id="editor-textarea" class="editor-textarea" spellcheck="false"></textarea>
+                    <!-- Wikilink autocomplete dropdown -->
+                    <div id="wikilink-autocomplete" class="wikilink-autocomplete"></div>
+                </div>
+                <div id="preview-area" class="preview-area" style="display:none"></div>
+                <!-- Backlinks panel -->
+                <div id="backlinks-panel" class="backlinks-panel" style="display:none">
+                    <div class="backlinks-header" onclick="toggleBacklinks()">
+                        <span>Backlinks</span>
+                        <span class="backlinks-badge" id="backlinks-count">0</span>
+                        <span class="backlinks-toggle" id="backlinks-toggle">&#x25BC;</span>
+                    </div>
+                    <div class="backlinks-list" id="backlinks-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload overlay -->
+    <div id="upload-overlay" class="upload-overlay">
+        <div class="upload-box">
+            <h3>Drop files here</h3>
+            <p>Files will be uploaded to the current directory</p>
+        </div>
+    </div>
+
+    <!-- Context menu -->
+    <div id="context-menu" class="context-menu"></div>
+
+    <!-- Modal -->
+    <div id="modal-overlay" class="modal-overlay">
+        <div class="modal">
+            <h3 id="modal-title"></h3>
+            <label id="modal-label" style="font-size:0.85rem;color:var(--text-dim);display:block;margin-bottom:8px"></label>
+            <input type="text" id="modal-input">
+            <div class="modal-actions">
+                <button class="btn" onclick="modalCancel()">Cancel</button>
+                <button class="btn btn-accent" onclick="modalConfirm()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Instruct Modal -->
+    <div id="ai-overlay" class="modal-overlay">
+        <div class="modal ai-modal">
+            <div class="ai-header">
+                <h3>🤖 Instruct AI</h3>
+                <button class="btn" onclick="closeAIModal()">✕</button>
+            </div>
+            <div class="ai-target">
+                <span class="ai-target-label">Target:</span>
+                <span id="ai-target-path" class="ai-target-value"></span>
+            </div>
+            <textarea id="ai-instruction" class="ai-instruction" placeholder="Describe what you want done to this file or folder...&#10;&#10;Examples:&#10;  Organize these files into subdirectories by type&#10;  Rewrite this markdown file to be more concise&#10;  Rename all files to use kebab-case" rows="4"></textarea>
+            <div class="ai-actions">
+                <span class="ai-spinner" id="ai-spinner" style="display:none">Working...</span>
+                <button class="btn btn-accent" id="ai-submit-btn" onclick="aiSubmitInstruction()">Generate Plan</button>
+                <button class="btn btn-ai-approve" id="ai-approve-btn" onclick="aiApproveExecution()" style="display:none">Approve &amp; Execute</button>
+            </div>
+            <div id="ai-plan-area" class="ai-plan-area" style="display:none">
+                <div class="ai-plan-header">Plan</div>
+                <pre id="ai-plan-text" class="ai-plan-text"></pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- TeamTask Modal -->
+    <div id="tt-overlay" class="modal-overlay">
+        <div class="modal" style="max-width:480px">
+            <h3>Create Team Hub Task</h3>
+            <div class="tt-file-path" id="tt-file-path"></div>
+            <div class="tt-form">
+                <label>Title</label>
+                <input type="text" id="tt-title" placeholder="Task title...">
+                <label>Space</label>
+                <select id="tt-space" onchange="ttSpaceChanged()"></select>
+                <label>List</label>
+                <select id="tt-list"></select>
+                <label>Priority</label>
+                <select id="tt-priority">
+                    <option value="medium">Medium</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="low">Low</option>
+                    <option value="none">None</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeTeamTaskModal()">Cancel</button>
+                <button class="btn btn-accent" id="tt-submit-btn" onclick="submitTeamTask()">Create Task</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Switcher (Ctrl+O) -->
+    <div id="quick-switcher-overlay" class="quick-switcher-overlay">
+        <div class="quick-switcher">
+            <input type="text" id="qs-input" placeholder="Open file..." autocomplete="off">
+            <div class="quick-switcher-results" id="qs-results"></div>
+        </div>
+    </div>
+
+    <!-- Graph overlay (outside #app so it sits above the navbar) -->
+    <div id="graph-overlay" class="graph-overlay">
+        <div class="graph-toolbar">
+            <span style="font-weight:600;font-size:0.9rem">🕸️ Knowledge Graph</span>
+            <input type="text" id="graph-filter" placeholder="Filter nodes..." autocomplete="off">
+            <select id="graph-depth" onchange="changeGraphScope()">
+                <option value="2" selected>2 hops</option>
+                <option value="3">3 hops</option>
+                <option value="4">4 hops</option>
+                <option value="99">All files</option>
+            </select>
+            <button class="btn" onclick="resetGraphView()">Reset</button>
+            <span class="toolbar-spacer"></span>
+            <button class="btn" onclick="closeGraph()">✕ Close</button>
+        </div>
+        <div class="graph-container" id="graph-container"></div>
+        <div class="graph-info" id="graph-info"></div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@14/dist/markdown-it.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>
+    <script src="/files/static/js/markdown.js"></script>
+    <script src="/files/static/js/graph.js"></script>
+    <script src="/files/static/js/files.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "youtube-transcript": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["/workspace/synced/opai/mcps/youtube-transcript/server.py"]
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest",
+        "--headless",
+        "--user-data-dir", "/workspace/synced/opai/tools/opai-browser/data/sessions/default",
+        "--user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
+        "--viewport-size", "1280x900"
+      ]
+    },
+    "wordpress-vec": {
+      "type": "stdio",
+      "command": "/workspace/synced/opai/tools/opai-vault/scripts/mcp-with-vault.sh",
+      "args": ["wordpress-vec", "node", "/workspace/synced/opai/mcps/Wordpress-VEC/dist/index.js"]
+    }
+  }
+}

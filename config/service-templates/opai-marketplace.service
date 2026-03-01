@@ -1,0 +1,17 @@
+[Unit]
+Description=OPAI Marketplace — BoutaByte product catalog
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-marketplace
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-marketplace
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8092
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/workspace/synced/opai/tools/opai-marketplace/.env
+
+EnvironmentFile=-%t/opai-vault/opai-marketplace.env
+[Install]
+WantedBy=default.target

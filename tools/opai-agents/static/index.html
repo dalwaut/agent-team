@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Studio — OPAI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/agents/static/style.css?v=4">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="/auth/static/js/navbar.js" defer></script>
+</head>
+<body>
+    <!-- Loading -->
+    <div id="loading-screen">Loading...</div>
+
+    <!-- Main app -->
+    <div id="app" class="hidden">
+        <!-- Header -->
+        <header class="as-header">
+            <a href="/" class="logo">OPAI <span>Agent Studio</span></a>
+            <nav class="as-tabs" id="nav-tabs">
+                <button class="tab active" data-view="dashboard">Dashboard</button>
+                <button class="tab" data-view="agents">Agents</button>
+                <button class="tab" data-view="squads">Squads</button>
+                <button class="tab" data-view="runs">Runs</button>
+                <button class="tab" data-view="scheduler">Scheduler</button>
+                <button class="tab" data-view="workflows">Workflows</button>
+                <button class="tab" data-view="flow">Agent Flow</button>
+            </nav>
+            <button class="btn-help" onclick="Guide.show()" title="Open guide">? Help</button>
+            <span class="user-info" id="user-display"></span>
+        </header>
+
+        <!-- Views -->
+        <main class="as-main">
+            <!-- Dashboard -->
+            <section id="view-dashboard" class="view">
+                <div class="overview-cards" id="overview-cards"></div>
+                <div class="section-header">
+                    <h2>Squads</h2>
+                    <p class="text-muted">Named groups of agents that execute together</p>
+                </div>
+                <div class="squad-grid" id="dashboard-squads"></div>
+            </section>
+
+            <!-- Agents -->
+            <section id="view-agents" class="view hidden">
+                <div class="section-toolbar">
+                    <h2>Agents <span class="badge" id="agent-count">0</span></h2>
+                    <div class="toolbar-actions">
+                        <select id="filter-category" onchange="Agents.filter()">
+                            <option value="">All Categories</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="Agents.showWizard()">+ Create Agent</button>
+                    </div>
+                </div>
+                <div class="agent-table-wrap">
+                    <table class="data-table" id="agent-table">
+                        <thead>
+                            <tr>
+                                <th>Agent</th>
+                                <th>Category</th>
+                                <th>Run Order</th>
+                                <th>Squads</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="agent-tbody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Squads -->
+            <section id="view-squads" class="view hidden">
+                <div class="section-toolbar">
+                    <h2>Squad Builder <span class="badge" id="squad-count">0</span></h2>
+                    <div class="toolbar-actions">
+                        <button class="btn btn-primary" onclick="Squads.showCreate()">+ Create Squad</button>
+                    </div>
+                </div>
+                <div class="squad-builder" id="squad-list"></div>
+            </section>
+
+            <!-- Runs -->
+            <section id="view-runs" class="view hidden">
+                <div class="section-toolbar">
+                    <h2>Runs & Reports</h2>
+                    <div class="toolbar-actions">
+                        <select id="run-squad-select" class="run-squad-sel"></select>
+                        <button class="btn btn-primary" onclick="Runs.triggerSquad()">Run Squad</button>
+                    </div>
+                </div>
+
+                <!-- Active Runs -->
+                <div id="active-runs-section" class="hidden">
+                    <div class="section-header"><h3>Active Runs</h3></div>
+                    <div id="active-runs"></div>
+                </div>
+
+                <!-- Run History -->
+                <div class="section-header" style="margin-top:1rem;">
+                    <h3>Run History</h3>
+                </div>
+                <div class="agent-table-wrap">
+                    <table class="data-table" id="runs-table">
+                        <thead>
+                            <tr>
+                                <th>Run</th>
+                                <th>Squad / Agent</th>
+                                <th>Status</th>
+                                <th>Duration</th>
+                                <th>Started</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="runs-tbody"></tbody>
+                    </table>
+                </div>
+
+                <!-- Reports Browser -->
+                <div class="section-header" style="margin-top:1.5rem;">
+                    <h3>Reports</h3>
+                    <div class="toolbar-actions">
+                        <select id="report-date-select" onchange="Runs.loadReports()">
+                            <option value="latest">Latest</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="report-grid" id="report-grid"></div>
+            </section>
+
+            <!-- Scheduler -->
+            <section id="view-scheduler" class="view hidden">
+                <div class="section-toolbar">
+                    <h2>Scheduler</h2>
+                    <div class="toolbar-actions">
+                        <button class="btn btn-primary" onclick="Scheduler.showCreate()">+ Add Schedule</button>
+                    </div>
+                </div>
+                <p class="text-muted" style="margin-bottom:1rem;">Manage cron schedules from <code>config/orchestrator.json</code>. Changes apply on next orchestrator cycle.</p>
+                <div class="schedule-list" id="schedule-list"></div>
+            </section>
+
+            <!-- Workflows -->
+            <section id="view-workflows" class="view hidden">
+                <div class="section-toolbar">
+                    <h2>Workflows <span class="badge" id="workflow-count">0</span></h2>
+                    <div class="toolbar-actions">
+                        <button class="btn btn-primary" onclick="Workflows.showCreate()">+ Create Workflow</button>
+                    </div>
+                </div>
+                <p class="text-muted" style="margin-bottom:1rem;">Chain squads into pipelines with conditional branching.</p>
+                <div class="workflow-list" id="workflow-list"></div>
+            </section>
+
+            <!-- Agent Flow -->
+            <section id="view-flow" class="view hidden">
+                <div class="flow-toolbar">
+                    <label style="font-size:0.8rem;font-weight:500;">Workflow:</label>
+                    <select id="flow-workflow-select">
+                        <option value="">New workflow...</option>
+                    </select>
+                    <input type="text" id="flow-wf-id" placeholder="workflow_id" style="max-width:160px;font-size:0.8rem;">
+                    <input type="text" id="flow-wf-desc" placeholder="Description..." style="max-width:220px;font-size:0.8rem;">
+                    <span class="spacer" style="flex:1;"></span>
+                    <button class="btn btn-sm" onclick="FlowEditor.clear()">Clear</button>
+                    <button class="btn btn-sm" onclick="FlowEditor.autoLayout()">Auto Layout</button>
+                    <button class="btn btn-sm btn-primary" onclick="FlowEditor.save()">Save</button>
+                </div>
+                <div class="flow-container">
+                    <!-- Palette -->
+                    <div class="flow-palette" id="flow-palette"></div>
+
+                    <!-- Canvas -->
+                    <div class="flow-canvas-wrap" id="flow-canvas-wrap">
+                        <svg class="flow-svg" id="flow-svg"></svg>
+                        <div class="flow-nodes" id="flow-nodes"></div>
+                        <div class="flow-ai-bar" id="flow-ai-bar">
+                            <input type="text" id="flow-ai-input" placeholder="Describe your workflow... (e.g. 'audit then ship then dispatch wiki')">
+                            <button class="btn btn-sm btn-primary" onclick="FlowEditor.aiBuild()">Build</button>
+                            <span class="flow-ai-status" id="flow-ai-status"></span>
+                        </div>
+                    </div>
+
+                    <!-- Properties -->
+                    <div class="flow-properties" id="flow-properties">
+                        <div class="flow-prop-empty">Select a node to configure</div>
+                    </div>
+                </div>
+                <div class="flow-statusbar">
+                    <div class="flow-statusbar-left">
+                        <span id="flow-status-info">0 nodes, 0 connections</span>
+                    </div>
+                    <div class="flow-zoom-controls">
+                        <button onclick="FlowEditor.zoomOut()" title="Zoom out">-</button>
+                        <span id="flow-zoom-level">100%</span>
+                        <button onclick="FlowEditor.zoomIn()" title="Zoom in">+</button>
+                        <button onclick="FlowEditor.zoomReset()" title="Reset zoom">Reset</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Agent Wizard Modal -->
+    <div id="wizard-overlay" class="modal-overlay hidden">
+        <div class="modal wizard-modal">
+            <div class="wizard-header">
+                <h2 id="wizard-title">Create Agent</h2>
+                <button class="btn-close" onclick="Agents.closeWizard()">&times;</button>
+            </div>
+            <div class="wizard-steps" id="wizard-steps">
+                <span class="step active" data-step="1">1. Identity</span>
+                <span class="step" data-step="2">2. Prompt</span>
+                <span class="step" data-step="3">3. Behavior</span>
+                <span class="step" data-step="4">4. Review</span>
+            </div>
+            <div class="wizard-body" id="wizard-body">
+                <!-- Step 1: Identity -->
+                <div class="wizard-step" data-step="1">
+                    <div class="form-group">
+                        <label>Agent ID <span class="text-muted">(lowercase, underscores)</span></label>
+                        <input type="text" id="wiz-id" placeholder="my_agent" pattern="[a-z0-9_]+">
+                    </div>
+                    <div class="form-group">
+                        <label>Display Name</label>
+                        <input type="text" id="wiz-name" placeholder="My Agent">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Emoji / Short Code</label>
+                            <div class="emoji-input-group">
+                                <select id="wiz-emoji-picker" onchange="Agents.onEmojiPick(this.value)">
+                                    <option value="">Pick emoji...</option>
+                                    <option value="🤖">🤖 Robot</option>
+                                    <option value="🔍">🔍 Search</option>
+                                    <option value="🛡️">🛡️ Shield</option>
+                                    <option value="⚡">⚡ Lightning</option>
+                                    <option value="📊">📊 Chart</option>
+                                    <option value="📝">📝 Memo</option>
+                                    <option value="🧪">🧪 Test Tube</option>
+                                    <option value="🔧">🔧 Wrench</option>
+                                    <option value="🎯">🎯 Target</option>
+                                    <option value="📦">📦 Package</option>
+                                    <option value="🧹">🧹 Broom</option>
+                                    <option value="📚">📚 Books</option>
+                                    <option value="🚀">🚀 Rocket</option>
+                                    <option value="💡">💡 Lightbulb</option>
+                                    <option value="🔒">🔒 Lock</option>
+                                    <option value="📋">📋 Clipboard</option>
+                                    <option value="🎨">🎨 Palette</option>
+                                    <option value="🧬">🧬 DNA</option>
+                                    <option value="📈">📈 Trending Up</option>
+                                    <option value="🗂️">🗂️ File Cabinet</option>
+                                    <option value="✅">✅ Check</option>
+                                    <option value="⚙️">⚙️ Gear</option>
+                                    <option value="🏗️">🏗️ Construction</option>
+                                    <option value="📡">📡 Satellite</option>
+                                    <option value="🧠">🧠 Brain</option>
+                                    <option value="👁️">👁️ Eye</option>
+                                    <option value="📮">📮 Mailbox</option>
+                                    <option value="🔄">🔄 Refresh</option>
+                                    <option value="🌐">🌐 Globe</option>
+                                    <option value="💬">💬 Chat</option>
+                                </select>
+                                <input type="text" id="wiz-emoji" placeholder="or type code" maxlength="4">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Category</label>
+                            <select id="wiz-category"></select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea id="wiz-desc" rows="3" placeholder="What this agent does..."></textarea>
+                    </div>
+                </div>
+                <!-- Step 2: Prompt -->
+                <div class="wizard-step hidden" data-step="2">
+                    <div class="form-group">
+                        <label>Prompt <span class="text-muted">— the instruction sent to Claude CLI</span></label>
+                        <div class="prompt-hints">
+                            <span class="chip" onclick="Agents.insertVar('{{project_root}}')">{{project_root}}</span>
+                            <span class="chip" onclick="Agents.insertVar('{{reports_dir}}')">{{reports_dir}}</span>
+                            <span class="chip" onclick="Agents.insertVar('{{timestamp}}')">{{timestamp}}</span>
+                        </div>
+                        <textarea id="wiz-prompt" class="prompt-editor" rows="16" placeholder="You are the [Agent Name] agent.
+
+Your job is to...
+
+## Instructions
+1. ...
+2. ...
+
+## Output Format
+Write your report as markdown."></textarea>
+                    </div>
+                </div>
+                <!-- Step 3: Behavior -->
+                <div class="wizard-step hidden" data-step="3">
+                    <div class="form-group">
+                        <label>Run Order</label>
+                        <div class="radio-group" id="wiz-run-order">
+                            <label class="radio-card active" data-value="parallel">
+                                <strong>Parallel</strong>
+                                <span>Runs concurrently with other parallel agents</span>
+                            </label>
+                            <label class="radio-card" data-value="first">
+                                <strong>First</strong>
+                                <span>Runs before all other agents (setup/scan)</span>
+                            </label>
+                            <label class="radio-card" data-value="last">
+                                <strong>Last</strong>
+                                <span>Runs after all reports are generated (summary/dispatch)</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Model <span class="text-muted">— which Claude model to use when this agent runs</span></label>
+                        <select id="wiz-model" class="form-input">
+                            <option value="">Default (inherit from settings)</option>
+                            <option value="haiku">Haiku — fastest, cheapest</option>
+                            <option value="sonnet">Sonnet — balanced</option>
+                            <option value="opus">Opus — most capable</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Max Turns <span class="text-muted">— limit tool-use rounds per session (0 = unlimited)</span></label>
+                        <input type="number" id="wiz-max-turns" class="form-input" value="0" min="0" max="100" style="width:120px">
+                        <small class="text-muted" style="display:block;margin-top:4px">Lower = cheaper. Feedback fixes: 8, audits: 15, complex tasks: 25+</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="wiz-no-project-ctx">
+                            <span>Skip project context <span class="text-muted">— don't load CLAUDE.md/MEMORY.md (saves ~3.5K tokens/turn)</span></span>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>Dependencies <span class="text-muted">— agents that must run before this one</span></label>
+                        <div class="checkbox-list" id="wiz-depends"></div>
+                    </div>
+                </div>
+                <!-- Step 4: Review -->
+                <div class="wizard-step hidden" data-step="4">
+                    <div class="review-section">
+                        <h3>Agent Configuration</h3>
+                        <pre id="wiz-review-json" class="code-block"></pre>
+                    </div>
+                    <div class="review-section">
+                        <h3>Prompt Preview</h3>
+                        <pre id="wiz-review-prompt" class="code-block prompt-preview"></pre>
+                    </div>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button class="btn" id="wiz-back" onclick="Agents.wizardBack()" style="display:none">Back</button>
+                <span class="spacer"></span>
+                <button class="btn btn-primary" id="wiz-next" onclick="Agents.wizardNext()">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Squad Create/Edit Modal -->
+    <div id="squad-overlay" class="modal-overlay hidden">
+        <div class="modal squad-modal">
+            <div class="wizard-header">
+                <h2 id="squad-modal-title">Create Squad</h2>
+                <button class="btn-close" onclick="Squads.closeModal()">&times;</button>
+            </div>
+            <div class="squad-modal-body">
+                <div class="form-group">
+                    <label>Squad ID <span class="text-muted">(lowercase, underscores)</span></label>
+                    <input type="text" id="squad-id" placeholder="my_squad">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="squad-desc" rows="2" placeholder="What this squad does..."></textarea>
+                </div>
+                <div class="squad-builder-panels">
+                    <div class="panel">
+                        <h3>Available Agents</h3>
+                        <div class="agent-pool" id="squad-pool"></div>
+                    </div>
+                    <div class="panel">
+                        <h3>Squad Members <span class="badge" id="squad-member-count">0</span></h3>
+                        <div class="agent-pool selected" id="squad-members"></div>
+                    </div>
+                </div>
+                <div class="execution-preview">
+                    <h3>Execution Order</h3>
+                    <div id="exec-preview"></div>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button class="btn" onclick="Squads.closeModal()">Cancel</button>
+                <span class="spacer"></span>
+                <button class="btn btn-primary" id="squad-save-btn" onclick="Squads.save()">Create Squad</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workflow Create/Edit Modal -->
+    <div id="workflow-overlay" class="modal-overlay hidden">
+        <div class="modal" style="max-width:600px;">
+            <div class="wizard-header">
+                <h2 id="wf-modal-title">Create Workflow</h2>
+                <button class="btn-close" onclick="Workflows.closeModal()">&times;</button>
+            </div>
+            <div class="wizard-body">
+                <div class="form-group">
+                    <label>Workflow ID</label>
+                    <input type="text" id="wf-id" placeholder="deploy_pipeline">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="wf-desc" rows="2" placeholder="What this workflow does..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Steps <span class="text-muted">— squads execute in order, top to bottom</span></label>
+                    <div class="wf-steps" id="wf-steps"></div>
+                    <button class="btn btn-sm" onclick="Workflows.addStep()" style="margin-top:0.5rem;">+ Add Step</button>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button class="btn" onclick="Workflows.closeModal()">Cancel</button>
+                <span class="spacer"></span>
+                <button class="btn btn-primary" id="wf-save-btn" onclick="Workflows.save()">Create Workflow</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Schedule Create/Edit Modal -->
+    <div id="schedule-overlay" class="modal-overlay hidden">
+        <div class="modal" style="max-width:480px;">
+            <div class="wizard-header">
+                <h2 id="sched-modal-title">Add Schedule</h2>
+                <button class="btn-close" onclick="Scheduler.closeModal()">&times;</button>
+            </div>
+            <div class="wizard-body">
+                <div class="form-group">
+                    <label>Schedule Name</label>
+                    <input type="text" id="sched-name" placeholder="my_schedule">
+                </div>
+                <div class="form-group">
+                    <label>Preset</label>
+                    <select id="sched-preset" onchange="Scheduler.applyPreset()">
+                        <option value="">Custom...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Cron Expression <span class="text-muted">(minute hour day month weekday)</span></label>
+                    <input type="text" id="sched-cron" placeholder="*/30 * * * *" class="cron-input">
+                </div>
+                <div class="cron-builder">
+                    <div class="cron-preview" id="cron-preview">--</div>
+                </div>
+            </div>
+            <div class="wizard-footer">
+                <button class="btn" onclick="Scheduler.closeModal()">Cancel</button>
+                <span class="spacer"></span>
+                <button class="btn btn-primary" id="sched-save-btn" onclick="Scheduler.save()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Viewer Modal -->
+    <div id="report-overlay" class="modal-overlay hidden">
+        <div class="modal report-modal">
+            <div class="wizard-header">
+                <h2 id="report-modal-title">Report</h2>
+                <button class="btn-close" onclick="Runs.closeReport()">&times;</button>
+            </div>
+            <div class="report-modal-body">
+                <div class="report-meta" id="report-meta"></div>
+                <div class="report-content" id="report-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Run Output Modal -->
+    <div id="output-overlay" class="modal-overlay hidden">
+        <div class="modal report-modal">
+            <div class="wizard-header">
+                <h2 id="output-modal-title">Run Output</h2>
+                <button class="btn-close" onclick="Runs.closeOutput()">&times;</button>
+            </div>
+            <div class="report-modal-body">
+                <pre class="run-output" id="run-output"></pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast-container"></div>
+
+    <script src="/agents/static/js/app.js?v=4"></script>
+    <script src="/agents/static/js/agents.js?v=4"></script>
+    <script src="/agents/static/js/squads.js?v=4"></script>
+    <script src="/agents/static/js/runs.js?v=4"></script>
+    <script src="/agents/static/js/scheduler.js?v=4"></script>
+    <script src="/agents/static/js/workflows.js?v=4"></script>
+    <script src="/agents/static/js/flow.js?v=4"></script>
+    <script src="/agents/static/js/guide.js?v=4"></script>
+</body>
+</html>

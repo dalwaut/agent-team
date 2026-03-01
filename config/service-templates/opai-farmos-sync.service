@@ -1,0 +1,16 @@
+[Unit]
+Description=OPAI farmOS Weekly Sync — backup, update check, merge, deploy, verify
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/workspace/synced/opai
+Environment="HOME=/home/dallas"
+Environment="OPAI_ROOT=/workspace/synced/opai"
+Environment="PATH=/home/dallas/.nvm/versions/node/v20.19.5/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/workspace/synced/opai/scripts/farmos-weekly-sync.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=opai-farmos-sync
+TimeoutStartSec=600

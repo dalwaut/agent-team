@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPAI Browser — Admin</title>
+  <link rel="stylesheet" href="static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <h1>OPAI Browser Automation</h1>
+  <p class="subtitle">Localhost admin debug UI &mdash; port 8107</p>
+
+  <!-- Submit Job -->
+  <div class="section">
+    <div class="section-title">Submit Job</div>
+    <textarea id="job-task" placeholder="Describe the browser task..."></textarea>
+    <div class="form-row" style="margin-top:8px">
+      <div class="form-group">
+        <label>Session</label>
+        <input type="text" id="job-session" value="default" style="width:140px">
+      </div>
+      <div class="form-group">
+        <label>Max turns</label>
+        <input type="number" id="job-turns" value="15" style="width:80px">
+      </div>
+      <div class="form-group">
+        <label>Timeout (sec)</label>
+        <input type="number" id="job-timeout" value="300" style="width:100px">
+      </div>
+      <div class="checkbox-row" style="padding-bottom:2px">
+        <input type="checkbox" id="job-vision">
+        <label for="job-vision">Vision OK (CAPTCHA fallback)</label>
+      </div>
+      <button class="btn btn-primary" onclick="submitJob()">Submit</button>
+    </div>
+    <div id="submit-error" class="error-msg" style="display:none"></div>
+  </div>
+
+  <!-- Jobs -->
+  <div class="section">
+    <div class="section-title">
+      Jobs
+      <button class="btn btn-sm" onclick="loadJobs()">Refresh</button>
+    </div>
+    <div id="job-grid" class="card-grid">
+      <div class="empty">No jobs yet</div>
+    </div>
+  </div>
+
+  <!-- Sessions -->
+  <div class="section">
+    <div class="section-title">
+      Sessions
+      <button class="btn btn-sm" onclick="loadSessions()">Refresh</button>
+    </div>
+    <div class="toolbar">
+      <input type="text" id="new-session-name" placeholder="Session name..." style="width:200px">
+      <button class="btn btn-sm btn-primary" onclick="createSession()">Create</button>
+    </div>
+    <div id="session-list" class="session-list">
+      <div class="empty">Loading...</div>
+    </div>
+  </div>
+
+  <script src="static/js/app.js"></script>
+</body>
+</html>

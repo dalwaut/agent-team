@@ -1,0 +1,82 @@
+# OpenClaw Container Template — Hardened
+# Variables substituted by ClawBot Manager at provisioning time:
+#   ${SLUG}, ${HOST_PORT}, ${BOT_NAME}
+#
+# Credentials are NOT in this file. They are injected at start via:
+#   ./scripts/inject-credentials.sh ${SLUG}
+# which writes to $XDG_RUNTIME_DIR/opai-oc/${SLUG}.env (tmpfs)
+
+version: "3.8"
+services:
+  clawbot:
+    image: opai/clawbot:latest
+    container_name: clawbot-${SLUG}
+    restart: unless-stopped
+
+    # Credential injection: env file written to tmpfs by broker
+    env_file:
+      - ${OC_ENV_FILE:-/run/user/1000/opai-oc/${SLUG}.env}
+
+    # Static env (non-secret)
+    environment:
+      - BOT_NAME=${BOT_NAME:-ClawBot}
+      - INSTANCE_SLUG=${SLUG}
+      - LOG_LEVEL=info
+      - OC_BROKER_URL=http://host.docker.internal:8106
+      - OC_CALLBACK_TOKEN=${OC_CALLBACK_TOKEN}
+
+    # Allow container to reach broker on the host
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    ports:
+      - "127.0.0.1:${HOST_PORT}:3000"  # localhost-only, Caddy proxies externally
+
+    volumes:
+      - ./config:/app/config:ro          # Bot personality, limits (read-only)
+      - ./knowledge:/app/knowledge:ro    # Knowledge base docs (read-only)
+      - ./logs:/app/logs                 # Container logs (writable)
+      - ./workspace:/app/workspace       # Working directory (writable)
+
+    # ── Security Hardening ──────────────────────
+    read_only: true                       # Root FS is immutable
+    tmpfs:
+      - /tmp:size=100M                    # Writable tmp (capped)
+      - /app/tmp:size=50M                 # App-specific tmp
+
+    security_opt:
+      - no-new-privileges:true            # Prevent privilege escalation
+
+    cap_drop:
+      - ALL                               # Drop all Linux capabilities
+
+    mem_limit: 512m                       # Hard memory limit
+    memswap_limit: 512m                   # No swap (prevents OOM hiding)
+    cpus: 0.5                             # CPU limit
+    pids_limit: 100                       # Prevent fork bombs
+
+    # No host network — isolated bridge only
+    networks:
+      - opai-claw
+
+    # Health check for orchestrator monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    labels:
+      - "opai.service=clawbot"
+      - "opai.instance=${SLUG}"
+      - "opai.managed=true"
+
+    # DNS: only allow external DNS (no host DNS snooping)
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+
+networks:
+  opai-claw:
+    external: true

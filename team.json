@@ -1,0 +1,818 @@
+{
+  "version": "1.3.0",
+  "name": "Agent Team",
+  "description": "Multi-agent orchestration framework for software development. Drop into any project.",
+  "config": {
+    "cli": "claude",
+    "cli_flags": "-p --output-format text",
+    "reports_dir": ".agent/reports",
+    "prompts_dir": ".agent/scripts",
+    "workflows_dir": ".agent/workflows",
+    "templates_dir": ".agent/templates",
+    "max_parallel": 4,
+    "report_min_size_bytes": 1000,
+    "rate_limit_delay_seconds": 3,
+    "timestamped_reports": true
+  },
+  "roles": {
+    "manager": {
+      "name": "Project Manager",
+      "emoji": "PM",
+      "description": "Reads all agent reports, consolidates findings, builds implementation plans, prioritizes work",
+      "prompt_file": "prompt_manager.txt",
+      "depends_on": [
+        "*"
+      ],
+      "run_order": "last",
+      "category": "leadership"
+    },
+    "reviewer": {
+      "name": "Code Reviewer",
+      "emoji": "CR",
+      "description": "Reviews code changes for quality, consistency, patterns, and potential regressions",
+      "prompt_file": "prompt_reviewer.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "accuracy": {
+      "name": "Accuracy Auditor",
+      "emoji": "AC",
+      "description": "Audits calculations, data transformations, date/time logic, and statistical correctness",
+      "prompt_file": "prompt_accuracy.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "health": {
+      "name": "Codebase Health Auditor",
+      "emoji": "HL",
+      "description": "Finds performance bottlenecks, dead code, unused dependencies, and security risks",
+      "prompt_file": "prompt_health.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "security": {
+      "name": "Security Analyst",
+      "emoji": "SC",
+      "description": "Deep security audit: auth flows, API key exposure, injection vectors, OWASP top 10",
+      "prompt_file": "prompt_security.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "features": {
+      "name": "Feature Architect",
+      "emoji": "FA",
+      "description": "Plans architecture for new features with file-by-file implementation specs",
+      "prompt_file": "prompt_features.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "planning"
+    },
+    "integration": {
+      "name": "Integration Architect",
+      "emoji": "IA",
+      "description": "Plans cross-project and third-party integrations with security and data flow blueprints",
+      "prompt_file": "prompt_integration.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "planning"
+    },
+    "researcher": {
+      "name": "Technical Researcher",
+      "emoji": "RS",
+      "description": "Researches libraries, APIs, best practices, and emerging patterns relevant to the project",
+      "prompt_file": "prompt_researcher.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "research"
+    },
+    "github": {
+      "name": "GitHub Operations Manager",
+      "emoji": "GH",
+      "description": "Manages professional GitHub workflows: versioning, branching, PRs, issues, releases, repo hygiene",
+      "prompt_file": "prompt_github.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "content_curator": {
+      "name": "Content Curator",
+      "emoji": "CC",
+      "description": "Generates changelogs, app store descriptions, social posts, documentation, and marketing copy",
+      "prompt_file": "prompt_content_curator.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "content"
+    },
+    "test_writer": {
+      "name": "Test Engineer",
+      "emoji": "TE",
+      "description": "Identifies untested paths, writes test specs, and generates test scaffolding",
+      "prompt_file": "prompt_test_writer.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "ux_reviewer": {
+      "name": "UX Reviewer",
+      "emoji": "UX",
+      "description": "Audits screens for loading states, error handling, empty states, accessibility, consistency",
+      "prompt_file": "prompt_ux_reviewer.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "familiarizer": {
+      "name": "Project Familiarizer",
+      "emoji": "HI",
+      "description": "Runs once after install. Scans the project and outputs customizations for all agents.",
+      "prompt_file": "prompt_familiarizer.txt",
+      "depends_on": [],
+      "run_order": "first",
+      "category": "meta",
+      "interactive": true
+    },
+    "executor_safe": {
+      "name": "Executor (Safe Mode)",
+      "emoji": "E1",
+      "description": "Mode 1: Reads reports, applies ONLY non-breaking fixes. Dead code, unused deps, console.log cleanup.",
+      "prompt_file": "prompt_executor_safe.txt",
+      "depends_on": [
+        "*"
+      ],
+      "run_order": "last",
+      "category": "execution"
+    },
+    "executor_full": {
+      "name": "Executor (Full Mode)",
+      "emoji": "E2",
+      "description": "Mode 2: All safe fixes PLUS structural improvements. Bug fixes, refactors, query optimization, error handling.",
+      "prompt_file": "prompt_executor_full.txt",
+      "depends_on": [
+        "*"
+      ],
+      "run_order": "last",
+      "category": "execution"
+    },
+    "self_assessment": {
+      "name": "Team Self-Assessment",
+      "emoji": "SA",
+      "description": "Meta-agent that detects gaps in the team and proposes new agents or workflow changes",
+      "prompt_file": "prompt_self_assessment.txt",
+      "depends_on": [
+        "*"
+      ],
+      "run_order": "last",
+      "category": "meta"
+    },
+    "notes_curator": {
+      "name": "Notes Curator",
+      "emoji": "NC",
+      "description": "Scans notes/ folder, classifies files, proposes organization operations. Report-only.",
+      "prompt_file": "prompt_notes_curator.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "library_curator": {
+      "name": "Library Curator",
+      "emoji": "LC",
+      "description": "Maintains Library/ knowledge base, indexes reusable content, identifies knowledge gaps. Report-only.",
+      "prompt_file": "prompt_library_curator.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "report_dispatcher": {
+      "name": "Report Dispatcher",
+      "emoji": "RD",
+      "description": "Reads all reports, extracts action items, generates agent instructions and HITL briefings. Orchestration brain.",
+      "prompt_file": "prompt_report_dispatcher.txt",
+      "depends_on": [
+        "*"
+      ],
+      "run_order": "last",
+      "category": "orchestration"
+    },
+    "project_onboarder": {
+      "name": "Project Onboarder",
+      "emoji": "OB",
+      "description": "Discovers, evaluates, and onboards external projects into Projects/ with diamond workflow. Queues operations when resources are unavailable.",
+      "prompt_file": "prompt_project_onboarder.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "workspace_steward": {
+      "name": "Workspace Steward",
+      "emoji": "WS",
+      "description": "Structural oversight: project compliance, file hygiene, naming conventions, cross-project consistency, archival candidates. Report-only.",
+      "prompt_file": "prompt_workspace_steward.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "email_manager": {
+      "name": "Email Manager",
+      "emoji": "EM",
+      "description": "Reads email data from tools/email-checker, produces task lists grouped by sender, tracks pending response drafts, generates email management report with action items.",
+      "prompt_file": "prompt_email_manager.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "tools_monitor": {
+      "name": "Tools Monitor",
+      "emoji": "TM",
+      "description": "Audits health of all tools/ and mcps/: config validation, dependency checks, data staleness, code integrity, integration correctness. Report-only.",
+      "prompt_file": "prompt_tools_monitor.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "problem_solver": {
+      "name": "Problem Solver",
+      "emoji": "PS",
+      "description": "Analyzes vague or incomplete tasks: researches context, identifies unknowns, proposes solutions, produces actionable details and recommendations. Can be given custom instructions.",
+      "prompt_file": "prompt_problem_solver.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "research"
+    },
+    "wiki_librarian": {
+      "name": "Wiki Librarian",
+      "emoji": "WK",
+      "description": "Reviews system changes, compares against Library/opai-wiki/, produces incremental wiki updates with accurate architecture documentation",
+      "prompt_file": "prompt_wiki_librarian.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "node_updater": {
+      "name": "Node Update Specialist",
+      "emoji": "NU",
+      "description": "Safely upgrades Node.js, npm, and tool dependencies with upgrade-test-rollback cycle. Never leaves the system broken.",
+      "prompt_file": "prompt_node_updater.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "prdgent": {
+      "name": "PRDgent",
+      "emoji": "🧪",
+      "description": "Product Research & Development evaluator. Receives raw product ideas and scores them across market demand, differentiation, feasibility, monetization, and timing. Returns structured JSON verdict (good/not_ready/poor) with scores, strengths, concerns, competitive landscape, and recommended next steps. Called by the PRD Pipeline tool at /prd/.",
+      "prompt_file": "prompt_prdgent.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "research",
+      "model": "sonnet",
+      "max_turns": 3,
+      "no_project_context": true
+    },
+    "feedback_fixer": {
+      "name": "Feedback Fixer",
+      "emoji": "\ud83d\udd27",
+      "description": "Receives user feedback items and implements targeted fixes. Scopes edits to the specific tool referenced, follows existing code patterns. Run via feedback tab or orchestrator queue.",
+      "prompt_file": "prompt_feedback_fixer.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "execution",
+      "model": "sonnet",
+      "max_turns": 10,
+      "no_project_context": true
+    },
+    "cd": {
+      "name": "Coder",
+      "emoji": "Cd",
+      "description": "Writes out code for the desired project",
+      "prompt_file": "prompt_cd.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "content"
+    },
+    "builder": {
+      "name": "Builder",
+      "emoji": "BL",
+      "description": "Receives a plan or task spec and implements it directly in the codebase. Reads code, makes changes, verifies. Run via: ./scripts/run_builder.sh",
+      "prompt_file": "prompt_builder.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "execution"
+    },
+    "dep_scanner": {
+      "name": "Dependency Scanner",
+      "emoji": "DS",
+      "description": "Scans all dependency manifests (requirements.txt, package.json, etc.) for unpinned versions, known vulnerable packages, missing lock files, and supply chain risks. Report-only.",
+      "prompt_file": "prompt_dep_scanner.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "security"
+    },
+    "secrets_detector": {
+      "name": "Secrets Detector",
+      "emoji": "SD",
+      "description": "Pattern-based scan for committed credentials, API keys, tokens, private keys, and insecure env file hygiene. Report-only. Never outputs full secret values.",
+      "prompt_file": "prompt_secrets_detector.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "security"
+    },
+    "threat_modeler": {
+      "name": "Threat Modeler",
+      "emoji": "TH",
+      "description": "Applies STRIDE methodology to system architecture. Maps trust boundaries, identifies attack vectors, produces attack trees for top threats. Report-only.",
+      "prompt_file": "prompt_threat_modeler.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "security"
+    },
+    "db_auditor": {
+      "name": "Database Security Auditor",
+      "emoji": "DB",
+      "description": "Audits RLS coverage, SQL injection vectors, connection string security, migration file safety, and query patterns. Report-only.",
+      "prompt_file": "prompt_db_auditor.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "security"
+    },
+    "api_contract_checker": {
+      "name": "API Contract Checker",
+      "emoji": "AC",
+      "description": "Audits all API endpoints for auth coverage, HTTP method correctness, request validation, response format consistency, rate limiting, and CORS. Report-only.",
+      "prompt_file": "prompt_api_contract_checker.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "security"
+    },
+    "perf_profiler": {
+      "name": "Performance Profiler",
+      "emoji": "PP",
+      "description": "Audits Python/FastAPI and Node.js services for sync I/O in async handlers, unbounded concurrency, missing pagination, subprocess spawning risks, and memory leak patterns. Report-only.",
+      "prompt_file": "prompt_perf_profiler.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "mobile_auditor": {
+      "name": "Mobile Security Auditor",
+      "emoji": "MA",
+      "description": "Audits the OPAI Expo/React Native mobile app for insecure storage, hardcoded secrets, network security, deep link safety, and EAS build hygiene. Report-only.",
+      "prompt_file": "prompt_mobile_auditor.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "security"
+    },
+    "cicd_auditor": {
+      "name": "CI/CD Security Auditor",
+      "emoji": "CI",
+      "description": "Audits GitHub Actions workflows, systemd service hardening, Caddy config, and deployment scripts for security risks. HITL required for any remediation. Report-only.",
+      "prompt_file": "prompt_cicd_auditor.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "security"
+    },
+    "docker_auditor": {
+      "name": "Docker Security Auditor",
+      "emoji": "DK",
+      "description": "Audits Dockerfiles, docker-compose configs, and container runtime settings for privilege escalation, secret exposure, dangerous mounts, and resource limits. Report-only.",
+      "prompt_file": "prompt_docker_auditor.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "security"
+    },
+    "api_designer": {
+      "name": "API Design Reviewer",
+      "emoji": "AD",
+      "description": "Audits all REST API endpoints for naming conventions, HTTP method correctness, status code consistency, pagination, request validation, versioning strategy, and error schema standardization. Report-only.",
+      "prompt_file": "prompt_api_designer.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "a11y_auditor": {
+      "name": "Accessibility Auditor",
+      "emoji": "A1",
+      "description": "Audits OPAI tool frontends for WCAG 2.1 AA compliance: images, color contrast, keyboard navigation, focus visibility, form labels, page structure, and ARIA usage. Report-only.",
+      "prompt_file": "prompt_a11y_auditor.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality"
+    },
+    "incident_responder": {
+      "name": "Incident Responder",
+      "emoji": "IR",
+      "description": "Detects anomalies in service logs, orchestrator health, auth patterns, disk pressure, and integration points. Produces structured HITL triage briefings. Never remediates — human approval always required.",
+      "prompt_file": "prompt_incident_responder.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "operations"
+    },
+    "dam_planner": {
+      "name": "DAM Planner",
+      "emoji": "DM",
+      "description": "Decomposes arbitrary goals into executable plan trees for DAM Bot. Analyzes goal context, selects appropriate agents/squads/tools, builds dependency graph, and inserts approval gates for risky actions.",
+      "prompt_file": "prompt_dam_planner.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "orchestration"
+    },
+    "rd_analyst": {
+      "name": "R&D Analyst",
+      "emoji": "RN",
+      "description": "Researches topics from video intakes, queued ideas, or system gaps. Produces structured R&D briefs with feasibility scoring, implementation plans, and roadmap alignment. Output lands in notes/Improvements/.",
+      "prompt_file": "prompt_rd_analyst.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "research",
+      "model": "sonnet",
+      "max_turns": 0,
+      "no_project_context": false
+    },
+    "llm_engineer": {
+      "name": "LLM Application Specialist",
+      "emoji": "LE",
+      "description": "Reviews LLM application architecture: RAG pipelines, prompt engineering, embeddings, vector search, evaluation. Audits all OPAI services using Claude/AI for best practices.",
+      "prompt_file": "prompt_llm_engineer.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality",
+      "model": "sonnet",
+      "max_turns": 8
+    },
+    "frontend_auditor": {
+      "name": "Frontend Code Quality Auditor",
+      "emoji": "FR",
+      "description": "Reviews frontend React/React Native code quality: component patterns, state management, Tailwind usage, responsive design, performance. Covers all OPAI tool UIs and mobile app.",
+      "prompt_file": "prompt_frontend_auditor.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality",
+      "model": "sonnet",
+      "max_turns": 6
+    },
+    "business_analyst": {
+      "name": "Business & Market Analyst",
+      "emoji": "BA",
+      "description": "Analyzes business opportunities: market sizing, competitive landscape, financial modeling, startup metrics, KPI design. Supports HELM business evaluation and PRD Pipeline.",
+      "prompt_file": "prompt_business_analyst.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "research",
+      "model": "sonnet",
+      "max_turns": 6
+    }
+  },
+  "squads": {
+    "familiarize": {
+      "description": "First-run onboarding: scan the project and configure agents",
+      "agents": [
+        "familiarizer"
+      ]
+    },
+    "audit": {
+      "description": "Full codebase audit",
+      "agents": [
+        "accuracy",
+        "health",
+        "security",
+        "ux_reviewer",
+        "frontend_auditor",
+        "dep_scanner",
+        "db_auditor",
+        "perf_profiler",
+        "a11y_auditor",
+        "api_designer",
+        "llm_engineer",
+        "manager"
+      ],
+      "dynamic_pool": [
+        "accuracy",
+        "health",
+        "security",
+        "ux_reviewer",
+        "frontend_auditor",
+        "dep_scanner",
+        "db_auditor",
+        "perf_profiler",
+        "a11y_auditor",
+        "api_designer",
+        "llm_engineer",
+        "api_contract_checker",
+        "docker_auditor",
+        "cicd_auditor",
+        "secrets_detector",
+        "threat_modeler",
+        "mobile_auditor",
+        "test_writer",
+        "reviewer"
+      ]
+    },
+    "plan": {
+      "description": "Feature planning and architecture",
+      "agents": [
+        "features",
+        "integration",
+        "researcher",
+        "threat_modeler",
+        "business_analyst",
+        "manager"
+      ],
+      "dynamic_pool": [
+        "features",
+        "integration",
+        "researcher",
+        "threat_modeler",
+        "business_analyst",
+        "prdgent",
+        "rd_analyst"
+      ]
+    },
+    "review": {
+      "description": "Code review after changes",
+      "agents": [
+        "reviewer",
+        "accuracy",
+        "frontend_auditor",
+        "api_designer",
+        "llm_engineer",
+        "test_writer",
+        "github",
+        "manager"
+      ],
+      "dynamic_pool": [
+        "reviewer",
+        "accuracy",
+        "frontend_auditor",
+        "api_designer",
+        "llm_engineer",
+        "test_writer",
+        "github",
+        "security",
+        "perf_profiler",
+        "db_auditor",
+        "ux_reviewer",
+        "a11y_auditor"
+      ]
+    },
+    "ship": {
+      "description": "Pre-release checks",
+      "agents": [
+        "health",
+        "security",
+        "dep_scanner",
+        "api_contract_checker",
+        "perf_profiler",
+        "cicd_auditor",
+        "test_writer",
+        "content_curator",
+        "github",
+        "manager"
+      ],
+      "dynamic_pool": [
+        "health",
+        "security",
+        "dep_scanner",
+        "api_contract_checker",
+        "perf_profiler",
+        "cicd_auditor",
+        "test_writer",
+        "content_curator",
+        "github",
+        "accuracy",
+        "docker_auditor",
+        "secrets_detector",
+        "reviewer",
+        "frontend_auditor"
+      ]
+    },
+    "release": {
+      "description": "Full release workflow",
+      "agents": [
+        "github",
+        "content_curator",
+        "test_writer",
+        "security",
+        "manager"
+      ]
+    },
+    "auto_safe": {
+      "description": "Mode 1: Audit then auto-apply safe-only fixes. Use: run_auto.ps1 -Mode safe",
+      "agents": [
+        "accuracy",
+        "health",
+        "security",
+        "reviewer",
+        "executor_safe"
+      ]
+    },
+    "auto_full": {
+      "description": "Mode 2: Audit then auto-apply all improvements. Use: run_auto.ps1 -Mode full",
+      "agents": [
+        "accuracy",
+        "health",
+        "security",
+        "reviewer",
+        "ux_reviewer",
+        "executor_full"
+      ]
+    },
+    "evolve": {
+      "description": "Self-improvement: assess team gaps and propose new agents",
+      "agents": [
+        "self_assessment"
+      ]
+    },
+    "knowledge": {
+      "description": "Knowledge management: organize notes, maintain reusable library, update system wiki, then dispatch actions",
+      "agents": [
+        "notes_curator",
+        "library_curator",
+        "wiki_librarian",
+        "report_dispatcher"
+      ]
+    },
+    "dispatch": {
+      "description": "Process all reports in latest/, generate agent instructions and HITL briefings",
+      "agents": [
+        "report_dispatcher"
+      ]
+    },
+    "onboard": {
+      "description": "Discover, evaluate, and onboard external projects into managed workspace with diamond workflow",
+      "agents": [
+        "project_onboarder",
+        "report_dispatcher"
+      ]
+    },
+    "hygiene": {
+      "description": "Workspace hygiene: file cleanup, naming conventions, structure compliance",
+      "agents": [
+        "workspace_steward",
+        "report_dispatcher"
+      ]
+    },
+    "workspace": {
+      "description": "Complete workspace audit: notes, library, structure, tools, wiki, hygiene, then dispatch",
+      "agents": [
+        "notes_curator",
+        "library_curator",
+        "workspace_steward",
+        "wiki_librarian",
+        "tools_monitor",
+        "report_dispatcher"
+      ],
+      "dynamic_pool": [
+        "notes_curator",
+        "library_curator",
+        "workspace_steward",
+        "wiki_librarian",
+        "tools_monitor",
+        "email_manager",
+        "project_onboarder"
+      ]
+    },
+    "email": {
+      "description": "Email management: check accounts, classify, extract tasks, review pending responses, then dispatch",
+      "agents": [
+        "email_manager",
+        "report_dispatcher"
+      ]
+    },
+    "tools": {
+      "description": "Tools ecosystem health: audit Discord bridge, email manager, work companion, WP agent, and MCP servers",
+      "agents": [
+        "tools_monitor",
+        "incident_responder",
+        "report_dispatcher"
+      ]
+    },
+    "incident": {
+      "description": "Incident detection: scan all service logs, orchestrator health, auth anomalies, disk pressure, and integration status. Always produces HITL briefing.",
+      "agents": [
+        "incident_responder",
+        "report_dispatcher"
+      ]
+    },
+    "a11y": {
+      "description": "Accessibility audit: full WCAG 2.1 AA review of all OPAI tool frontends.",
+      "agents": [
+        "a11y_auditor",
+        "report_dispatcher"
+      ]
+    },
+    "wiki": {
+      "description": "Update system wiki after changes \u2014 triggered post-implementation",
+      "agents": [
+        "wiki_librarian",
+        "report_dispatcher"
+      ]
+    },
+    "node_update": {
+      "description": "Safe Node.js/npm/dependency upgrade cycle with rollback protection",
+      "agents": [
+        "node_updater",
+        "tools_monitor",
+        "report_dispatcher"
+      ]
+    },
+    "build": {
+      "description": "Implement a task/feature from a plan or spec. Run via: ./scripts/run_builder.sh -t \"task\" or ./scripts/run_builder.sh spec.md",
+      "agents": [
+        "builder"
+      ]
+    },
+    "dep_scan": {
+      "description": "Dependency vulnerability scan only — fast daily run. Checks all manifests for unpinned versions, known vulnerable packages, and missing lock files.",
+      "agents": [
+        "dep_scanner",
+        "report_dispatcher"
+      ]
+    },
+    "secrets_scan": {
+      "description": "Secrets detection scan only — fast daily run. Pattern-based scan for committed credentials, API keys, tokens, and env file hygiene issues.",
+      "agents": [
+        "secrets_detector",
+        "report_dispatcher"
+      ]
+    },
+    "secure": {
+      "description": "Full security suite: all Phase 1+2 security agents. Run weekly or before major releases.",
+      "agents": [
+        "dep_scanner",
+        "secrets_detector",
+        "threat_modeler",
+        "db_auditor",
+        "api_contract_checker",
+        "mobile_auditor",
+        "cicd_auditor",
+        "docker_auditor",
+        "security",
+        "report_dispatcher"
+      ],
+      "dynamic_pool": [
+        "dep_scanner",
+        "secrets_detector",
+        "threat_modeler",
+        "db_auditor",
+        "api_contract_checker",
+        "mobile_auditor",
+        "cicd_auditor",
+        "docker_auditor",
+        "security",
+        "perf_profiler",
+        "accuracy",
+        "health",
+        "llm_engineer"
+      ]
+    },
+    "mobile": {
+      "description": "Mobile app audit: security, API contract compliance, frontend quality, and performance review of the OPAI Expo app.",
+      "agents": [
+        "mobile_auditor",
+        "frontend_auditor",
+        "api_contract_checker",
+        "perf_profiler",
+        "report_dispatcher"
+      ]
+    },
+    "security_quick": {
+      "description": "Fast daily security check: dependency vulnerabilities and secrets scan only. Runs in under 5 minutes.",
+      "agents": [
+        "dep_scanner",
+        "secrets_detector",
+        "security",
+        "report_dispatcher"
+      ]
+    },
+    "brain": {
+      "description": "2nd Brain maintenance — triage inbox, suggest links, detect stale nodes, surface related knowledge.",
+      "agents": [
+        "brain_curator",
+        "brain_researcher",
+        "brain_linker"
+      ]
+    },
+    "rd": {
+      "description": "R&D research: deep-dive a topic, evaluate feasibility, produce implementation brief to notes/Improvements/. Feed it a topic via custom instructions.",
+      "agents": [
+        "rd_analyst",
+        "report_dispatcher"
+      ]
+    }
+  },
+  "specialist_templates": {
+    "_comment": "Not active agents. Copy from templates/ to scripts/ and customize per project.",
+    "available": [
+      "prompt_expo_expert.txt",
+      "prompt_supabase_expert.txt",
+      "prompt_n8n_connector.txt",
+      "prompt_wordpress_expert.txt",
+      "prompt_fusion_builder.txt",
+      "prompt_page_designer.txt",
+      "prompt_design_reviewer.txt"
+    ]
+  }
+}

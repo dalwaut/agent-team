@@ -1,0 +1,14 @@
+[Unit]
+Description=OPAI Daily Git Sync — commit and push changes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/workspace/synced/opai
+Environment="HOME=/home/dallas"
+Environment="OPAI_ROOT=/workspace/synced/opai"
+ExecStart=/workspace/synced/opai/scripts/daily-git-push.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=opai-git-sync

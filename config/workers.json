@@ -1,0 +1,287 @@
+{
+  "version": "1.0.0",
+  "workers": {
+    "email-manager": {
+      "name": "Email Manager",
+      "type": "long-running",
+      "runtime": "node",
+      "entry": "tools/opai-email-agent/index.js",
+      "managed": true,
+      "port": null,
+      "trigger": {
+        "mode": "internal-polling",
+        "interval_minutes": 30
+      },
+      "vault_keys": ["opai-email-agent"],
+      "permissions": {
+        "file_access": ["tools/opai-email-agent/data/"],
+        "supabase_tables": ["audit_log"],
+        "can_send": true
+      },
+      "guardrails": {
+        "requires_approval": ["send_email", "delete_email"],
+        "max_actions_per_hour": 20,
+        "prompt_protection": true
+      },
+      "health_check": null,
+      "restart_on_failure": true,
+      "max_restarts": 5,
+      "restart_delay_sec": 30
+    },
+
+    "discord-bot": {
+      "name": "Discord Bridge",
+      "type": "long-running",
+      "runtime": "node",
+      "entry": "tools/discord-bridge/start-bot.sh",
+      "systemd_unit": "opai-discord-bot",
+      "port": null,
+      "trigger": {
+        "mode": "event-driven",
+        "source": "discord-gateway"
+      },
+      "vault_keys": ["discord-bridge"],
+      "permissions": {
+        "file_access": ["tools/discord-bridge/data/"],
+        "supabase_tables": ["audit_log", "conversations"],
+        "can_send": true
+      },
+      "guardrails": {
+        "requires_approval": [],
+        "max_actions_per_hour": 500,
+        "prompt_protection": true
+      },
+      "health_check": null,
+      "restart_on_failure": true,
+      "max_restarts": 10,
+      "restart_delay_sec": 10
+    },
+
+    "wordpress-manager": {
+      "name": "WordPress Manager",
+      "type": "hybrid",
+      "runtime": "python",
+      "entry": "tools/opai-wordpress/app.py",
+      "systemd_unit": "opai-wordpress",
+      "port": 8096,
+      "trigger": {
+        "mode": "cron+manual",
+        "schedule": "0 */6 * * *"
+      },
+      "vault_keys": ["opai-wordpress"],
+      "permissions": {
+        "file_access": ["tools/opai-wordpress/"],
+        "supabase_tables": ["audit_log"],
+        "external_apis": ["wordpress", "woocommerce", "managewp"]
+      },
+      "guardrails": {
+        "requires_approval": ["deploy_production", "update_plugins"],
+        "max_actions_per_hour": 50,
+        "prompt_protection": true
+      },
+      "health_check": "http://127.0.0.1:8096/health",
+      "restart_on_failure": true,
+      "max_restarts": 5,
+      "restart_delay_sec": 30,
+      "note": "Dual-role: independent app (portal tile) + registered worker for Engine scheduling"
+    },
+
+    "forumbot": {
+      "name": "Forum Bot",
+      "type": "hybrid",
+      "runtime": "python",
+      "entry": "tools/opai-forumbot/app.py",
+      "systemd_unit": "opai-forumbot",
+      "port": 8095,
+      "trigger": {
+        "mode": "cron",
+        "schedule": "0 */4 * * *"
+      },
+      "vault_keys": ["opai-forumbot"],
+      "permissions": {
+        "file_access": ["tools/opai-forumbot/"],
+        "supabase_tables": ["audit_log"]
+      },
+      "guardrails": {
+        "requires_approval": [],
+        "max_actions_per_hour": 30,
+        "prompt_protection": true
+      },
+      "health_check": "http://127.0.0.1:8095/health",
+      "restart_on_failure": true,
+      "max_restarts": 5,
+      "restart_delay_sec": 30
+    },
+
+    "project-reviewer": {
+      "name": "Project Reviewer",
+      "type": "task",
+      "runtime": "claude-cli",
+      "prompt_file": "scripts/prompt_reviewer.txt",
+      "trigger": {
+        "mode": "manual",
+        "also": "squad:audit"
+      },
+      "permissions": {
+        "file_access": ["read-only"],
+        "can_send": false
+      },
+      "guardrails": {
+        "read_only": true,
+        "max_turns": 15,
+        "timeout_minutes": 10,
+        "model": "sonnet"
+      },
+      "output": "reports/{date}/{worker-name}.md"
+    },
+
+    "project-builder": {
+      "name": "Project Builder",
+      "type": "task",
+      "runtime": "claude-cli",
+      "prompt_file": "scripts/prompt_builder.txt",
+      "trigger": {
+        "mode": "manual"
+      },
+      "permissions": {
+        "file_access": ["task-context-path"],
+        "can_send": false
+      },
+      "guardrails": {
+        "read_only": false,
+        "max_turns": 25,
+        "timeout_minutes": 15,
+        "model": "sonnet",
+        "requires_approval": ["write_file", "delete_file"]
+      },
+      "output": "reports/{date}/{worker-name}.md"
+    },
+
+    "researcher": {
+      "name": "Researcher",
+      "type": "task",
+      "runtime": "claude-cli",
+      "prompt_file": "scripts/prompt_researcher.txt",
+      "trigger": { "mode": "manual" },
+      "permissions": {
+        "file_access": ["read-only"],
+        "can_send": false
+      },
+      "guardrails": {
+        "read_only": true,
+        "max_turns": 20,
+        "timeout_minutes": 15,
+        "model": "sonnet"
+      },
+      "output": "reports/{date}/{worker-name}.md"
+    },
+
+    "wiki-librarian": {
+      "name": "Wiki Librarian",
+      "type": "task",
+      "runtime": "claude-cli",
+      "prompt_file": "scripts/prompt_librarian.txt",
+      "trigger": {
+        "mode": "cron",
+        "schedule": "0 4 * * *"
+      },
+      "permissions": {
+        "file_access": ["Library/opai-wiki/"],
+        "can_send": false
+      },
+      "guardrails": {
+        "read_only": false,
+        "allowed_paths": ["Library/opai-wiki/"],
+        "max_turns": 15,
+        "timeout_minutes": 10,
+        "model": "haiku"
+      },
+      "output": "reports/{date}/{worker-name}.md"
+    },
+
+    "self-assessor": {
+      "name": "Self Assessor",
+      "type": "task",
+      "runtime": "claude-cli",
+      "prompt_file": "scripts/prompt_self_assessment.txt",
+      "trigger": {
+        "mode": "cron",
+        "schedule": "0 2 * * *"
+      },
+      "permissions": {
+        "file_access": ["read-only"],
+        "can_send": false
+      },
+      "guardrails": {
+        "read_only": true,
+        "max_turns": 20,
+        "timeout_minutes": 15,
+        "model": "sonnet"
+      },
+      "output": "reports/{date}/{worker-name}.md"
+    },
+
+    "security-scanner": {
+      "name": "Security Scanner",
+      "type": "task",
+      "runtime": "claude-cli",
+      "prompt_file": "scripts/prompt_security.txt",
+      "trigger": {
+        "mode": "cron",
+        "schedule": "0 3 * * 0"
+      },
+      "permissions": {
+        "file_access": ["read-only"],
+        "can_send": false
+      },
+      "guardrails": {
+        "read_only": true,
+        "max_turns": 20,
+        "timeout_minutes": 15,
+        "model": "sonnet"
+      },
+      "output": "reports/{date}/{worker-name}.md"
+    },
+
+    "report-dispatcher": {
+      "name": "Report Dispatcher",
+      "type": "task",
+      "runtime": "claude-cli",
+      "prompt_file": "scripts/prompt_manager.txt",
+      "trigger": {
+        "mode": "after-squad"
+      },
+      "permissions": {
+        "file_access": ["reports/"],
+        "can_send": true
+      },
+      "guardrails": {
+        "read_only": true,
+        "max_turns": 10,
+        "timeout_minutes": 5,
+        "model": "haiku"
+      },
+      "output": "reports/{date}/{worker-name}.md"
+    },
+
+    "browser-agent": {
+      "name": "Browser Agent",
+      "type": "task",
+      "runtime": "claude-cli",
+      "trigger": { "mode": "manual" },
+      "permissions": {
+        "browser_access": true,
+        "file_access": ["read-only"],
+        "can_send": false
+      },
+      "guardrails": {
+        "read_only": true,
+        "max_turns": 30,
+        "timeout_minutes": 20,
+        "model": "sonnet",
+        "allowed_domains": []
+      },
+      "output": "reports/{date}/{worker-name}.md"
+    }
+  }
+}

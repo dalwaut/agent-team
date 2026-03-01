@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI Forum Bot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/auth/static/js/auth-v3.js" defer></script>
+    <script src="/auth/static/js/navbar.js" defer></script>
+</head>
+<body>
+    <nav class="topnav">
+        <div class="topnav-inner">
+            <div class="topnav-left">
+                <span style="font-size:20px;">&#129302;</span>
+                <span class="logo-text">OPAI Forum Bot</span>
+            </div>
+            <div class="topnav-right">
+                <span class="user-chip" id="user-display"></span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="tab-bar">
+            <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+            <button class="tab-btn" data-tab="generate">Generate</button>
+            <button class="tab-btn" data-tab="drafts">Drafts</button>
+            <button class="tab-btn" data-tab="schedules">Schedules</button>
+            <button class="tab-btn" data-tab="history">History</button>
+        </div>
+
+        <!-- Dashboard Tab -->
+        <div class="tab-content active" id="tab-dashboard">
+            <div class="stats-grid" id="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Pending Drafts</div>
+                    <div class="stat-value blue" id="stat-pending">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Published Today</div>
+                    <div class="stat-value green" id="stat-today">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Published</div>
+                    <div class="stat-value purple" id="stat-total">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Active Schedules</div>
+                    <div class="stat-value orange" id="stat-schedules">0</div>
+                </div>
+            </div>
+
+            <h3 class="mb-16">Recent Activity</h3>
+            <div id="activity-feed">
+                <div class="loading-state"><div class="spinner"></div><span>Loading...</span></div>
+            </div>
+        </div>
+
+        <!-- Generate Tab -->
+        <div class="tab-content" id="tab-generate">
+            <div class="card">
+                <h3 class="mb-16">Generate Forum Posts</h3>
+                <div class="form-group">
+                    <label class="form-label">Post Type</label>
+                    <select class="form-select" id="gen-type">
+                        <option value="dev-note">Dev Note</option>
+                        <option value="feature">Feature Announcement</option>
+                        <option value="announcement">Announcement</option>
+                        <option value="poll">Community Poll</option>
+                        <option value="general">General Post</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Category</label>
+                    <select class="form-select" id="gen-category">
+                        <option value="">No category</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Count</label>
+                    <div class="range-row">
+                        <input type="range" id="gen-count" min="1" max="5" value="1">
+                        <span class="range-val" id="gen-count-val">1</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Tags (comma-separated)</label>
+                    <input class="form-input" id="gen-tags" placeholder="update, feature, v2">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Prompt</label>
+                    <textarea class="form-textarea" id="gen-prompt" rows="5"
+                        placeholder="Write about recent platform improvements including the new agent studio and real-time monitoring..."></textarea>
+                </div>
+                <button class="btn btn-accent" id="gen-btn" onclick="generatePosts()">Generate</button>
+            </div>
+
+            <div id="gen-results" class="hidden">
+                <h3 class="mb-16">Generated Drafts</h3>
+                <div id="gen-results-list"></div>
+            </div>
+        </div>
+
+        <!-- Drafts Tab -->
+        <div class="tab-content" id="tab-drafts">
+            <div class="flex-between mb-16">
+                <h3>Drafts</h3>
+                <div style="display:flex;gap:8px;">
+                    <select class="form-select" id="drafts-filter" style="width:auto;" onchange="loadDrafts()">
+                        <option value="">All statuses</option>
+                        <option value="draft">Draft</option>
+                        <option value="published">Published</option>
+                        <option value="discarded">Discarded</option>
+                    </select>
+                </div>
+            </div>
+            <div id="drafts-list">
+                <div class="loading-state"><div class="spinner"></div><span>Loading...</span></div>
+            </div>
+            <div id="drafts-pagination" class="flex-between mb-16" style="margin-top:16px;"></div>
+        </div>
+
+        <!-- Schedules Tab -->
+        <div class="tab-content" id="tab-schedules">
+            <div class="flex-between mb-16">
+                <h3>Schedules</h3>
+                <button class="btn btn-accent" onclick="openScheduleModal()">+ New Schedule</button>
+            </div>
+            <div id="schedules-list">
+                <div class="loading-state"><div class="spinner"></div><span>Loading...</span></div>
+            </div>
+        </div>
+
+        <!-- History Tab -->
+        <div class="tab-content" id="tab-history">
+            <h3 class="mb-16">Activity Log</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Action</th>
+                        <th>Actor</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody id="history-tbody">
+                    <tr><td colspan="4" class="text-muted" style="text-align:center;padding:40px;">Loading...</td></tr>
+                </tbody>
+            </table>
+            <div id="history-pagination" class="flex-between" style="margin-top:16px;"></div>
+        </div>
+    </div>
+
+    <!-- Draft Detail Modal -->
+    <div class="modal-overlay hidden" id="draft-modal">
+        <div class="modal">
+            <div class="modal-title" id="dm-title">Draft</div>
+            <div class="form-group">
+                <label class="form-label">Title</label>
+                <input class="form-input" id="dm-edit-title">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Content (Markdown)</label>
+                <textarea class="form-textarea" id="dm-edit-content" rows="10"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Preview</label>
+                <div class="md-preview" id="dm-preview"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tags (comma-separated)</label>
+                <input class="form-input" id="dm-edit-tags">
+            </div>
+            <input type="hidden" id="dm-id">
+            <input type="hidden" id="dm-status">
+            <div class="modal-actions">
+                <button class="btn" onclick="closeDraftModal()">Cancel</button>
+                <button class="btn btn-outline" id="dm-save-btn" onclick="saveDraft()">Save Changes</button>
+                <button class="btn btn-danger" id="dm-discard-btn" onclick="discardDraft()">Discard</button>
+                <button class="btn btn-accent" id="dm-approve-btn" onclick="approveDraft()">Publish to Forum</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Schedule Modal -->
+    <div class="modal-overlay hidden" id="schedule-modal">
+        <div class="modal">
+            <div class="modal-title" id="sm-title">New Schedule</div>
+            <div class="form-group">
+                <label class="form-label">Name</label>
+                <input class="form-input" id="sm-name" placeholder="Daily dev notes">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Cron Expression</label>
+                <input class="form-input" id="sm-cron" placeholder="0 9 * * 1-5">
+                <span class="text-sm text-muted">min hour dom month dow (e.g., 0 9 * * 1-5 = weekdays at 9am)</span>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Post Type</label>
+                <select class="form-select" id="sm-type">
+                    <option value="dev-note">Dev Note</option>
+                    <option value="feature">Feature Announcement</option>
+                    <option value="announcement">Announcement</option>
+                    <option value="poll">Community Poll</option>
+                    <option value="general">General Post</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Category</label>
+                <select class="form-select" id="sm-category">
+                    <option value="">No category</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Prompt Template</label>
+                <textarea class="form-textarea" id="sm-prompt" rows="4"
+                    placeholder="Write about the latest platform changes and improvements..."></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tags (comma-separated)</label>
+                <input class="form-input" id="sm-tags" placeholder="update, automated">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Max Drafts per Run</label>
+                <div class="range-row">
+                    <input type="range" id="sm-max" min="1" max="5" value="1">
+                    <span class="range-val" id="sm-max-val">1</span>
+                </div>
+            </div>
+            <div class="form-group" style="display:flex;align-items:center;gap:12px;">
+                <label class="toggle">
+                    <input type="checkbox" id="sm-autopublish">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span class="form-label" style="margin-bottom:0;">Auto-publish (skip approval queue)</span>
+            </div>
+            <div class="form-group">
+                <div class="flex-between mb-16">
+                    <label class="form-label" style="margin-bottom:0;">Conditions (all must pass)</label>
+                    <button class="btn btn-small btn-outline" onclick="addCondition()">+ Add</button>
+                </div>
+                <div id="sm-conditions"></div>
+            </div>
+            <input type="hidden" id="sm-id">
+            <div class="modal-actions">
+                <button class="btn" onclick="closeScheduleModal()">Cancel</button>
+                <button class="btn btn-accent" onclick="saveSchedule()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="static/js/app.js"></script>
+</body>
+</html>

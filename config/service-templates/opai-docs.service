@@ -1,0 +1,17 @@
+[Unit]
+Description=OPAI Docs — Documentation portal
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-docs
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-docs
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8091
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/workspace/synced/opai/tools/opai-docs/.env
+
+EnvironmentFile=-%t/opai-vault/opai-docs.env
+[Install]
+WantedBy=default.target

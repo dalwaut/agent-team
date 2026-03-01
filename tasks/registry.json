@@ -1,0 +1,1119 @@
+{
+  "version": "1.0.0",
+  "description": "Unified task registry \u2014 single source of truth for all OPAI tasks (human + agent). Sources: email, discord, agent reports, manual.",
+  "tasks": {
+    "t-20260212-001": {
+      "id": "t-20260212-001",
+      "title": "Migrate Claude Code managed-settings.json from C:\\ProgramData\\ClaudeCode\\ to C:\\Program Files\\ClaudeCode\\ in MDM configuration",
+      "description": "Claude Code Windows will stop reading managed settings from the legacy path after March 11. Only deployment location changes, file content stays the same.",
+      "source": "email",
+      "sourceRef": {
+        "sender": "no-reply@email.claude.com",
+        "senderName": "Claude Team",
+        "subject": "[Action Required] Claude Code Windows: Managed Settings Path Migration"
+      },
+      "project": null,
+      "assignee": "human",
+      "status": "cancelled",
+      "priority": "high",
+      "deadline": "2026-03-11",
+      "routing": {
+        "type": "review",
+        "squads": [
+          "review"
+        ],
+        "mode": "propose"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-11T22:24:32.800Z",
+      "updatedAt": "2026-02-18T08:59:12.867959+00:00",
+      "completedAt": null
+    },
+    "t-20260212-011": {
+      "id": "t-20260212-011",
+      "title": "Review the shared ChatGPT conversation about MDH video manager",
+      "description": "Denise shared a ChatGPT link regarding MDH video manager - need to review the conversation to understand requirements or next steps",
+      "source": "email",
+      "sourceRef": {
+        "sender": "denise@paradisewebfl.com",
+        "senderName": "Denise Wauters",
+        "subject": "MDH video manager"
+      },
+      "project": null,
+      "assignee": "agent",
+      "status": "failed",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "review"
+        ],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-11T22:33:25.532Z",
+      "updatedAt": "2026-02-24T02:43:15.745777+00:00",
+      "completedAt": null,
+      "agentConfig": {
+        "agentId": "review",
+        "agentType": "squad",
+        "agentName": "review",
+        "instructions": "",
+        "response": "Squad 'review' exited with code 1"
+      }
+    },
+    "t-20260212-018": {
+      "id": "t-20260212-018",
+      "title": "Review Google Cloud credential security best practices",
+      "description": "Forwarded advisory from Google Cloud about credential security - needs review to determine if any action is required for current GCP setup",
+      "source": "email",
+      "sourceRef": {
+        "sender": "info@visitevergladescity.com",
+        "senderName": "Denise Wauters",
+        "subject": "Fwd: [Action Advised] Review Google Cloud credential security best practices"
+      },
+      "project": null,
+      "assignee": "agent",
+      "status": "failed",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "review"
+        ],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-11T22:29:50.309Z",
+      "updatedAt": "2026-02-24T02:44:15.844165+00:00",
+      "completedAt": null,
+      "mode": "execute",
+      "client": null,
+      "agentConfig": {
+        "agentId": "review",
+        "agentType": "squad",
+        "agentName": "review",
+        "instructions": "",
+        "response": "Squad 'review' exited with code 1"
+      }
+    },
+    "t-20260212-058": {
+      "id": "t-20260212-058",
+      "title": "Email checker: add attachment download + content extraction",
+      "description": "Email checker (tools/email-checker/index.js) currently fetches bodyStructure and source but has zero attachment handling. NEEDED: (1) Parse bodyStructure for Content-Disposition: attachment parts. (2) Fetch and save attachments to disk (e.g., Clients/<name>/). (3) For .docx files, extract text content and present 1:1. (4) For other files, provide a summary. (5) When referencing emails, provide Gmail search URLs instead of local draft paths. This was identified while working on Westberg tasks \u2014 bio.docx and book reviews were unreachable because only email metadata was stored.",
+      "source": "manual",
+      "sourceRef": {},
+      "project": null,
+      "assignee": "agent",
+      "status": "failed",
+      "priority": "normal",
+      "deadline": "2026-02-14",
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "review"
+        ],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-12T15:00:00.000Z",
+      "updatedAt": "2026-02-23T22:42:24.019099+00:00",
+      "completedAt": null,
+      "client": null,
+      "agentConfig": {
+        "agentId": "review",
+        "agentType": "squad",
+        "agentName": "review",
+        "instructions": "",
+        "response": "Squad 'review' exited with code 1"
+      }
+    },
+    "t-20260219-001": {
+      "id": "t-20260219-001",
+      "title": "[Forum] Critical: Global: we need an \"are you sure you want to close\" popup confirmation before closing any popup input like the",
+      "description": "Critical: Global: we need an \"are you sure you want to close\" popup confirmation before closing any popup input like the feedback input.",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771494071995_ca4af9",
+        "tool": "Forum",
+        "severity": "MEDIUM",
+        "category": "uncategorized",
+        "file": "Feedback-Forum.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "high",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T03:45:01.613329Z",
+      "updatedAt": "2026-02-19T03:52:39.963204Z",
+      "completedAt": "2026-02-19T03:52:39.963204Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "Syntax check passes. Here's the summary:\n\n## Changes Applied\n\n### Files Modified\n- `static/js/forum.js` \u2014 Added close confirmation guards for edit mode, navigation, and Escape key\n\n### What Was Done\nAdded \"are you sure?\" confirmation popups before closing any input that has unsaved content:\n\n1. **Edit mode cancel** \u2014 `cancelEditMode()` now checks if the title or content was modified before discarding. If changes exist, user must confirm.\n2. **Navigation away from edit mode** \u2014 The hashchange handler now guards against navigating away from a post while in edit mode with unsaved changes.\n3. **Escape key handler** \u2014 New global Escape key listener that dismisses popups in priority order: emoji picker (no confirm needed), edit mode (confirms if changes), reply forms (confirms if has content).\n\nThe existing guards were already in place for: new post form cancel, navigating away from new post form, navigating away with unsaved comments, reply form cancel/toggle. The feedback modal in the shared navbar already had its own `guardedClose()`.\n\n### Remaining Items\n- Service restart needed (`opai-forumbot`) to serve updated static files (if the server caches them)\n- The shared feedback modal (in `navbar.js`) already has close confirmation \u2014 no changes needed there",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-001-feedback-fix.md",
+        "completedAt": "2026-02-19T03:52:39.963204Z"
+      },
+      "attachments": [],
+      "retryCount": 1
+    },
+    "t-20260219-002": {
+      "id": "t-20260219-002",
+      "title": "[Forum] owners of form posts need to be able to esit the posts when on their post, place an edit button at the top of the screen",
+      "description": "owners of form posts need to be able to esit the posts when on their post, place an edit button at the top of the screen when they are on their own post. if they click it they can simply click on areas like the title or body of the post to edit them. click the save button (edit button transformed the moment the edit mode was entered) to save, place a Cancel button next to the edit button once clicked that canceled and discards all edits.",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771494268624_43ccd2",
+        "tool": "Forum",
+        "severity": "MEDIUM",
+        "category": "uncategorized",
+        "file": "Feedback-Forum.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "high",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T03:45:09.739865Z",
+      "updatedAt": "2026-02-19T03:50:47.902635Z",
+      "completedAt": "2026-02-19T03:50:47.902635Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "## Changes Applied\n\n### Files Modified\n- `static/js/forum.js` \u2014 Added edit mode state management, edit/save/cancel functions, edit button bar in post detail view, exposed methods on `forumApp`, added `SVG_EDIT` icon, gave title and body elements IDs + `data-raw-content` attribute for raw markdown storage\n- `static/css/forum.css` \u2014 Added styles for `.edit-btn-bar` (show/hide logic via `.editing` class), `.editable-active` outline highlight, monospace styling for content editing\n\n### What Was Done\nWhen a user views their own post, an **Edit Post** button now appears above the post card. Clicking it:\n1. Transforms the button bar to show **Save** and **Cancel** buttons (Edit disappears)\n2. Makes the title (`<h2>`) and body (`<div class=\"post-body\">`) contenteditable with a purple outline indicator\n3. The body switches from rendered markdown to raw text for editing\n4. **Save** calls `PUT /api/posts/{id}` (existing endpoint, already checks `author_id`) and re-renders the post\n5. **Cancel** discards all edits and restores the original title/content with re-rendered markdown\n\n### Remaining Items\n- The `opai-forum` service needs a restart for static file cache to clear (if any caching is in place) \u2014 a human should restart it\n- Admins who are also post owners will see the Edit button (this is correct behavior \u2014 admins can always edit their own posts via the owner check in the API)",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-002-feedback-fix.md",
+        "completedAt": "2026-02-19T03:50:47.902635Z"
+      },
+      "attachments": [],
+      "retryCount": 1
+    },
+    "t-20260219-004": {
+      "id": "t-20260219-004",
+      "title": "[TeamHub] the landing page needs an equivalent list view to sort through and display all tasks in the team hub",
+      "description": "the landing page needs an equivalent list view to sort through and display all tasks in the team hub",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771476159180_14049c",
+        "tool": "TeamHub",
+        "severity": "LOW",
+        "category": "feature-request",
+        "file": "Feedback-TeamHub.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T03:45:21.551542Z",
+      "updatedAt": "2026-02-19T03:55:38.715854Z",
+      "completedAt": "2026-02-19T03:55:38.715854Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "## Changes Applied\n\n### Files Modified\n- `static/app.js` \u2014 Added tab bar (Dashboard / All Tasks) to `renderHomeTiles()`, `renderHomeListView()`, and `renderHomeListTable()`; added `switchHomeTab()` function\n- `static/style.css` \u2014 Added styles for `.home-header-top`, `.home-view-tabs`, `.home-view-tab`, and `.home-list-subheader`\n\n### What Was Done\nAdded a visible tab switcher (\"Dashboard\" / \"All Tasks\") directly on the Team Hub home/landing page header. Both views share the same welcome header with the user's name and date, and tabs below let users toggle between the tile dashboard and the full sortable/filterable all-tasks list view. The tabs stay in sync with the header view switcher icons. The all-tasks list view already existed with sorting, filtering, and search \u2014 it was just hidden behind the small header icon. Now it's prominently discoverable.\n\n### Remaining Items\n- Service restart needed to serve updated static files (if caching is involved)\n- The existing header view switcher buttons (board/list/calendar) still work and stay synced with the home tabs",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-004-feedback-fix.md",
+        "completedAt": "2026-02-19T03:55:38.715854Z"
+      },
+      "attachments": [],
+      "retryCount": 1
+    },
+    "t-20260219-005": {
+      "id": "t-20260219-005",
+      "title": "[Monitor] add a Save Layout button to the top of the top of the monitor page, clicking it saves the panel layout exactly as is to ",
+      "description": "add a Save Layout button to the top of the top of the monitor page, clicking it saves the panel layout exactly as is to redisplay this exact display when the user visits the tool.",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771494663237_4db2a3",
+        "tool": "Monitor",
+        "severity": "LOW",
+        "category": "feature-request",
+        "file": "Feedback-Monitor.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T04:13:08.471808Z",
+      "updatedAt": "2026-02-19T04:14:44.681453Z",
+      "completedAt": "2026-02-19T04:14:44.681453Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "All changes are clean and correct.\n\n## Changes Applied\n\n### Files Modified\n- `static/index.html` \u2014 Added \"Save Layout\" button to header (first button in header-right)\n- `static/style.css` \u2014 Added `.header-btn-layout` styles (purple border/text, green flash on save)\n- `static/app.js` \u2014 Added `saveLayout()` and `restoreSavedLayout()` functions; `restoreSavedLayout()` runs at the start of `init()`\n\n### What Was Done\nAdded a \"Save Layout\" button to the top-right of the Monitor header. Clicking it captures a complete layout snapshot (panel order, panel sizes, and panel visibility) into a single `opai-monitor-saved-layout` localStorage key. On page load, `restoreSavedLayout()` restores this snapshot before the panel systems initialize, so the user sees exactly what they saved. The button briefly flashes green with \"Saved!\" text as confirmation.\n\n### Remaining Items\n- Service restart needed (`opai-monitor`) for changes to take effect on the live instance",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-005-feedback-fix.md",
+        "completedAt": "2026-02-19T04:14:44.681453Z"
+      },
+      "attachments": [],
+      "retryCount": 1
+    },
+    "t-20260219-006": {
+      "id": "t-20260219-006",
+      "title": "[Wordpress] we need to be able to search orders",
+      "description": "we need to be able to search orders",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771500396744_760995",
+        "tool": "Wordpress",
+        "severity": "MEDIUM",
+        "category": "uncategorized",
+        "file": "Feedback-Wordpress.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "high",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T05:28:55.168599Z",
+      "updatedAt": "2026-02-19T05:44:04.671203Z",
+      "completedAt": "2026-02-19T05:44:04.671203Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "(Agent produced no output)",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-006-feedback-fix.md",
+        "completedAt": "2026-02-19T05:44:04.671203Z"
+      },
+      "attachments": [],
+      "retryCount": 1,
+      "lastSessionId": "c48d65de-409c-4259-b905-0985f19a8155"
+    },
+    "t-20260219-007": {
+      "id": "t-20260219-007",
+      "title": "[Tasks] the re-submit button on the All Tasks tab needs to be on the Audit tab soo for each report and resubmit the task to the ",
+      "description": "the re-submit button on the All Tasks tab needs to be on the Audit tab soo for each report and resubmit the task to the queue",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771510430953_507051",
+        "tool": "Tasks",
+        "severity": "MEDIUM",
+        "category": "uncategorized",
+        "file": "Feedback-Tasks.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "high",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T08:14:12.522297Z",
+      "updatedAt": "2026-02-19T08:14:50.461073Z",
+      "completedAt": "2026-02-19T08:14:50.461073Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "claude-direct",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "(Agent produced no output)",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-007-feedback-fix.md",
+        "completedAt": "2026-02-19T08:14:50.461073Z"
+      },
+      "attachments": [],
+      "retryCount": 1,
+      "lastSessionId": "c9169804-d299-452e-a167-3dfc1b769171"
+    },
+    "t-20260220-001": {
+      "id": "t-20260220-001",
+      "title": "opai-portal: feedback-queue.json write is not thread-safe (concurrent requests can lose data)",
+      "description": "In tools/opai-portal/app.py around line 240, the /api/feedback and /api/request endpoints both perform a read-modify-write on feedback-queue.json with no file locking or mutex. If two users submit feedback simultaneously, the second write will clobber the first, silently dropping a feedback entry. The comment says 'Atomic-ish write' but there is no actual atomicity. Fix: add a threading.Lock() around the read-append-write block, or use append-only writes (one JSON object per line). Also applies to the /api/request endpoint which writes to the same file.",
+      "status": "failed",
+      "priority": "high",
+      "source": "audit",
+      "tool": "opai-portal",
+      "agent": "backend_builder",
+      "squad": null,
+      "createdAt": "2026-02-20T00:00:00.000Z",
+      "updatedAt": "2026-02-23T22:41:53.957019+00:00",
+      "completedAt": null,
+      "tags": [
+        "bug",
+        "audit-2026-02-20",
+        "race-condition",
+        "data-loss"
+      ],
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "auto_safe"
+        ],
+        "mode": "auto_safe"
+      },
+      "assignee": "agent",
+      "agentConfig": {
+        "agentId": "auto_safe",
+        "agentType": "squad",
+        "agentName": "auto_safe",
+        "instructions": "",
+        "response": "Squad 'auto_safe' exited with code 1"
+      },
+      "client": null,
+      "project": null,
+      "deadline": null
+    },
+    "t-20260220-002": {
+      "id": "t-20260220-002",
+      "title": "opai-portal: _feedback_rate and _request_rate dicts grow unbounded (memory leak)",
+      "description": "In tools/opai-portal/app.py, _feedback_rate and _request_rate are module-level defaultdict objects that accumulate one entry per unique client IP address and are never pruned. On a long-running server with many unique callers the dicts will grow indefinitely. Old entries whose timestamp windows have expired are only cleaned on the NEXT request from the same IP. Fix: periodically expire old IP entries (e.g. in a background task or by capping the dict size), or switch to a TTL cache like cachetools.TTLCache.",
+      "status": "failed",
+      "priority": "normal",
+      "source": "audit",
+      "tool": "opai-portal",
+      "agent": "backend_builder",
+      "squad": null,
+      "createdAt": "2026-02-20T00:00:00.000Z",
+      "updatedAt": "2026-02-24T02:43:45.800231+00:00",
+      "completedAt": null,
+      "tags": [
+        "bug",
+        "audit-2026-02-20",
+        "memory-leak"
+      ],
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "auto_safe"
+        ],
+        "mode": "execute"
+      },
+      "assignee": "agent",
+      "agentConfig": {
+        "agentId": "auto_safe",
+        "agentType": "squad",
+        "agentName": "auto_safe",
+        "instructions": "",
+        "response": "Squad 'auto_safe' exited with code 1"
+      }
+    },
+    "t-20260220-003": {
+      "id": "t-20260220-003",
+      "title": "opai-portal: task ID generation has race condition when multiple requests arrive simultaneously",
+      "description": "In tools/opai-portal/app.py /api/request handler (around line 320), the portal reads registry.json, counts existing tasks for today, derives a next_num, and writes the new task \u2014 all without a lock. The opai-tasks service does the same in services.py generate_task_id(). If both services run concurrently (common: portal submits a user request at the same time the tasks auto-executor creates a task), they can generate the same t-YYYYMMDD-NNN ID and one write will overwrite the other. Fix: use the services.generate_task_id() function exclusively through the tasks API, or add a cross-process file lock (e.g. fcntl.flock) around registry reads and writes.",
+      "status": "failed",
+      "priority": "high",
+      "source": "audit",
+      "tool": "opai-portal",
+      "agent": "backend_builder",
+      "squad": null,
+      "createdAt": "2026-02-20T00:00:00.000Z",
+      "updatedAt": "2026-02-24T02:41:45.552983+00:00",
+      "completedAt": null,
+      "tags": [
+        "bug",
+        "audit-2026-02-20",
+        "race-condition"
+      ],
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "plan"
+        ],
+        "mode": "execute"
+      },
+      "assignee": "agent",
+      "agentConfig": {
+        "agentId": "plan",
+        "agentType": "squad",
+        "agentName": "plan",
+        "instructions": "",
+        "response": "Squad 'plan' exited with code 1"
+      }
+    },
+    "t-20260220-004": {
+      "id": "t-20260220-004",
+      "title": "opai-chat: /api/files/read and /api/files/search do not enforce sandbox scope for non-admin users",
+      "description": "In tools/opai-chat/routes_api.py, the /api/files/browse endpoint correctly scopes non-admin users to their sandbox path (config.USERS_ROOT / user.id). However /api/files/read (line ~160) and /api/files/search (line ~175) pass the caller-supplied path directly to context_resolver.resolver without applying the same sandbox restriction. A non-admin user can supply any allowed-root path (e.g. /workspace/synced/opai/notes/) and read or search files they should not access. The context_resolver does check ALLOWED_ROOTS and BLOCKED_PATTERNS but does not enforce per-user sandbox isolation. Fix: apply the same user_root scoping guard to read_file and search_files that browse_files already uses.",
+      "status": "failed",
+      "priority": "high",
+      "source": "audit",
+      "tool": "opai-chat",
+      "agent": "security",
+      "squad": null,
+      "createdAt": "2026-02-20T00:00:00.000Z",
+      "updatedAt": "2026-02-24T02:41:15.502918+00:00",
+      "completedAt": null,
+      "tags": [
+        "bug",
+        "audit-2026-02-20",
+        "security",
+        "authorization"
+      ],
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "auto_safe"
+        ],
+        "mode": "execute"
+      },
+      "assignee": "agent",
+      "agentConfig": {
+        "agentId": "auto_safe",
+        "agentType": "squad",
+        "agentName": "auto_safe",
+        "instructions": "",
+        "response": "Squad 'auto_safe' exited with code 1"
+      }
+    },
+    "t-20260220-005": {
+      "id": "t-20260220-005",
+      "title": "opai-chat: CORS wildcard origin combined with allow_credentials=True is a security misconfiguration",
+      "description": "In tools/opai-chat/app.py the CORS middleware is configured with allow_origins=['*'] AND allow_credentials=True. This combination is invalid per the CORS spec (browsers reject credentialed requests with a wildcard origin) and could allow cross-site request forgery from any origin if a browser bug or non-browser client is used. FastAPI/Starlette will actually raise an error at runtime about this combination. Fix: replace allow_origins=['*'] with an explicit allowlist of permitted origins (e.g. ['https://opai.boutabyte.com', 'https://opai-server']) and keep allow_credentials=True.",
+      "status": "failed",
+      "priority": "high",
+      "source": "audit",
+      "tool": "opai-chat",
+      "agent": "security",
+      "squad": null,
+      "createdAt": "2026-02-20T00:00:00.000Z",
+      "updatedAt": "2026-02-24T02:41:45.557891+00:00",
+      "completedAt": null,
+      "tags": [
+        "bug",
+        "audit-2026-02-20",
+        "security",
+        "cors"
+      ],
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "auto_safe"
+        ],
+        "mode": "execute"
+      },
+      "assignee": "agent",
+      "agentConfig": {
+        "agentId": "auto_safe",
+        "agentType": "squad",
+        "agentName": "auto_safe",
+        "instructions": "",
+        "response": "Squad 'auto_safe' exited with code 1"
+      }
+    },
+    "t-20260220-006": {
+      "id": "t-20260220-006",
+      "title": "opai-chat: conversation ID generation uses Python object id() which is not unique across processes or restarts",
+      "description": "In tools/opai-chat/conversation_store.py create_conversation(), the ID is built as conv_{timestamp}_{id(timestamp) % 10000:04x}. id() returns the memory address of the Python object, which resets every restart and can collide across the 4-hex-digit (65536-value) range if two conversations are created in the same second. On a busy server this is a real collision risk that would silently overwrite an existing conversation file. Fix: replace id(timestamp) with uuid.uuid4().hex[:8] or secrets.token_hex(4) for a random, collision-resistant suffix.",
+      "status": "failed",
+      "priority": "normal",
+      "source": "audit",
+      "tool": "opai-chat",
+      "agent": "backend_builder",
+      "squad": null,
+      "createdAt": "2026-02-20T00:00:00.000Z",
+      "updatedAt": "2026-02-24T02:44:45.896525+00:00",
+      "completedAt": null,
+      "tags": [
+        "bug",
+        "audit-2026-02-20",
+        "data-integrity"
+      ],
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "plan"
+        ],
+        "mode": "execute"
+      },
+      "assignee": "agent",
+      "agentConfig": {
+        "agentId": "plan",
+        "agentType": "squad",
+        "agentName": "plan",
+        "instructions": "",
+        "response": "Squad 'plan' exited with code 1"
+      }
+    },
+    "t-20260220-007": {
+      "id": "t-20260220-007",
+      "title": "opai-monitor: /api/system/stats and /api/system/services expose system metrics with no authentication",
+      "description": "In tools/opai-monitor/routes_api.py, the GET /api/system/stats and GET /api/system/services endpoints have no auth dependency. The comment on system_stats says 'No auth \u2014 same as /health/summary' but /health/summary is intended to be a machine-to-machine check whereas /api/system/services returns a list of all running systemd services, their states, and the ability to infer the server topology. The /api/agents endpoint and /api/agents/{pid} are also unauthenticated, exposing running PID data and process command lines. The WebSocket endpoints /ws/stats, /ws/agents, /ws/logs all accept connections with no authentication. Fix: add require_admin dependency to /api/system/services, /api/agents, /api/agents/{pid}, and implement token-based auth on the WebSocket endpoints before streaming.",
+      "status": "failed",
+      "priority": "high",
+      "source": "audit",
+      "tool": "opai-monitor",
+      "agent": "security",
+      "squad": null,
+      "createdAt": "2026-02-20T00:00:00.000Z",
+      "updatedAt": "2026-02-24T02:42:15.633097+00:00",
+      "completedAt": null,
+      "tags": [
+        "bug",
+        "audit-2026-02-20",
+        "security",
+        "missing-auth"
+      ],
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "plan"
+        ],
+        "mode": "execute"
+      },
+      "assignee": "agent",
+      "agentConfig": {
+        "agentId": "plan",
+        "agentType": "squad",
+        "agentName": "plan",
+        "instructions": "",
+        "response": "Squad 'plan' exited with code 1"
+      }
+    },
+    "t-20260220-008": {
+      "id": "t-20260220-008",
+      "title": "opai-tasks: write_registry() is not protected by _registry_lock \u2014 concurrent threads can corrupt registry.json",
+      "description": "In tools/opai-tasks/services.py, read_registry() and write_registry() both lack the _registry_lock mutex. The auto_execute_cycle acquires _registry_lock only for the initial read (line 65374), then immediately releases it. Meanwhile run_agent_task(), _run_feedback_fix(), and the HTTP API route handlers all call write_registry() outside any lock. If the auto-executor launches a task in a thread that calls write_registry() at the same time an API request does, the last writer wins and earlier writes are lost \u2014 potentially marking a task as pending again when it should be in_progress, or dropping status changes. Fix: acquire _registry_lock in all write_registry() call sites, or make read_registry/write_registry manage the lock internally.",
+      "status": "failed",
+      "priority": "high",
+      "source": "audit",
+      "tool": "opai-tasks",
+      "agent": "backend_builder",
+      "squad": null,
+      "createdAt": "2026-02-20T00:00:00.000Z",
+      "updatedAt": "2026-02-24T02:42:15.627935+00:00",
+      "completedAt": null,
+      "tags": [
+        "bug",
+        "audit-2026-02-20",
+        "race-condition",
+        "data-integrity"
+      ],
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "review"
+        ],
+        "mode": "execute"
+      },
+      "assignee": "agent",
+      "agentConfig": {
+        "agentId": "review",
+        "agentType": "squad",
+        "agentName": "review",
+        "instructions": "",
+        "response": "Squad 'review' exited with code 1"
+      }
+    },
+    "t-20260220-009": {
+      "id": "t-20260220-009",
+      "title": "opai-tasks: GET /api/tasks and GET /api/tasks/{task_id} have no authentication \u2014 any unauthenticated caller can read all task data",
+      "description": "In tools/opai-tasks/routes_api.py, the list_tasks and get_task endpoints have no auth dependency. All other mutating endpoints (POST, PATCH, DELETE) correctly use Depends(require_admin), but the read endpoints are open. The task registry may contain sensitive information including user emails from feedback submissions, agent instructions, source references, and project/client names. Fix: add Depends(require_admin) to list_tasks and get_task, or at minimum add Depends(get_current_user) to require a valid Supabase session.",
+      "status": "failed",
+      "priority": "high",
+      "source": "audit",
+      "tool": "opai-tasks",
+      "agent": "security",
+      "squad": null,
+      "createdAt": "2026-02-20T00:00:00.000Z",
+      "updatedAt": "2026-02-24T02:42:45.693113+00:00",
+      "completedAt": null,
+      "tags": [
+        "bug",
+        "audit-2026-02-20",
+        "security",
+        "missing-auth"
+      ],
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "auto_safe"
+        ],
+        "mode": "execute"
+      },
+      "assignee": "agent",
+      "agentConfig": {
+        "agentId": "auto_safe",
+        "agentType": "squad",
+        "agentName": "auto_safe",
+        "instructions": "",
+        "response": "Squad 'auto_safe' exited with code 1"
+      }
+    },
+    "t-20260220-010": {
+      "id": "t-20260220-010",
+      "title": "opai-wordpress: /api/backups/{backup_id}/download does not verify the requesting user owns the backup",
+      "description": "In tools/opai-wordpress/routes_automation.py, the download_backup endpoint fetches the backup from Supabase by backup_id only, with no user_id filter. Any authenticated user who guesses or brute-forces a UUID backup_id can download another user's site backup, which includes full database exports and may contain sensitive customer data. Similarly, list_backups in the same file queries wp_backups filtered only by site_id with no user_id guard, allowing a user to enumerate another user's backups if they know the site_id. Fix: add &user_id=eq.{user.id} filter to the backup lookup in download_backup (and allow admins to bypass), and add the same guard to list_backups.",
+      "status": "pending",
+      "priority": "high",
+      "source": "audit",
+      "tool": "opai-wordpress",
+      "agent": "security",
+      "squad": null,
+      "createdAt": "2026-02-20T00:00:00.000Z",
+      "updatedAt": "2026-02-24T02:40:36.302875+00:00",
+      "completedAt": null,
+      "tags": [
+        "bug",
+        "audit-2026-02-20",
+        "security",
+        "authorization",
+        "data-leak"
+      ],
+      "routing": {
+        "type": "wordpress",
+        "squads": [],
+        "mode": "propose"
+      },
+      "assignee": "human"
+    },
+    "t-20260220-011": {
+      "id": "t-20260220-011",
+      "title": "opai-wordpress: app.py health endpoint reports version '1.0.0' but FastAPI app declares version '1.5.0'",
+      "description": "In tools/opai-wordpress/app.py, the FastAPI app is initialized with version='1.5.0' but the /health endpoint hardcodes 'version': '1.0.0'. The monitor health aggregator uses the version field from health responses, so the monitor will always display an outdated version for the WordPress tool. This also indicates the health endpoint was not updated when the tool was upgraded. Fix: replace the hardcoded '1.0.0' string in the health() function with a module-level VERSION constant that matches the FastAPI app definition, or read it from config.py.",
+      "status": "completed",
+      "priority": "low",
+      "source": "audit",
+      "tool": "opai-wordpress",
+      "agent": "backend_builder",
+      "squad": null,
+      "createdAt": "2026-02-20T00:00:00.000Z",
+      "updatedAt": "2026-02-24T05:54:16.531345+00:00",
+      "completedAt": "2026-02-24T05:54:16.531345+00:00",
+      "tags": [
+        "bug",
+        "audit-2026-02-20",
+        "stale-code"
+      ],
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "auto_safe"
+        ],
+        "mode": "execute"
+      },
+      "assignee": "agent",
+      "agentConfig": {
+        "agentId": "auto_safe",
+        "agentType": "squad",
+        "agentName": "auto_safe",
+        "instructions": "",
+        "response": "Squad 'auto_safe' exited with code 0: \u001b[1;33m[>>] executor_safe\u001b[0m\n  \u001b[0;32m[OK] executor_safe (485B)\u001b[0m"
+      },
+      "executionResult": {
+        "exitCode": 0,
+        "stderr": "  \u001b[1;33m[>>] executor_safe\u001b[0m\n  \u001b[0;32m[OK] executor_safe (485B)\u001b[0m\n",
+        "stdout_tail": "8s) ===\u001b[0m\n  \u001b[0;32m[OK] health\u001b[0m\n  \u001b[0;90m[--] reviewer\u001b[0m\n  \u001b[0;32m[OK] security\u001b[0m\n  \u001b[0;32m[OK] executor_safe\u001b[0m\n  \u001b[0;32m[OK] accuracy\u001b[0m\n\u001b[0;36mReports: /workspace/synced/opai/reports/2026-02-23\u001b[0m\n\u001b[0;90mSummary: /workspace/synced/opai/reports/2026-02-23/_run_summary.md\u001b[0m\n[hook] Processing 6 report(s) for squad 'auto_safe'\n[hook] Audit entry written: audit-20260223-605-456486\n[hook] No findings and not a monitored squad \u2014 skipping tasks and email\n[hook] Post-squad hook complete\n"
+      }
+    },
+    "t-20260220-012": {
+      "id": "t-20260220-012",
+      "title": "opai-wordpress: deprecated @app.on_event('startup') used instead of lifespan context manager",
+      "description": "In tools/opai-wordpress/app.py, the startup logic uses the deprecated FastAPI @app.on_event('startup') decorator. This was deprecated in FastAPI 0.93 and will be removed in a future version. It also means the background tasks (update_checker, scheduler_loop, connection_agent_loop) started inside the handler are not properly cancelled on shutdown, potentially leaving zombie asyncio tasks. Fix: migrate to the lifespan context manager pattern (already used correctly in opai-monitor and opai-tasks) using @asynccontextmanager and the lifespan= parameter on the FastAPI constructor, which allows proper startup and graceful shutdown of all background tasks.",
+      "status": "failed",
+      "priority": "normal",
+      "source": "audit",
+      "tool": "opai-wordpress",
+      "agent": "backend_builder",
+      "squad": null,
+      "createdAt": "2026-02-20T00:00:00.000Z",
+      "updatedAt": "2026-02-24T02:44:45.900068+00:00",
+      "completedAt": null,
+      "tags": [
+        "bug",
+        "audit-2026-02-20",
+        "deprecated-api",
+        "resource-leak"
+      ],
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "auto_safe"
+        ],
+        "mode": "execute"
+      },
+      "assignee": "agent",
+      "agentConfig": {
+        "agentId": "auto_safe",
+        "agentType": "squad",
+        "agentName": "auto_safe",
+        "instructions": "",
+        "response": "Squad 'auto_safe' exited with code 1"
+      }
+    },
+    "t-20260222-001": {
+      "id": "t-20260222-001",
+      "title": "[Self-Assessment completed] \u2014 2026-02-22",
+      "description": "**Squad:** evolve\n**Run date:** 2026-02-22\n**Status:** \u2705 Success\n**Agents run:** _run_summary, evolve_safe_plan, self_assessment\n**Critical/High findings:** 0\n**Action items:** 0\n\n### Reports\n- [_run_summary.md](/workspace/synced/opai/reports/2026-02-22/_run_summary.md)\n- [evolve_safe_plan.md](/workspace/synced/opai/reports/2026-02-22/evolve_safe_plan.md)\n- [self_assessment.md](/workspace/synced/opai/reports/2026-02-22/self_assessment.md)",
+      "source": "self-assessment",
+      "sourceRef": {
+        "squad": "evolve",
+        "reportDir": "/workspace/synced/opai/reports/2026-02-22"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "cancelled",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "audit"
+        ],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-22T22:51:14.313215+00:00",
+      "updatedAt": "2026-02-23T02:23:19.408991+00:00",
+      "completedAt": null,
+      "agentConfig": {
+        "agentId": "audit",
+        "agentType": "squad",
+        "agentName": "audit",
+        "instructions": "",
+        "response": "Squad 'audit' exited with code 1"
+      },
+      "attachments": [
+        {
+          "name": "_run_summary.md",
+          "path": "/workspace/synced/opai/reports/2026-02-22/_run_summary.md",
+          "addedAt": "2026-02-22T22:51:14.313215+00:00"
+        },
+        {
+          "name": "evolve_safe_plan.md",
+          "path": "/workspace/synced/opai/reports/2026-02-22/evolve_safe_plan.md",
+          "addedAt": "2026-02-22T22:51:14.313215+00:00"
+        },
+        {
+          "name": "self_assessment.md",
+          "path": "/workspace/synced/opai/reports/2026-02-22/self_assessment.md",
+          "addedAt": "2026-02-22T22:51:14.313215+00:00"
+        }
+      ]
+    },
+    "t-20260222-002": {
+      "id": "t-20260222-002",
+      "title": "[replace_line] .gitignore",
+      "description": "**Source:** Evolution Plan (evolve_safe_plan.md)\n\n**File:** .gitignore\n**Action:** replace_line\n**Reason:** security.md (S-04), secrets_detector.md (Environment File Audit / P1 action items), report_dispatcher.md (INS-001). 22 .env files with live production credentials are not excluded from git tracking. This is a purely additive change \u2014 it prevents future accidental commits and does not affect any tracked file.\n\n```fix\nFILE: .gitignore\nLINE: 58-60\nACTION: replace_line\nREASON: security.md (S-04), secrets_detector.md (Environment File Audit / P1 action items), report_dispatcher.md (INS-001). 22 .env files with live production credentials are not excluded from git tracking. This is a purely additive change \u2014 it prevents future accidental commits and does not affect any tracked file.\nBEFORE: Credentials.md\n\n# \u2500\u2500 Migration Backups \u2500\u2500\nAFTER: Credentials.md\n\n# \u2500\u2500 Environment / Secrets (NEVER commit) \u2500\u2500\n.env\n.env.local\n.env.*.local\n!.env.example\n!.env.template\n\n# \u2500\u2500 Migration Backups \u2500\u2500\n```",
+      "source": "evolution-plan",
+      "sourceRef": {
+        "planFile": "/workspace/synced/opai/reports/latest/evolve_safe_plan.md",
+        "stepIndex": 0
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "cancelled",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "auto_safe"
+        ],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-22T23:47:23.844303+00:00",
+      "updatedAt": "2026-02-23T02:23:49.414416+00:00",
+      "completedAt": null,
+      "agentConfig": {
+        "agentId": "auto_safe",
+        "agentType": "squad",
+        "agentName": "auto_safe",
+        "instructions": "",
+        "response": "Squad 'auto_safe' exited with code 1"
+      },
+      "attachments": [
+        {
+          "name": "evolve_safe_plan.md",
+          "path": "/workspace/synced/opai/reports/latest/evolve_safe_plan.md",
+          "addedAt": "2026-02-22T23:47:23.844303+00:00"
+        }
+      ]
+    },
+    "t-20260222-003": {
+      "id": "t-20260222-003",
+      "title": "[delete_line] Projects/BoutaChat/package.json",
+      "description": "**Source:** Evolution Plan (evolve_safe_plan.md)\n\n**File:** Projects/BoutaChat/package.json\n**Action:** delete_line\n**Reason:** dep_scanner.md (Finding M-07), report_dispatcher.md (DEP-M07). TypeScript @types/* packages are compile-time only and have no runtime representation. They must never appear in production `dependencies`. Moving this to `devDependencies` produces identical runtime behaviour and identical Vite bundle output.\n\n```fix\nFILE: Projects/BoutaChat/package.json\nLINE: 14\nACTION: delete_line\nREASON: dep_scanner.md (Finding M-07), report_dispatcher.md (DEP-M07). TypeScript @types/* packages are compile-time only and have no runtime representation. They must never appear in production `dependencies`. Moving this to `devDependencies` produces identical runtime behaviour and identical Vite bundle output.\nBEFORE:     \"@types/react-syntax-highlighter\": \"^15.5.13\",\n```",
+      "source": "evolution-plan",
+      "sourceRef": {
+        "planFile": "/workspace/synced/opai/reports/latest/evolve_safe_plan.md",
+        "stepIndex": 1
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "cancelled",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "auto_safe"
+        ],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-22T23:48:08.267284+00:00",
+      "updatedAt": "2026-02-23T02:24:19.438628+00:00",
+      "completedAt": null,
+      "agentConfig": {
+        "agentId": "auto_safe",
+        "agentType": "squad",
+        "agentName": "auto_safe",
+        "instructions": "",
+        "response": "Squad 'auto_safe' exited with code 1"
+      },
+      "attachments": [
+        {
+          "name": "evolve_safe_plan.md",
+          "path": "/workspace/synced/opai/reports/latest/evolve_safe_plan.md",
+          "addedAt": "2026-02-22T23:48:08.267284+00:00"
+        }
+      ]
+    },
+    "t-20260222-004": {
+      "id": "t-20260222-004",
+      "title": "[replace_line] Projects/BoutaChat/package.json",
+      "description": "**Source:** Evolution Plan (evolve_safe_plan.md)\n\n**File:** Projects/BoutaChat/package.json\n**Action:** replace_line\n**Reason:** dep_scanner.md (Finding M-07) \u2014 completing relocation from dependencies to devDependencies.\n\n```fix\nFILE: Projects/BoutaChat/package.json\nLINE: 24\nACTION: replace_line\nREASON: dep_scanner.md (Finding M-07) \u2014 completing relocation from dependencies to devDependencies.\nBEFORE:     \"@types/react-dom\": \"^19.2.3\",\nAFTER:     \"@types/react-dom\": \"^19.2.3\",\n    \"@types/react-syntax-highlighter\": \"^15.5.13\",\n```",
+      "source": "evolution-plan",
+      "sourceRef": {
+        "planFile": "/workspace/synced/opai/reports/latest/evolve_safe_plan.md",
+        "stepIndex": 2
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "cancelled",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "auto_safe"
+        ],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-22T23:48:40.526998+00:00",
+      "updatedAt": "2026-02-23T02:25:49.435328+00:00",
+      "completedAt": null,
+      "agentConfig": {
+        "agentId": "auto_safe",
+        "agentType": "squad",
+        "agentName": "auto_safe",
+        "instructions": "",
+        "response": "Squad 'auto_safe' exited with code 1"
+      },
+      "attachments": [
+        {
+          "name": "evolve_safe_plan.md",
+          "path": "/workspace/synced/opai/reports/latest/evolve_safe_plan.md",
+          "addedAt": "2026-02-22T23:48:40.526998+00:00"
+        }
+      ]
+    },
+    "t-20260222-005": {
+      "id": "t-20260222-005",
+      "title": "[replace_line] Projects/SEO-GEO-Automator/Codebase/webapp/package.json",
+      "description": "**Source:** Evolution Plan (evolve_safe_plan.md)\n\n**File:** Projects/SEO-GEO-Automator/Codebase/webapp/package.json\n**Action:** replace_line\n**Reason:** dep_scanner.md (Finding M-06), report_dispatcher.md (DEP-M06). axios is a runtime HTTP client used in production application code. Listing it under devDependencies means it is absent from production installs (`npm ci --production` / `npm install --omit=dev`), causing a runtime crash when the production build tries to import it. In a Vite project the bundle is identical regardless of section \u2014 this change only fixes the production install scenario.\n\n```fix\nFILE: Projects/SEO-GEO-Automator/Codebase/webapp/package.json\nLINE: 14-15\nACTION: replace_line\nREASON: dep_scanner.md (Finding M-06), report_dispatcher.md (DEP-M06). axios is a runtime HTTP client used in production application code. Listing it under devDependencies means it is absent from production installs (`npm ci --production` / `npm install --omit=dev`), causing a runtime crash when the production build tries to import it. In a Vite project the bundle is identical regardless of section \u2014 this change only fixes the production install scenario.\nBEFORE:     \"react\": \"^19.2.0\",\n    \"react-dom\": \"^19.2.0\"\nAFTER:     \"axios\": \"^1.13.2\",\n    \"react\": \"^19.2.0\",\n    \"react-dom\": \"^19.2.0\"\n```",
+      "source": "evolution-plan",
+      "sourceRef": {
+        "planFile": "/workspace/synced/opai/reports/latest/evolve_safe_plan.md",
+        "stepIndex": 3
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "cancelled",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "auto_safe"
+        ],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-22T23:49:29.601317+00:00",
+      "updatedAt": "2026-02-23T02:24:49.445361+00:00",
+      "completedAt": null,
+      "agentConfig": {
+        "agentId": "auto_safe",
+        "agentType": "squad",
+        "agentName": "auto_safe",
+        "instructions": "",
+        "response": "Squad 'auto_safe' exited with code 1"
+      },
+      "attachments": [
+        {
+          "name": "evolve_safe_plan.md",
+          "path": "/workspace/synced/opai/reports/latest/evolve_safe_plan.md",
+          "addedAt": "2026-02-22T23:49:29.601317+00:00"
+        }
+      ]
+    },
+    "t-20260222-006": {
+      "id": "t-20260222-006",
+      "title": "[delete_line] Projects/SEO-GEO-Automator/Codebase/webapp/package.json",
+      "description": "**Source:** Evolution Plan (evolve_safe_plan.md)\n\n**File:** Projects/SEO-GEO-Automator/Codebase/webapp/package.json\n**Action:** delete_line\n**Reason:** dep_scanner.md (Finding M-06) \u2014 completing relocation from devDependencies to dependencies.\n\n```fix\nFILE: Projects/SEO-GEO-Automator/Codebase/webapp/package.json\nLINE: 23\nACTION: delete_line\nREASON: dep_scanner.md (Finding M-06) \u2014 completing relocation from devDependencies to dependencies.\nBEFORE:     \"axios\": \"^1.13.2\",\n```",
+      "source": "evolution-plan",
+      "sourceRef": {
+        "planFile": "/workspace/synced/opai/reports/latest/evolve_safe_plan.md",
+        "stepIndex": 4
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "cancelled",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "auto_safe"
+        ],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-22T23:49:30.444615+00:00",
+      "updatedAt": "2026-02-23T02:25:19.448559+00:00",
+      "completedAt": null,
+      "agentConfig": {
+        "agentId": "auto_safe",
+        "agentType": "squad",
+        "agentName": "auto_safe",
+        "instructions": "",
+        "response": "Squad 'auto_safe' exited with code 1"
+      },
+      "attachments": [
+        {
+          "name": "evolve_safe_plan.md",
+          "path": "/workspace/synced/opai/reports/latest/evolve_safe_plan.md",
+          "addedAt": "2026-02-22T23:49:30.444615+00:00"
+        }
+      ]
+    },
+    "t-20260223-001": {
+      "id": "t-20260223-001",
+      "title": "Fix: orchestrator email-check failed",
+      "description": "Auto-generated from AI audit analysis.\n\n## Audit Context\n- **Audit ID**: audit-20260223-431-077312\n- **Service**: opai-orchestrator\n- **Event**: email-check\n- **Agent**: ?\n- **Status**: failed\n\n## AI Analysis\n# OPAI Log Analysis: Email Check Failure\n\n## Status\n**\ud83d\udd34 FAILED**\n\n---\n\n## What Happened\nA system-level email check task was triggered by the orchestrator at 19:31:17 UTC on 2026-02-23. The operation timed out after ~33 seconds and failed to complete. This is a non-AI service task (token counts = 0), likely part of the email agent's scheduled polling routine.\n\n---\n\n## Issues Found\n\n| Issue | Severity | Detail |\n|-------|----------|--------|\n| **No error details** | HIGH | Summary only says \"Email check failed \u2014 33s\" with no exception trace |\n| **Missing metadata** | MEDIUM | Agent, Agent Type, Model all unknown (?) \u2014 suggests incomplete logging |\n| **Unclear failure mode** | HIGH | Could be: IMAP timeout, auth failure, network issue, or service offline |\n| **32.6s duration** | MEDIUM | Long for email poll; may indicate network lag or hanging connection |\n\n---\n\n## Suggested Fix\n\n**Investigate the actual error:**\n\n1. **Check orchestrator logs** for the specific exception:\n   ```bash\n   tail -n 100 /workspace/synced/opai/logs/orchestrator.log | grep \"email-check\"\n   ```\n\n2. **Check email agent service status:**\n   ```bash\n   ./scripts/opai-control.sh status | grep email-agent\n   ```\n\n3. **Review email agent logs** (if available):\n   ```bash\n   tail -n 50 tools/opai-email-agent/data/agent-state.json\n   ```\n\n4. **Common causes to check:**\n   - IMAP server connectivity (email credentials, firewall, ISP blocking)\n   - Email agent service crash or hung process\n   - Supabase/database connection timeout\n   - Rate limiting on email account\n\n**Create a task if needed:**\n```\nTitle: Debug email-check orchestrator task failure (audit-20260223-431-077312)\nDescription: Email check hung at 33s with no error trace. Investigate orchestrator logs for IMAP/auth/network failure. Check email-agent service status.\nPriority: Medium\n```",
+      "source": "ai-audit-analysis",
+      "sourceRef": {
+        "auditId": "audit-20260223-431-077312"
+      },
+      "project": "OPAI Server",
+      "client": null,
+      "assignee": "agent",
+      "status": "cancelled",
+      "priority": "high",
+      "deadline": null,
+      "routing": {
+        "type": "agent-assigned",
+        "squads": [
+          "auto_safe"
+        ],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-23T19:40:20.540579+00:00",
+      "updatedAt": "2026-02-24T03:15:11.022087+00:00",
+      "completedAt": null,
+      "agentConfig": {
+        "agentId": "auto_safe",
+        "agentType": "squad",
+        "agentName": "auto_safe",
+        "instructions": "",
+        "response": "Squad 'auto_safe' exited with code 1"
+      },
+      "attachments": []
+    },
+    "t-20260226-001": {
+      "id": "t-20260226-001",
+      "title": "[TeamHub] On the main List page in the dashboard when you filter it only allows you to type in a single letter and then the curser",
+      "description": "On the main List page in the dashboard when you filter it only allows you to type in a single letter and then the curser jumps out of the search block and sorts the page. This happens with every letter you type in the filter box",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1772141664443_2a482e",
+        "tool": "TeamHub",
+        "severity": "HIGH",
+        "category": "bug-fix",
+        "file": "Feedback-TeamHub.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "critical",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [
+          "plan"
+        ],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-26T21:46:05.693Z",
+      "updatedAt": "2026-02-26T21:48:26.698362+00:00",
+      "completedAt": "2026-02-26T21:48:26.698362+00:00",
+      "agentConfig": {
+        "agentId": "plan",
+        "agentType": "squad",
+        "agentName": "plan",
+        "instructions": "",
+        "response": "## Changes Applied\n\n- **`tools/opai-team-hub/static/app.js`** \u2014 Fixed the filter input focus-loss bug on the List dashboard.\n\n**Root cause:** `renderHomeListTable()` was replacing `el.innerHTML` with the entire page HTML (header + filters + table) every time the search changed. This destroyed and recreated the `<input>` element, immediately stealing its focus after each keypress \u2014 so only one character at a time could be typed before the cursor jumped out.\n\n**Fix:**\n1. Extracted row-building logic into a new `buildHomeListRows(items)` helper function.\n2. Added a surgical-update path to `renderHomeListTable()`: if `.home-list-view` already exists in the container, only update the subtitle text (item count) and the `tbody` innerHTML directly \u2014 leaving the `<input>` element untouched and in focus.\n3. The full `innerHTML` render only runs on the initial paint when `.home-list-view` doesn't yet exist.\n\nNo service restart required \u2014 this is a static JS file change that takes effect on browser reload.",
+        "reportFile": "/workspace/reports/2026-02-26/task-t-20260226-001-feedback-fix.md",
+        "completedAt": "2026-02-26T21:48:26.698362+00:00"
+      },
+      "attachments": [],
+      "retryCount": 1,
+      "lastSessionId": "8f937549-f120-42a3-a5a5-0364d930b236"
+    }
+  },
+  "lastUpdated": "2026-02-26T21:48:26.698804+00:00"
+}

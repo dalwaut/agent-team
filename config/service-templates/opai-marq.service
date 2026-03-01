@@ -1,0 +1,18 @@
+[Unit]
+Description=OPAI Marq — App Store Publisher Agent (port 8103)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-marq
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-marq
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8103
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/home/dallas/.nvm/versions/node/v20.19.5/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/workspace/synced/opai/tools/opai-marq/.env
+
+EnvironmentFile=-%t/opai-vault/opai-marq.env
+[Install]
+WantedBy=default.target

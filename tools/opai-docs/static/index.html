@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI Docs</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <link rel="stylesheet" href="/docs/static/style.css">
+</head>
+<body>
+    <!-- Loading state -->
+    <div id="loading" class="loading-screen">
+        <div class="loading-spinner"></div>
+        <p>Loading documentation...</p>
+    </div>
+
+    <!-- Main layout -->
+    <div id="app" class="app hidden">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">
+                    <div class="logo-icon">DC</div>
+                    <span class="logo-text">OPAI Docs</span>
+                </div>
+                <button id="sidebar-close" class="sidebar-close" title="Close sidebar">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+                </button>
+            </div>
+
+            <!-- Search -->
+            <div class="sidebar-search">
+                <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                <input type="text" id="search-input" placeholder="Search docs... (Ctrl+K)" autocomplete="off">
+                <div id="search-results" class="search-results hidden"></div>
+            </div>
+
+            <!-- Navigation -->
+            <nav id="sidebar-nav" class="sidebar-nav"></nav>
+
+            <!-- Footer -->
+            <div class="sidebar-footer">
+                <span id="generated-at" class="sidebar-meta"></span>
+                <button id="btn-regenerate" class="btn-regenerate hidden" title="Regenerate docs">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                    Regenerate
+                </button>
+            </div>
+        </aside>
+
+        <!-- Mobile header -->
+        <header id="mobile-header" class="mobile-header">
+            <button id="hamburger" class="hamburger" title="Open sidebar">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18"/><path d="M3 6h18"/><path d="M3 18h18"/></svg>
+            </button>
+            <span class="mobile-title">OPAI Docs</span>
+        </header>
+
+        <!-- Content -->
+        <main id="content" class="content">
+            <div id="content-inner" class="content-inner">
+                <!-- Rendered by app.js -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Overlay for mobile sidebar -->
+    <div id="sidebar-overlay" class="sidebar-overlay hidden"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
+    <script src="/auth/static/js/auth-v3.js"></script>
+    <script src="/auth/static/js/navbar.js" defer></script>
+    <script src="/docs/static/js/search.js"></script>
+    <script src="/docs/static/js/app.js"></script>
+</body>
+</html>

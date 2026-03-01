@@ -1,0 +1,33 @@
+[Unit]
+Description=OpenClaw Vault Broker — credential mediation for OC containers
+After=network.target opai-vault.service
+Wants=opai-vault.service
+
+[Service]
+Type=simple
+User=dallas
+Group=dallas
+WorkingDirectory=/workspace/synced/opai/tools/open-claw/broker
+Environment=PATH=/home/dallas/.nvm/versions/node/v20.19.5/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/dallas/bin
+
+# Load vault credentials (shared + service-specific)
+EnvironmentFile=-/workspace/synced/opai/tools/open-claw/broker/.env
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh open-claw
+EnvironmentFile=-%t/opai-vault/open-claw.env
+
+ExecStart=/workspace/synced/opai/tools/open-claw/broker/venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8106
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/workspace/synced/opai/tools/open-claw
+ReadOnlyPaths=/workspace/synced/opai/tools/opai-vault
+ReadOnlyPaths=/workspace/synced/opai/tools/shared
+
+[Install]
+WantedBy=multi-user.target

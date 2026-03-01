@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to OPAI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0b0f;
+            --bg-card: #12131a;
+            --border: #1e2030;
+            --text: #e4e6eb;
+            --text-muted: #8b8e96;
+            --accent: #6c5ce7;
+            --accent2: #22c55e;
+            --green: #00b894;
+            --radius: 12px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg); color: var(--text);
+            min-height: 100vh; display: flex;
+            align-items: center; justify-content: center;
+            padding: 24px;
+        }
+        .welcome-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 16px; padding: 48px; max-width: 560px; width: 100%;
+            text-align: center;
+        }
+        .welcome-icon {
+            font-size: 48px; margin-bottom: 24px;
+        }
+        h1 {
+            font-size: 28px; font-weight: 700; margin-bottom: 12px;
+        }
+        h1 span {
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .welcome-text {
+            color: var(--text-muted); font-size: 15px; line-height: 1.7;
+            margin-bottom: 32px;
+        }
+
+        .steps {
+            text-align: left; margin-bottom: 32px;
+        }
+        .step {
+            display: flex; gap: 16px; padding: 16px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .step:last-child { border-bottom: none; }
+        .step-num {
+            width: 32px; height: 32px; border-radius: 50%;
+            background: var(--accent); color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 700; flex-shrink: 0;
+        }
+        .step-content h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+        .step-content p { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+
+        .status-box {
+            background: rgba(0,184,148,0.1); border: 1px solid rgba(0,184,148,0.3);
+            border-radius: 8px; padding: 16px; margin-bottom: 24px;
+            font-size: 14px; color: var(--green);
+        }
+        .status-box.pending {
+            background: rgba(253,203,110,0.1); border-color: rgba(253,203,110,0.3);
+            color: var(--text-muted);
+        }
+
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 14px 32px; border-radius: 10px;
+            background: var(--accent); color: #fff;
+            font-weight: 600; font-size: 16px; border: none;
+            cursor: pointer; transition: all 0.2s; text-decoration: none;
+        }
+        .btn:hover { filter: brightness(1.15); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary {
+            background: transparent; border: 1px solid var(--border);
+            color: var(--text); font-size: 14px; padding: 10px 20px;
+        }
+        .btn-secondary:hover { border-color: var(--accent); }
+
+        .footer-text {
+            margin-top: 24px; font-size: 12px; color: var(--text-muted);
+        }
+        .footer-text a { color: var(--accent); }
+
+        .spinner {
+            width: 20px; height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="welcome-card">
+        <div class="welcome-icon">&#127911;</div>
+        <h1>Welcome to <span>OPAI</span></h1>
+        <div class="welcome-text">
+            Your purchase was successful! Your AI operations workspace is being set up.
+            Here's what happens next:
+        </div>
+
+        <div id="status-box" class="status-box pending">
+            <div class="spinner"></div>&nbsp; Setting up your workspace...
+        </div>
+
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <h3>Account Created</h3>
+                    <p>Check your email for login credentials. If you already have a BoutaByte account, use those credentials.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <h3>Workspace Provisioning</h3>
+                    <p>Your private workspace, file storage, and AI agent profiles are being configured. This typically takes a few minutes.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <h3>Access Your Dashboard</h3>
+                    <p>Once ready, click the button below to access your OPAI dashboard. You'll complete a quick onboarding wizard on first login.</p>
+                </div>
+            </div>
+        </div>
+
+        <a href="https://opai.boutabyte.com/app/" class="btn" id="access-btn">
+            Access OPAI Dashboard &rarr;
+        </a>
+
+        <div class="footer-text">
+            Questions? Email <a href="mailto:dallas@paradisewebfl.com">dallas@paradisewebfl.com</a>
+            <br>
+            <a href="https://opai.boutabyte.com">Back to OPAI</a>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        // Check session_id from URL params
+        const params = new URLSearchParams(window.location.search);
+        const sessionId = params.get('session_id');
+
+        if (sessionId) {
+            // Payment confirmed — show success status
+            const box = document.getElementById('status-box');
+            box.className = 'status-box';
+            box.innerHTML = '&#10003; Payment confirmed! Your workspace is being prepared.';
+        }
+
+        // For now, the access button always points to OPAI dashboard
+        // Once reverse proxy is configured, this will be the real URL
+    })();
+    </script>
+</body>
+</html>

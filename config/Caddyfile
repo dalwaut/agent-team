@@ -1,0 +1,149 @@
+# OPAI Caddyfile — v2 (Restructured 2026-02-25)
+#
+# All services bind to 127.0.0.1 — Caddy is the ONLY externally-reachable entry point.
+# Auth is enforced at the application level (not here) because WebSocket auth
+# and role-based checks need to happen inside each service.
+#
+# v2 Active services: Engine (8080), Portal (8090), Vault (8105),
+# Files (8086), Team Hub (8089), WordPress (8096), Users (8084),
+# Email Agent (8093), OC Broker (8106), Discord Bot (no port)
+#
+# Usage:
+#   caddy run --config /workspace/synced/opai/config/Caddyfile
+#   caddy reload --config /workspace/synced/opai/config/Caddyfile
+
+# HTTPS on port 443 — self-signed cert for secure context
+https:// {
+	tls internal {
+		on_demand
+	}
+
+	# Prevent browsers from caching HTML pages (ensures auth updates take effect)
+	@html {
+		path / /dashboard /admin /engine/ /tasks/ /users/ /files/ /team-hub/ /wordpress/ /email-agent/ /oc/ /vault/
+	}
+	header @html Cache-Control "no-cache, no-store, must-revalidate"
+
+	# ── Auth (Portal) ──────────────────────────────────────
+	handle /auth/* {
+		reverse_proxy localhost:8090
+	}
+
+	# ── Engine (v2 core) ───────────────────────────────────
+	# Replaces Monitor + TCP + Orchestrator
+	handle_path /engine/* {
+		reverse_proxy localhost:8080
+	}
+	@engineExactS path /engine
+	redir @engineExactS /engine/ 301
+
+	# Tasks path (backward compat — same engine backend)
+	handle_path /tasks/* {
+		reverse_proxy localhost:8080
+	}
+	@tasksExactS path /tasks
+	redir @tasksExactS /tasks/ 301
+
+	# Monitor → Engine (bookmark compat)
+	@monitorRedirect path /monitor /monitor/*
+	redir @monitorRedirect /engine/#system 302
+
+	# Global health — engine's aggregated health summary
+	handle /health {
+		rewrite * /api/health/summary
+		reverse_proxy localhost:8080
+	}
+
+	# ── Users ──────────────────────────────────────────────
+	handle_path /users/* {
+		reverse_proxy localhost:8084
+	}
+	@usersExactS path /users
+	redir @usersExactS /users/ 301
+
+	# ── Files ──────────────────────────────────────────────
+	handle_path /files/* {
+		reverse_proxy localhost:8086
+	}
+	@filesExactS path /files
+	redir @filesExactS /files/ 301
+
+	# ── Team Hub ───────────────────────────────────────────
+	handle_path /team-hub/api/internal/* {
+		respond "Forbidden" 403
+	}
+	handle_path /team-hub/* {
+		reverse_proxy localhost:8089
+	}
+	@teamhubExactS path /team-hub
+	redir @teamhubExactS /team-hub/ 301
+
+	# ── Email Agent ────────────────────────────────────────
+	handle_path /email-agent/* {
+		reverse_proxy localhost:8093
+	}
+	@emailAgentExactS path /email-agent
+	redir @emailAgentExactS /email-agent/ 301
+
+	# ── OP WordPress ───────────────────────────────────────
+	handle_path /wordpress/* {
+		reverse_proxy localhost:8096
+	}
+	@wordpressExactS path /wordpress
+	redir @wordpressExactS /wordpress/ 301
+
+	# ── Telegram Bot ──────────────────────────────────────
+	handle /telegram/* {
+		reverse_proxy localhost:8110
+	}
+
+	# ── OpenClaw Broker ───────────────────────────────────
+	# Uses handle (not handle_path) because broker routes include /oc/ prefix
+	handle /oc/* {
+		reverse_proxy localhost:8106
+	}
+	@ocExactS path /oc
+	redir @ocExactS /oc/ 301
+
+	# ── 2nd Brain ──────────────────────────────────────────
+	handle_path /brain/* {
+		reverse_proxy localhost:8101
+	}
+	@brainExactS path /brain
+	redir @brainExactS /brain/ 301
+
+	# ── Vault ──────────────────────────────────────────────
+	# Uses handle (not handle_path) because vault routes include /vault/ prefix
+	handle /vault/* {
+		reverse_proxy localhost:8105
+	}
+	@vaultExactS path /vault
+	redir @vaultExactS /vault/ 301
+
+	# ── v3 Deferred Services ───────────────────────────────
+	# These services are stopped. Routes redirect to engine.
+	@v3deferred path /bx4 /bx4/* /helm /helm/* /dam /dam/* /marq /marq/* /prd /prd/* /forumbot /forumbot/* /billing /billing/* /dev /dev/*
+	redir @v3deferred /engine/ 302
+
+	# ── Archived Services ──────────────────────────────────
+	# These services are archived. Routes redirect to engine.
+	@archived path /chat /chat/* /messenger /messenger/* /forum /forum/* /agents /agents/* /orchestra /orchestra/* /terminal /terminal/* /claude /claude/* /docs /docs/* /marketplace /marketplace/* /bot-space /bot-space/*
+	redir @archived /engine/ 302
+
+	# ── Default (Portal) ──────────────────────────────────
+	handle {
+		reverse_proxy localhost:8090
+	}
+
+	log {
+		output file /workspace/logs/caddy-access-https.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}
+
+# HTTP on port 80 — redirect everything to HTTPS
+:80 {
+	redir https://{host}{uri} 301
+}

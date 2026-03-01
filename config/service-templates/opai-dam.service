@@ -1,0 +1,18 @@
+[Unit]
+Description=OPAI DAM Bot — Do Anything Mode (port 8104)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-dam
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-dam
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8104
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/home/dallas/.nvm/versions/node/v20.19.5/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/workspace/synced/opai/tools/opai-dam/.env
+
+EnvironmentFile=-%t/opai-vault/opai-dam.env
+[Install]
+WantedBy=default.target

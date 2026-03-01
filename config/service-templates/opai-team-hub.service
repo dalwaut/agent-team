@@ -1,0 +1,17 @@
+[Unit]
+Description=OPAI Team Hub — Task and project management
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-team-hub
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-team-hub
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8089
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/workspace/synced/opai/tools/opai-team-hub/.env
+
+EnvironmentFile=-%t/opai-vault/opai-team-hub.env
+[Install]
+WantedBy=default.target

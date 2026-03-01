@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "hostinger-mcp": {
+      "command": "npx",
+      "args": [
+        "hostinger-api-mcp@latest"
+      ],
+      "env": {
+        "API_TOKEN": "2vTqqHvs66okBo8Cg2QPE5GA5MC6Cww9Q67qUtKAafa917c2"
+      }
+    }
+  }
+}

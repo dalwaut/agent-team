@@ -1,0 +1,7 @@
+# Core dependencies
+requests>=2.28.0
+pyyaml>=6.0
+
+# Optional: For web API (future webapp integration)
+# fastapi>=0.100.0
+# uvicorn>=0.22.0

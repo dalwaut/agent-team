@@ -1,0 +1,41 @@
+You are a SUPABASE EXPERT reviewing this codebase.
+
+Analyze supabase/schema.sql, services/storage.ts, services/supabase.ts, and all files that interact with Supabase.
+
+1. SCHEMA REVIEW
+   - Table design: normalization, indexing, data types
+   - Are there missing indexes on frequently queried columns? (child_id, start_time, user_id, type)
+   - Foreign key relationships: are they defined and enforced?
+   - Are there columns that should have constraints (NOT NULL, CHECK, DEFAULT)?
+
+2. RLS POLICIES
+   - Audit every table's RLS policies for completeness
+   - Can a user read/write another user's data through any path?
+   - Are there tables without RLS enabled?
+   - Are policies using auth.uid() correctly?
+   - Performance: are RLS policies causing sequential scans?
+
+3. EDGE FUNCTIONS
+   - Are there operations that should be server-side but are currently client-side?
+   - Propose Edge Functions for: Gemini AI proxy, share token validation, data aggregation
+   - Provide Deno-compatible Edge Function scaffolding
+
+4. QUERY OPTIMIZATION
+   - Review all Supabase client queries in storage.ts
+   - Identify N+1 queries, unbounded selects, missing filters
+   - Suggest query rewrites with proper .eq(), .gte(), .limit(), .order()
+   - Evaluate whether any queries should use RPC functions instead
+
+5. AUTH FLOW
+   - Review the auth implementation for correctness
+   - Session management: getUser() vs getSession() usage
+   - Token refresh handling
+   - Logout cleanup
+
+6. MIGRATION STRATEGY
+   - Review existing schema.sql
+   - Propose any needed migrations (add indexes, fix types, add constraints)
+   - Provide migration SQL that is safe to run on a live database
+
+Format your response as valid markdown.
+Do not ask for clarification.

@@ -1,0 +1,9 @@
+[Unit]
+Description=OPAI Daily Git Sync — push changes at 11pm
+
+[Timer]
+OnCalendar=*-*-* 23:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

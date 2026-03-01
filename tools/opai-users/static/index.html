@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI User Controls</title>
+    <link rel="stylesheet" href="static/style.css">
+    <script src="/auth/static/js/navbar.js" defer></script>
+    <script src="/docs/static/js/docs-widget.js" defer></script>
+</head>
+<body>
+
+<header>
+    <div class="header-left">
+        <h1>OPAI <span>User Controls</span></h1>
+    </div>
+    <div class="header-right">
+        <button class="header-btn" id="syncN8nBtn" onclick="syncAllN8n()" title="Sync all users with n8n accounts by email" style="background:#00b894; color:#fff;">Sync n8n</button>
+        <button class="header-btn" id="syncBBBtn" onclick="syncAllBB()" title="Sync all users with BoutaByte tiers" style="background:#6c5ce7; color:#fff;">Sync BB</button>
+        <button class="header-btn header-btn-danger" id="killNetBtn" onclick="toggleNetworkLockdown()" title="Kill all external connections">Kill Net</button>
+        <div class="conn-status">
+            <span id="user-email" class="text-muted"></span>
+        </div>
+    </div>
+</header>
+
+<div class="container">
+
+    <!-- Drop-all banner -->
+    <div class="drop-banner" id="drop-banner" style="display:none;">
+        ALL NON-ADMIN USERS DISABLED
+        <button class="btn btn-success" onclick="restoreAllUsers()" style="margin-left:12px;">Restore All</button>
+    </div>
+
+    <!-- User Controls Panel -->
+    <div class="panel">
+        <div class="panel-header">
+            <span class="panel-title">Users</span>
+            <span class="panel-badge" id="users-badge">--</span>
+            <div style="display:flex; gap:6px; margin-left:auto;">
+                <button class="btn btn-primary" onclick="openInviteModal()">Invite User</button>
+                <button class="btn btn-danger" id="dropAllBtn" onclick="dropAllUsers()">Drop All Users</button>
+            </div>
+        </div>
+        <div class="panel-body" id="users-content">
+            <div class="empty-state">Loading...</div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Invite User Modal -->
+<div class="modal-overlay" id="invite-modal">
+    <div class="modal" style="max-width:500px;">
+        <div class="modal-header">
+            <h3>Invite User</h3>
+            <button class="modal-close" onclick="closeInviteModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-input" id="invite-email" placeholder="user@example.com">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Display Name</label>
+                <input type="text" class="form-input" id="invite-name" placeholder="John Doe">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Role</label>
+                <select class="form-input" id="invite-role">
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Default Preface Prompt</label>
+                <textarea class="form-input form-textarea" id="invite-preface" placeholder="System instructions prepended to all user messages..."></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Allowed Apps</label>
+                <div class="checkbox-group" id="invite-apps"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tailscale Invite Link</label>
+                <input type="text" class="form-input" id="invite-tailscale" placeholder="https://login.tailscale.com/admin/invite/...">
+                <span class="form-hint">Required for VPN access. Generate from Tailscale admin console.</span>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Personal Welcome Message</label>
+                <textarea class="form-input form-textarea" id="invite-message" rows="3" placeholder="Optional personal note to include in the invite email..."></textarea>
+            </div>
+            <div class="form-actions">
+                <div class="form-actions-left"></div>
+                <div class="form-actions-right">
+                    <button class="btn" onclick="closeInviteModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="sendInvite()">Send Invite</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal-overlay" id="edit-user-modal">
+    <div class="modal" style="max-width:550px;">
+        <div class="modal-header">
+            <h3 id="edit-user-title">Edit User</h3>
+            <button class="modal-close" onclick="closeEditUserModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="edit-user-id">
+            <div class="form-group">
+                <label class="form-label">Display Name</label>
+                <input type="text" class="form-input" id="edit-user-name">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Role</label>
+                <select class="form-input" id="edit-user-role">
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Active</label>
+                <select class="form-input" id="edit-user-active">
+                    <option value="true">Active</option>
+                    <option value="false">Disabled</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Preface Prompt</label>
+                <textarea class="form-input form-textarea" id="edit-user-preface" rows="4" placeholder="System instructions prepended to all user messages..."></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Allowed Apps</label>
+                <div class="checkbox-group" id="edit-user-apps"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Allowed Agents</label>
+                <div class="checkbox-group" id="edit-user-agents"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Sandbox Path</label>
+                <input type="text" class="form-input" id="edit-user-sandbox" placeholder="/workspace/users/...">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Marketplace Tier</label>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <select class="form-input" id="edit-user-marketplace-tier" style="flex:1;">
+                        <option value="free">Free</option>
+                        <option value="starter">Starter</option>
+                        <option value="pro">Pro</option>
+                        <option value="unlimited">Unlimited</option>
+                    </select>
+                    <span class="badge" id="bb-tier-synced-badge" style="display:none; padding:3px 8px; border-radius:4px; font-size:11px; background:#6c5ce722; color:#a29bfe; white-space:nowrap;">synced from BB</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">BoutaByte Account</label>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span class="badge" id="bb-link-badge" style="padding:4px 10px; border-radius:4px; font-size:12px; background:#2a2d35; color:#8b8e96;">Not Linked</span>
+                    <button class="btn btn-primary btn-small" id="bb-link-btn" onclick="linkBBAccount()">Link by Email</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">n8n Account</label>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span class="badge" id="n8n-status-badge" style="padding:4px 10px; border-radius:4px; font-size:12px; background:#2a2d35; color:#8b8e96;">Not Provisioned</span>
+                    <button class="btn btn-primary btn-small" id="n8n-unlink-btn" onclick="unlinkN8n()" style="display:none;">Unlink</button>
+                </div>
+                <div id="n8n-link-controls" style="margin-top:8px; display:flex; align-items:center; gap:8px;">
+                    <select class="form-input" id="n8n-account-select" style="flex:1; font-size:12px;">
+                        <option value="">-- Select account --</option>
+                    </select>
+                    <button class="btn btn-primary btn-small" id="n8n-link-btn" onclick="linkN8nAccount()">Link</button>
+                    <button class="btn btn-primary btn-small" id="n8n-provision-btn" onclick="provisionN8n()">Provision New</button>
+                </div>
+                <div id="n8n-credentials" style="display:none; margin-top:8px; padding:10px; background:#1a1c22; border-radius:6px; font-family:monospace; font-size:12px;">
+                    <div>Username: <span id="n8n-username"></span></div>
+                    <div>Password: <span id="n8n-password" style="color:#fdcb6e;"></span></div>
+                    <div style="color:#e17055; margin-top:4px; font-size:11px;">Save this password — it won't be shown again!</div>
+                </div>
+            </div>
+            <div class="ai-lock-banner" id="ai-lock-banner" style="display:none;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <div>
+                    <strong>AI Access Locked</strong>
+                    <div id="ai-lock-reason" class="ai-lock-reason"></div>
+                </div>
+            </div>
+            <div class="form-actions">
+                <div class="form-actions-left">
+                    <button class="btn btn-danger" id="hard-delete-btn" onclick="hardDeleteUser()">Delete User</button>
+                    <button class="btn btn-warning" id="unlock-ai-btn" onclick="unlockAI()" style="display:none;">Unlock AI</button>
+                </div>
+                <div class="form-actions-right">
+                    <button class="btn" onclick="closeEditUserModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveUser()">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Network Lockdown PIN Modal -->
+<div class="modal-overlay" id="pin-modal">
+    <div class="modal" style="max-width:360px;">
+        <div class="modal-header">
+            <h3 id="pin-modal-title">Confirm Lockdown</h3>
+            <button class="modal-close" onclick="closePinModal()">&times;</button>
+        </div>
+        <div class="modal-body" style="text-align:center;">
+            <p class="text-muted mb-8" id="pin-modal-desc">Enter lockdown PIN to confirm</p>
+            <input type="password" class="form-input" id="pin-input" placeholder="PIN" style="text-align:center; font-size:18px; letter-spacing:4px; max-width:200px; margin:0 auto;">
+            <div class="form-actions" style="justify-content:center; margin-top:16px;">
+                <button class="btn" onclick="closePinModal()">Cancel</button>
+                <button class="btn btn-danger" id="pin-confirm-btn" onclick="confirmPinAction()">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/auth/static/js/auth-v3.js"></script>
+<script src="static/app.js?v=2"></script>
+</body>
+</html>

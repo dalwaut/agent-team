@@ -1,0 +1,36 @@
+{
+  "workbench.colorTheme": "Dark (Theia)",
+  "workbench.iconTheme": "material-icon-theme",
+  "ai-features.AiEnable.enableAI": true,
+  "ai-features.chat.defaultAgent": "Universal",
+  "ai-features.openAiCustom.customOpenAiModels": [
+    {
+      "model": "claude-code",
+      "url": "http://localhost:4141/v1/",
+      "id": "claude-code",
+      "apiKey": "opai-bridge",
+      "enableStreaming": true,
+      "developerMessageSettings": "system"
+    }
+  ],
+  "ai-features.agentSettings": {
+    "Universal": {
+      "languageModelRequirements": [
+        {
+          "purpose": "chat",
+          "identifier": "claude-code"
+        }
+      ]
+    }
+  },
+  "security.workspace.trust.trustedFolders": [
+    "file:///home/project"
+  ],
+  "editor.fontSize": 14,
+  "editor.tabSize": 2,
+  "editor.minimap.enabled": false,
+  "editor.bracketPairColorization.enabled": true,
+  "terminal.integrated.fontSize": 13,
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 1000
+}

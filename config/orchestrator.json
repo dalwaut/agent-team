@@ -1,0 +1,171 @@
+{
+  "schedules": {
+    "email_check": "*/30 * * * *",
+    "workspace_audit": "0 9 * * 1",
+    "knowledge_sync": "0 18 * * *",
+    "health_check": "*/5 * * * *",
+    "task_process": "*/15 * * * *",
+    "feedback_process": "*/5 * * * *",
+    "feedback_act": "*/15 * * * *",
+    "user_sandbox_scan": "*/5 * * * *",
+    "dep_scan_daily": "0 6 * * *",
+    "secrets_scan_daily": "0 7 * * *",
+    "security_quick": "0 8 * * 1",
+    "incident_check": "0 */4 * * *",
+    "a11y_weekly": "0 10 * * 2",
+    "self_assessment": "0 2 * * *",
+    "evolution": "0 3 * * *"
+  },
+  "resources": {
+    "max_cpu_percent": 80,
+    "max_memory_percent": 85,
+    "max_parallel_jobs": 3,
+    "check_interval_seconds": 30
+  },
+  "services": {
+    "discord-bot": {
+      "enabled": true,
+      "critical": true,
+      "restart_on_failure": true,
+      "service_name": "opai-discord-bot",
+      "note": "Old opai-discord.service is DISABLED \u2014 do not re-enable"
+    },
+    "email": {
+      "enabled": true,
+      "critical": false,
+      "restart_on_failure": false,
+      "type": "timer",
+      "note": "Timer-triggered oneshot \u2014 do NOT restart the service, check the timer instead"
+    },
+    "task_processor": {
+      "enabled": true,
+      "critical": false,
+      "restart_on_failure": false,
+      "type": "internal",
+      "note": "Built-in orchestrator function, not a systemd service"
+    }
+  },
+  "task_processor": {
+    "auto_execute": true,
+    "queue_enabled": true,
+    "max_squad_runs_per_cycle": 2,
+    "cooldown_minutes": 30,
+    "max_parallel_jobs": 3,
+    "feedback_fixer_model": "sonnet",
+    "feedback_fixer_max_turns": 10,
+    "daily_token_budget_enabled": false,
+    "daily_token_budget": 50000000,
+    "trusted_senders": [
+      "dallas@paradisewebfl.com",
+      "denise@paradisewebfl.com",
+      "caitlin@paradisewebfl.com",
+      "dalwaut@gmail.com"
+    ],
+    "feedback_poll_interval": 900,
+    "feedback_poll_on_demand": false
+  },
+  "sandbox": {
+    "scan_root": "/workspace/users",
+    "max_user_jobs_parallel": 2,
+    "timeout_seconds": 300,
+    "enabled": true
+  },
+  "api": {
+    "enabled": true,
+    "port": 3737,
+    "host": "localhost"
+  },
+  "evolve": {
+    "enabled": true,
+    "self_assessment": {
+      "frequency_type": "daily",
+      "frequency_value": 1,
+      "time_hour": 2,
+      "time_minute": 0
+    },
+    "evolution": {
+      "frequency_type": "daily",
+      "frequency_value": 1,
+      "time_hour": 3,
+      "time_minute": 0
+    }
+  },
+  "heartbeat": {
+    "interval_minutes": 30,
+    "stall_threshold_minutes": 60,
+    "daily_note_hour": 23,
+    "daily_note_minute": 55,
+    "notifications_enabled": true,
+    "ai_summary_enabled": true,
+    "max_notifications_per_cycle": 5
+  },
+  "consolidator": {
+    "enabled": true,
+    "hour": 1,
+    "minute": 0,
+    "model": "haiku",
+    "prune_memory_md": false,
+    "max_extraction_tokens": 2000,
+    "notification_enabled": true
+  },
+  "command_channels": {
+    "telegram": {
+      "trust_by_role": {
+        "owner": "command",
+        "admin": "command",
+        "member": "proposal",
+        "viewer": "context"
+      }
+    },
+    "discord": {
+      "trust_by_channel_role": {
+        "admin": "command",
+        "team-hub": "proposal"
+      },
+      "require_home_guild": true
+    },
+    "email": {
+      "trust_level": "proposal"
+    },
+    "portal": {
+      "trust_by_role": {
+        "admin": "command",
+        "user": "proposal"
+      }
+    },
+    "scheduler": {
+      "trust_level": "command"
+    },
+    "system": {
+      "trust_level": "command"
+    },
+    "feedback": {
+      "trust_level": "command"
+    },
+    "default": {
+      "trust_level": "proposal"
+    }
+  },
+  "bottleneck_detector": {
+    "enabled": true,
+    "interval_hours": 6,
+    "approval_threshold": 10,
+    "lookback_days": 7
+  },
+  "fleet_coordinator": {
+    "enabled": true,
+    "interval_minutes": 5,
+    "max_concurrent_dispatches": 3,
+    "auto_dispatch_approved": true,
+    "escalation_threshold_hours": 1,
+    "stale_task_threshold_hours": 24,
+    "routing": {
+      "code_review": "project-reviewer",
+      "code_build": "project-builder",
+      "research": "researcher",
+      "security": "security-scanner",
+      "wiki_update": "wiki-librarian",
+      "default": "self-assessor"
+    }
+  }
+}

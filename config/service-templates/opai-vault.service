@@ -1,0 +1,17 @@
+[Unit]
+Description=OPAI Vault — Encrypted credential management
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-vault
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8105
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=SOPS_AGE_KEY_FILE=/home/dallas/.opai-vault/vault.key
+EnvironmentFile=-/workspace/synced/opai/tools/opai-vault/.env
+
+EnvironmentFile=-%t/opai-vault/.env
+[Install]
+WantedBy=default.target

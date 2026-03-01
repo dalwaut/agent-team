@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI — Bot Space</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/bot-space/static/css/style.css">
+    <script src="/auth/static/js/navbar.js" defer></script>
+</head>
+<body>
+
+<!-- ── Loading screen ── -->
+<div id="loading-screen" style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:12px;">
+    <div class="spinner" style="width:28px;height:28px;border-width:3px;"></div>
+    <div style="color:var(--text-muted);font-size:13px;">Loading Bot Space...</div>
+</div>
+
+<!-- ── App (hidden until boot completes) ── -->
+<div id="app-body-wrap" style="display:none">
+
+    <!-- ── Header ── -->
+    <header class="app-header">
+        <h1>⚡ Bot Space</h1>
+        <div class="header-right">
+            <div class="credit-chip" id="credit-chip" onclick="openCreditsModal()" title="View credits & transactions">
+                <span>⚡</span>
+                <span id="credit-balance">—</span>
+                <span>credits</span>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="openRunsModal()">Run Log</button>
+        </div>
+    </header>
+
+    <!-- ── Body ── -->
+    <div class="app-body">
+
+        <!-- My Agents -->
+        <div class="section" id="my-agents-section" style="display:none">
+            <div class="section-title">My Agents</div>
+            <div class="my-agents-list" id="my-agents-list"></div>
+        </div>
+
+        <!-- Browse -->
+        <div class="section">
+            <div class="section-title">Browse Agents</div>
+            <div class="browse-controls">
+                <input class="search-input" id="search-input" type="search" placeholder="Search bots..." autocomplete="off" oninput="applyFilters()">
+                <div class="filter-chips">
+                    <button class="chip active" onclick="setCategory('all', this)">All</button>
+                    <button class="chip" onclick="setCategory('productivity', this)">Productivity</button>
+                    <button class="chip" onclick="setCategory('content', this)">Content</button>
+                    <button class="chip" onclick="setCategory('communication', this)">Communication</button>
+                </div>
+            </div>
+            <div class="bot-grid" id="bot-grid">
+                <div class="empty">Loading bots...</div>
+            </div>
+        </div>
+
+    </div><!-- /.app-body -->
+
+</div><!-- /#app-body-wrap -->
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<!-- Bot Detail Modal                                        -->
+<!-- ─────────────────────────────────────────────────────── -->
+<div class="modal-backdrop hidden" id="detail-modal">
+    <div class="modal modal-wide">
+        <div class="modal-header">
+            <div>
+                <div class="modal-icon" id="dm-icon"></div>
+                <div class="modal-name" id="dm-name"></div>
+                <div class="modal-tagline" id="dm-tagline"></div>
+                <div class="modal-meta" id="dm-meta"></div>
+            </div>
+            <button class="modal-close" onclick="closeModal('detail-modal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="modal-description" id="dm-description"></div>
+            <div class="modal-features" id="dm-features"></div>
+            <div class="pricing-box" id="dm-pricing"></div>
+            <button class="btn btn-primary modal-cta" id="dm-cta" onclick="handleDetailCTA()"></button>
+        </div>
+    </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<!-- Setup Wizard Modal                                      -->
+<!-- ─────────────────────────────────────────────────────── -->
+<div class="modal-backdrop hidden" id="wizard-modal">
+    <div class="modal modal-wide">
+        <div class="modal-header">
+            <div>
+                <div class="modal-name" id="wiz-title">Setup Wizard</div>
+            </div>
+            <button class="modal-close" onclick="closeModal('wizard-modal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="wizard-steps" id="wiz-steps"></div>
+            <div id="wiz-panels"></div>
+            <div class="wizard-nav">
+                <button class="btn btn-outline" id="wiz-back" onclick="wizardPrev()" style="display:none">← Back</button>
+                <div style="flex:1"></div>
+                <button class="btn btn-primary" id="wiz-next" onclick="wizardNext()">Next →</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<!-- Credits Modal                                           -->
+<!-- ─────────────────────────────────────────────────────── -->
+<div class="modal-backdrop hidden" id="credits-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-name">Credits</div>
+            <button class="modal-close" onclick="closeModal('credits-modal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="credits-balance">
+                <div class="big-num" id="modal-credit-num">—</div>
+                <div class="big-label">available credits</div>
+            </div>
+            <div class="section-title" style="margin-top:16px">Recent Transactions</div>
+            <div class="tx-list" id="tx-list"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────── -->
+<!-- Run Log Modal                                           -->
+<!-- ─────────────────────────────────────────────────────── -->
+<div class="modal-backdrop hidden" id="runs-modal">
+    <div class="modal modal-wide">
+        <div class="modal-header">
+            <div class="modal-name">Run Log</div>
+            <button class="modal-close" onclick="closeModal('runs-modal')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="runs-list" id="runs-list"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="/bot-space/static/js/app.js"></script>
+</body>
+</html>

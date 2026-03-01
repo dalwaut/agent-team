@@ -1,0 +1,2 @@
+# This uses Gemini CLI to review the build and update the log
+gemini "Check the last modified files in 'Codebase'. Run the project tests. If they pass, mark the top item in 'Agent-Tasks/tasks.yaml' as [x]. If they fail, add a comment to 'Debug-log/debug.log'."

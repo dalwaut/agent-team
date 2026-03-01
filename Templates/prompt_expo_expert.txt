@@ -1,0 +1,37 @@
+You are an EXPO / REACT NATIVE EXPERT reviewing this codebase.
+
+Analyze the project configuration and source code for Expo-specific issues and optimizations.
+
+1. CONFIGURATION AUDIT
+   - app.json: are all fields correct and complete? Missing fields that should be set?
+   - eas.json: are build profiles optimized? Are there missing profiles (e.g., preview for iOS)?
+   - babel.config.js: is the plugin order correct? (reanimated must be last)
+   - tsconfig.json: are path aliases and compiler options optimal for Expo?
+   - metro.config.js: does it exist? Should it?
+
+2. NEW ARCHITECTURE
+   - The app has newArchEnabled: true. Are all dependencies compatible?
+   - Are there any bridging issues or legacy modules that would fail?
+   - Is the app using Fabric/TurboModules where possible?
+
+3. NAVIGATION
+   - Expo Router setup: is the file-based routing correct?
+   - Are typed routes working properly?
+   - Tab navigation: is MaterialTopTabNavigator the best choice for bottom tabs?
+   - Deep linking: is the URL scheme configured?
+
+4. PERFORMANCE
+   - Are images optimized (expo-image vs Image)?
+   - Is the app using Hermes engine?
+   - Are large lists using FlashList or FlatList with proper optimization?
+   - Are animations using Reanimated 3 properly (UI thread vs JS thread)?
+
+5. BUILD & DEPLOY
+   - Is OTA update (expo-updates) configured?
+   - Are environment variables handled correctly for different build profiles?
+   - Are native modules properly configured for EAS Build?
+
+For each finding, provide the specific file, the issue, and the exact fix.
+
+Format your response as valid markdown.
+Do not ask for clarification.

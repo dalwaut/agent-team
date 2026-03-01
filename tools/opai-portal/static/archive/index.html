@@ -1,0 +1,1625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI — Pages</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="/auth/static/js/navbar.js" defer></script>
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --bg-card: #12121a;
+            --bg-hover: #1a1a2e;
+            --border: #2a2a3e;
+            --text: #e0e0e8;
+            --text-muted: #8888a0;
+            --accent: #a855f7;
+            --accent-glow: rgba(168, 85, 247, 0.3);
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --blue: #60a5fa;
+            --radius: 12px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 0 2rem 2rem;
+        }
+
+        /* ── Header ───────────────────────────── */
+        .page-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 1rem 0; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem;
+        }
+        .header-left { display: flex; align-items: center; gap: 0.75rem; }
+        .header-left h1 { font-size: 1.25rem; font-weight: 600; }
+        .header-left h1 span { color: var(--text-muted); font-weight: 400; }
+        .logo-3d {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, var(--accent), #6366f1);
+            border-radius: 8px; display: flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 700; color: white;
+            box-shadow: 0 4px 12px var(--accent-glow);
+            text-decoration: none;
+        }
+
+
+        /* ── Buttons ──────────────────────────── */
+        .btn {
+            padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.85rem; font-weight: 500;
+            cursor: pointer; border: 1px solid var(--border); background: var(--bg-card);
+            color: var(--text); transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.4rem;
+            text-decoration: none; white-space: nowrap;
+        }
+        .btn:hover { border-color: var(--accent); background: var(--bg-hover); }
+        .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
+        .btn-primary:hover { opacity: 0.9; }
+        .btn-danger { color: var(--error); }
+        .btn-danger:hover { border-color: var(--error); background: rgba(239,68,68,0.1); }
+        .btn-success { color: var(--success); }
+        .btn-success:hover { border-color: var(--success); background: rgba(16,185,129,0.1); }
+        .btn-sm { padding: 0.35rem 0.65rem; font-size: 0.8rem; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-ai { color: #60a5fa; }
+        .btn-ai:hover { border-color: #60a5fa; background: rgba(96,165,250,0.1); }
+        .btn-warning { color: var(--warning); }
+        .btn-warning:hover { border-color: var(--warning); background: rgba(245,158,11,0.1); }
+        .btn-link { border: none; background: none; color: var(--accent); padding: 0; font-weight: 500; }
+        .btn-link:hover { background: none; text-decoration: underline; border: none; }
+
+        /* ── Status badges ───────────────────── */
+        .status-badge {
+            font-size: 0.7rem; padding: 2px 8px; border-radius: 10px;
+            font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .status-active { background: rgba(16,185,129,0.15); color: var(--success); }
+        .status-draft { background: rgba(136,136,160,0.15); color: var(--text-muted); }
+
+        /* ── Pages Table ─────────────────────── */
+        .pages-container { max-width: 1200px; margin: 0 auto; }
+        .pages-toolbar {
+            display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap;
+        }
+        .pages-toolbar .spacer { flex: 1; }
+        .pages-table {
+            width: 100%; border-collapse: separate; border-spacing: 0;
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+            overflow: hidden;
+        }
+        .pages-table th {
+            text-align: left; padding: 0.75rem 1rem; font-size: 0.75rem; font-weight: 600;
+            color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;
+            border-bottom: 1px solid var(--border); background: var(--bg);
+        }
+        .pages-table td {
+            padding: 0.85rem 1rem; border-bottom: 1px solid var(--border);
+            font-size: 0.85rem; vertical-align: middle;
+        }
+        .pages-table tr:last-child td { border-bottom: none; }
+        .pages-table tbody tr { transition: background 0.15s; }
+        .pages-table tbody tr:hover { background: var(--bg-hover); }
+        .page-title-cell { font-weight: 500; }
+        .page-title-link {
+            color: var(--text); text-decoration: none; cursor: pointer;
+        }
+        .page-title-link:hover { color: var(--accent); }
+        .page-row-actions {
+            display: none; gap: 0.35rem; font-size: 0.8rem; margin-top: 0.3rem;
+        }
+        .pages-table tbody tr:hover .page-row-actions { display: flex; }
+        .page-row-actions a, .page-row-actions button {
+            background: none; border: none; color: var(--text-muted); cursor: pointer;
+            font-size: 0.8rem; padding: 0; text-decoration: none;
+        }
+        .page-row-actions a:hover, .page-row-actions button:hover { color: var(--accent); }
+        .page-row-actions .sep { color: var(--border); margin: 0 0.15rem; }
+        .page-row-actions .danger:hover { color: var(--error); }
+        .route-mono {
+            font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--blue);
+        }
+        .file-mono {
+            font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--text-muted);
+        }
+
+        /* ── Editor View ─────────────────────── */
+        .editor-view { max-width: 1200px; margin: 0 auto; display: none; }
+        .editor-topbar {
+            display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap;
+        }
+        .editor-topbar h2 { font-size: 1.1rem; font-weight: 600; flex: 1; }
+        .editor-grid {
+            display: grid; grid-template-columns: 1fr 300px; gap: 1.25rem;
+            min-height: calc(100vh - 250px);
+        }
+        @media (max-width: 900px) { .editor-grid { grid-template-columns: 1fr; } }
+
+        /* Editor main column */
+        .editor-main { display: flex; flex-direction: column; gap: 1rem; }
+        .editor-field {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 1rem 1.25rem;
+        }
+        .editor-field label {
+            font-size: 0.75rem; font-weight: 600; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.5rem;
+        }
+        .editor-field input[type="text"] {
+            width: 100%; padding: 0.6rem 0.75rem; border-radius: 8px;
+            border: 1px solid var(--border); background: var(--bg); color: var(--text);
+            font-size: 1rem; font-weight: 500;
+        }
+        .editor-field input[type="text"]:focus { outline: none; border-color: var(--accent); }
+        .editor-field input.mono {
+            font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;
+        }
+
+        /* Content area */
+        .content-box {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); overflow: hidden; flex: 1; display: flex; flex-direction: column;
+            min-height: 400px;
+        }
+        .content-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border);
+        }
+        .content-tabs {
+            display: flex; gap: 0.25rem;
+            background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+            padding: 0.2rem;
+        }
+        .content-tab {
+            padding: 0.35rem 1rem; border-radius: 6px; font-size: 0.8rem; font-weight: 500;
+            cursor: pointer; border: none; background: transparent; color: var(--text-muted);
+            transition: all 0.2s;
+        }
+        .content-tab:hover { color: var(--text); }
+        .content-tab.active {
+            background: var(--accent); color: white; box-shadow: 0 2px 6px var(--accent-glow);
+        }
+        .content-body { flex: 1; position: relative; display: flex; flex-direction: column; }
+        .content-pane { flex: 1; display: flex; flex-direction: column; }
+        .content-pane.hidden { display: none; }
+
+        /* Code editor */
+        .code-editor {
+            width: 100%; flex: 1; padding: 1rem; border: none; background: var(--bg); color: var(--text);
+            font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; resize: none;
+            line-height: 1.6; min-height: 300px;
+        }
+        .code-editor:focus { outline: none; }
+
+        /* File browser modal */
+        .fb-modal-inner {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); width: 700px; max-width: 95vw;
+            max-height: 80vh; display: flex; flex-direction: column; overflow: hidden;
+        }
+        .fb-modal-header {
+            padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .fb-modal-header h3 { font-size: 1rem; font-weight: 600; }
+        .file-browser { flex: 1; overflow-y: auto; }
+        .fb-path {
+            display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem;
+            background: var(--bg); border-bottom: 1px solid var(--border);
+            font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--text-muted);
+            flex-wrap: wrap;
+        }
+        .fb-path-seg {
+            background: none; border: none; color: var(--blue); cursor: pointer;
+            font-family: inherit; font-size: inherit; padding: 0;
+        }
+        .fb-path-seg:hover { text-decoration: underline; }
+        .fb-item {
+            display: flex; align-items: center; gap: 0.75rem;
+            padding: 0.6rem 1rem; cursor: pointer; transition: background 0.1s;
+            border-bottom: 1px solid rgba(42,42,62,0.3);
+        }
+        .fb-item:hover { background: var(--bg-hover); }
+        .fb-item.selected { background: rgba(168,85,247,0.1); border-left: 3px solid var(--accent); }
+        .fb-icon { font-size: 1rem; width: 1.5rem; text-align: center; flex-shrink: 0; }
+        .fb-name { flex: 1; font-size: 0.85rem; }
+        .fb-name.is-dir { font-weight: 500; }
+        .fb-meta { font-size: 0.75rem; color: var(--text-muted); }
+        .fb-selected-bar {
+            display: none; padding: 0.75rem 1rem; border-top: 1px solid var(--border);
+            background: var(--bg); gap: 0.75rem; align-items: center; font-size: 0.85rem;
+        }
+        .fb-selected-bar.visible { display: flex; }
+
+        /* Preview pane inside content area */
+        .preview-frame { width: 100%; flex: 1; border: none; background: white; min-height: 300px; }
+
+        /* Editor sidebar */
+        .editor-sidebar { display: flex; flex-direction: column; gap: 1rem; }
+        .sidebar-box {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); overflow: hidden;
+        }
+        .sidebar-box-header {
+            padding: 0.75rem 1rem; border-bottom: 1px solid var(--border);
+            font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; justify-content: space-between;
+        }
+        .sidebar-box-body { padding: 1rem; }
+        .sidebar-row {
+            display: flex; align-items: center; justify-content: space-between;
+            font-size: 0.85rem; margin-bottom: 0.75rem;
+        }
+        .sidebar-row:last-child { margin-bottom: 0; }
+        .sidebar-row label { color: var(--text-muted); font-size: 0.8rem; }
+        .sidebar-row .value { font-weight: 500; }
+        .sidebar-input {
+            width: 100%; padding: 0.45rem 0.65rem; border-radius: 6px;
+            border: 1px solid var(--border); background: var(--bg); color: var(--text);
+            font-size: 0.85rem; font-family: 'JetBrains Mono', monospace;
+        }
+        .sidebar-input:focus { outline: none; border-color: var(--accent); }
+        .sidebar-textarea {
+            width: 100%; padding: 0.45rem 0.65rem; border-radius: 6px;
+            border: 1px solid var(--border); background: var(--bg); color: var(--text);
+            font-size: 0.85rem; resize: vertical; min-height: 60px; font-family: inherit;
+        }
+        .sidebar-textarea:focus { outline: none; border-color: var(--accent); }
+        .sidebar-actions {
+            display: flex; flex-direction: column; gap: 0.5rem;
+            padding: 1rem; border-top: 1px solid var(--border);
+        }
+
+        /* ── Archives View ───────────────────── */
+        .archives-view { max-width: 1400px; margin: 0 auto; display: none; }
+        .page-tabs {
+            display: flex; gap: 0.25rem;
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+            padding: 0.25rem; width: fit-content;
+        }
+        .page-tab {
+            padding: 0.5rem 1.25rem; border-radius: 8px; font-size: 0.85rem; font-weight: 500;
+            cursor: pointer; border: none; background: transparent; color: var(--text-muted);
+            transition: all 0.2s;
+        }
+        .page-tab:hover { color: var(--text); }
+        .page-tab.active {
+            background: var(--accent); color: white; box-shadow: 0 2px 8px var(--accent-glow);
+        }
+        .tab-label { font-size: 0.7rem; color: var(--text-muted); margin-left: 0.4rem; opacity: 0.7; }
+        .page-tab.active .tab-label { color: rgba(255,255,255,0.7); }
+        .archives-layout {
+            display: grid; grid-template-columns: 380px 1fr; gap: 1.5rem;
+            min-height: calc(100vh - 250px);
+        }
+        @media (max-width: 960px) { .archives-layout { grid-template-columns: 1fr; } }
+        .list-panel {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column;
+        }
+        .list-header {
+            padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .list-header h2 { font-size: 0.95rem; font-weight: 600; }
+        .list-count {
+            font-size: 0.75rem; color: var(--text-muted); background: var(--bg);
+            padding: 2px 8px; border-radius: 10px;
+        }
+        .archive-list { flex: 1; overflow-y: auto; padding: 0.5rem; }
+        .archive-item {
+            padding: 0.85rem 1rem; border-radius: 8px; cursor: pointer;
+            transition: all 0.15s; border: 1px solid transparent; margin-bottom: 0.25rem;
+        }
+        .archive-item:hover { background: var(--bg-hover); }
+        .archive-item.active { background: var(--bg-hover); border-color: var(--accent); }
+        .archive-item-name { font-size: 0.85rem; font-weight: 500; margin-bottom: 0.25rem; word-break: break-all; }
+        .archive-item-meta {
+            display: flex; align-items: center; gap: 1rem;
+            font-size: 0.75rem; color: var(--text-muted);
+        }
+        .archive-item-label {
+            font-size: 0.65rem; padding: 1px 6px; border-radius: 4px;
+            font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em;
+        }
+        .label-rollback { background: rgba(245,158,11,0.15); color: var(--warning); }
+        .label-ai { background: rgba(96,165,250,0.15); color: #60a5fa; }
+        .label-manual { background: rgba(168,85,247,0.15); color: var(--accent); }
+        .preview-panel {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column;
+        }
+        .preview-header {
+            padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;
+        }
+        .preview-header h2 { font-size: 0.95rem; font-weight: 600; }
+        .preview-actions { display: flex; gap: 0.5rem; }
+        .preview-body { flex: 1; position: relative; }
+        .preview-body iframe { width: 100%; height: 100%; border: none; background: white; min-height: 500px; }
+        .draft-banner {
+            background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3);
+            color: var(--warning); padding: 0.5rem 1rem; border-radius: 8px;
+            font-size: 0.8rem; margin-bottom: 1rem;
+        }
+
+        /* ── Shared ──────────────────────────── */
+        .empty-state {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 3rem 1rem; color: var(--text-muted); text-align: center; gap: 0.75rem;
+        }
+        .empty-state .icon { font-size: 2.5rem; opacity: 0.5; }
+        .placeholder {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100%; min-height: 400px; color: var(--text-muted); text-align: center; gap: 0.75rem;
+        }
+        .placeholder .icon { font-size: 3rem; opacity: 0.3; }
+
+        /* ── Toast ────────────────────────────── */
+        .toast {
+            position: fixed; bottom: 2rem; right: 2rem; padding: 0.75rem 1.25rem;
+            border-radius: 8px; font-size: 0.85rem; font-weight: 500; z-index: 1000;
+            transform: translateY(100px); opacity: 0; transition: all 0.3s ease;
+        }
+        .toast.visible { transform: translateY(0); opacity: 1; }
+        .toast-success { background: var(--success); color: white; }
+        .toast-error { background: var(--error); color: white; }
+
+        /* ── Modal ────────────────────────────── */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center; z-index: 999;
+        }
+        .modal-overlay.hidden { display: none; }
+        .modal {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 2rem; max-width: 420px; width: 90%;
+        }
+        .modal h3 { font-size: 1.1rem; margin-bottom: 0.75rem; }
+        .modal p { color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; margin-bottom: 1.5rem; }
+        .modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; }
+        .modal-wide { max-width: 560px; }
+        .modal-xl { max-width: 760px; }
+        .modal textarea, .modal-wide textarea {
+            width: 100%; min-height: 100px; padding: 0.75rem; border-radius: 8px;
+            border: 1px solid var(--border); background: var(--bg); color: var(--text);
+            font-family: inherit; font-size: 0.9rem; resize: vertical; margin-bottom: 0.75rem;
+        }
+        .modal textarea:focus { outline: none; border-color: var(--accent); }
+        .modal select {
+            padding: 0.5rem 0.75rem; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--bg); color: var(--text); font-size: 0.85rem; margin-bottom: 1rem; width: 100%;
+        }
+        .modal label { font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 0.4rem; }
+        .modal input[type="text"] {
+            width: 100%; padding: 0.5rem 0.75rem; border-radius: 8px;
+            border: 1px solid var(--border); background: var(--bg); color: var(--text);
+            font-size: 0.85rem; margin-bottom: 1rem;
+        }
+        .modal input[type="text"]:focus { outline: none; border-color: var(--accent); }
+        .yaml-preview {
+            background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+            padding: 1rem; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;
+            color: var(--text-muted); overflow-x: auto; max-height: 400px; overflow-y: auto;
+            white-space: pre; margin-bottom: 1rem; line-height: 1.5;
+        }
+
+
+        /* ── AI Progress ─────────────────────── */
+        .ai-progress-box {
+            background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+            padding: 1.25rem; margin-bottom: 0.75rem;
+        }
+        .ai-progress-header {
+            display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.75rem;
+            font-size: 0.9rem; font-weight: 500;
+        }
+        .ai-progress-stats {
+            display: flex; justify-content: space-between; font-size: 0.78rem;
+            color: var(--text-muted); margin-bottom: 0.6rem;
+        }
+        .ai-progress-bar-track {
+            height: 4px; background: var(--border); border-radius: 2px;
+            overflow: hidden; margin-bottom: 0.75rem;
+        }
+        .ai-progress-bar-fill {
+            height: 100%; width: 0%; border-radius: 2px;
+            background: linear-gradient(90deg, var(--accent), #a78bfa);
+            transition: width 0.3s ease;
+        }
+        @keyframes progress-pulse {
+            0%,100% { opacity: 1; } 50% { opacity: 0.5; }
+        }
+        .ai-progress-bar-fill.indeterminate {
+            width: 100% !important;
+            animation: progress-pulse 1.5s ease-in-out infinite;
+        }
+        .ai-progress-preview {
+            font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+            color: var(--text-muted); background: rgba(0,0,0,0.2); border-radius: 6px;
+            padding: 0.6rem 0.75rem; max-height: 80px; overflow: hidden;
+            white-space: pre-wrap; word-break: break-all; line-height: 1.4;
+        }
+
+        /* ── Spinner ─────────────────────────── */
+        .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <header class="page-header">
+        <div class="header-left">
+            <a href="/dashboard" class="logo-3d">OP</a>
+            <h1>Pages <span id="header-subtitle">Manager</span></h1>
+        </div>
+    </header>
+
+    <!-- ═══════════ PAGES LIST VIEW ═══════════ -->
+    <div id="pages-view" class="pages-container">
+        <div class="pages-toolbar">
+            <button class="btn btn-primary" onclick="openEditor()">+ Add New</button>
+            <span class="spacer"></span>
+            <button class="btn btn-success" onclick="deployAll()">Deploy All</button>
+            <button class="btn btn-warning" onclick="openDeployRoutesModal()" title="Advanced: deploy routes only">Routes</button>
+        </div>
+        <table class="pages-table" id="pages-table">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Route</th>
+                    <th>File</th>
+                    <th>Status</th>
+                    <th>Modified</th>
+                </tr>
+            </thead>
+            <tbody id="pages-tbody">
+                <tr><td colspan="5"><div class="empty-state"><div class="icon">&#9881;</div><p>Loading...</p></div></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ═══════════ EDITOR VIEW ═══════════ -->
+    <div id="editor-view" class="editor-view">
+        <div class="editor-topbar">
+            <button class="btn btn-link" onclick="closeEditor()">&#8592; All Pages</button>
+            <h2 id="editor-heading">Add New Page</h2>
+            <button class="btn btn-sm" onclick="previewEditorContent()">Preview</button>
+            <button class="btn btn-sm btn-ai" id="editor-view-live" onclick="viewEditorLive()" style="display:none;">View Live</button>
+        </div>
+        <div class="editor-grid">
+            <div class="editor-main">
+                <!-- Title -->
+                <div class="editor-field">
+                    <label>Title</label>
+                    <input type="text" id="ed-name" placeholder="Page title" oninput="editorAutoSlug()">
+                </div>
+
+                <!-- Content -->
+                <div class="content-box">
+                    <div class="content-header">
+                        <div class="content-tabs">
+                            <button type="button" class="content-tab active" data-tab="code" onclick="editorTab('code')">Code</button>
+                            <button type="button" class="content-tab" data-tab="preview" onclick="editorTab('preview')">Preview</button>
+                        </div>
+                        <button class="btn btn-sm" onclick="openFileBrowser()" style="margin-left:auto;">Browse Files</button>
+                    </div>
+                    <div class="content-body">
+                        <!-- Code tab -->
+                        <div id="ed-tab-code" class="content-pane">
+                            <textarea id="ed-code" class="code-editor" placeholder="Paste or write HTML here..."></textarea>
+                        </div>
+                        <!-- Preview tab -->
+                        <div id="ed-tab-preview" class="content-pane hidden">
+                            <iframe id="ed-preview-frame" class="preview-frame"></iframe>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="editor-sidebar">
+                <!-- Publish box -->
+                <div class="sidebar-box">
+                    <div class="sidebar-box-header">
+                        <span>Publish</span>
+                        <span class="status-badge" id="ed-status-badge"></span>
+                    </div>
+                    <div class="sidebar-box-body">
+                        <div class="sidebar-row">
+                            <label>Status</label>
+                            <select id="ed-status" class="sidebar-input" style="font-family:inherit;width:auto;">
+                                <option value="draft">Draft</option>
+                                <option value="active">Active</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="sidebar-actions">
+                        <button class="btn btn-primary" id="ed-save-btn" onclick="editorSave()" style="width:100%;justify-content:center;">Save Page</button>
+                        <button class="btn btn-danger btn-sm" id="ed-delete-btn" onclick="editorDelete()" style="display:none;width:100%;justify-content:center;">Move to Trash</button>
+                    </div>
+                </div>
+
+                <!-- Page Settings -->
+                <div class="sidebar-box">
+                    <div class="sidebar-box-header"><span>Page Settings</span></div>
+                    <div class="sidebar-box-body">
+                        <label style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;display:block;">Slug</label>
+                        <input type="text" id="ed-slug" class="sidebar-input" placeholder="page-slug" style="margin-bottom:0.75rem;">
+                        <label style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;display:block;">Route</label>
+                        <input type="text" id="ed-route" class="sidebar-input" placeholder="/route" style="margin-bottom:0.75rem;">
+                        <label style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;display:block;">Source File</label>
+                        <input type="text" id="ed-source" class="sidebar-input" readonly style="margin-bottom:0.75rem;opacity:0.7;">
+                        <label style="font-size:0.75rem;color:var(--text-muted);margin-bottom:0.3rem;display:block;">Notes</label>
+                        <textarea id="ed-notes" class="sidebar-textarea" placeholder="Optional notes..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="sidebar-box" id="ed-extra-actions" style="display:none;">
+                    <div class="sidebar-box-header"><span>Actions</span></div>
+                    <div class="sidebar-box-body" style="display:flex;flex-direction:column;gap:0.5rem;">
+                        <button class="btn btn-sm" onclick="viewPageArchives(editorSlug)" style="width:100%;justify-content:center;">View Archives</button>
+                        <button class="btn btn-sm btn-ai" onclick="openAiModalForEditor()" style="width:100%;justify-content:center;">AI Generate</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ ARCHIVES VIEW ═══════════ -->
+    <div id="archives-view" class="archives-view">
+        <div style="display:flex; align-items:center; gap:1rem; margin-bottom:1.25rem; flex-wrap:wrap;">
+            <button class="btn btn-link" onclick="showView('pages')">&#8592; All Pages</button>
+            <div class="page-tabs" id="page-tabs"></div>
+            <span style="flex:1;"></span>
+            <button class="btn btn-ai" onclick="openAiModal()">AI Create</button>
+            <button class="btn" onclick="openHtmlModal()">Paste HTML</button>
+            <button class="btn btn-primary" onclick="saveSnapshot()">Save Current</button>
+            <button class="btn btn-success" onclick="deployAll()">Deploy All</button>
+        </div>
+        <div class="archives-layout">
+            <div class="list-panel">
+                <div class="list-header">
+                    <h2 id="list-title">Versions</h2>
+                    <span class="list-count" id="archive-count">0</span>
+                </div>
+                <div class="archive-list" id="archive-list">
+                    <div class="empty-state"><div class="icon">&#128451;</div><p>Loading...</p></div>
+                </div>
+            </div>
+            <div class="preview-panel">
+                <div class="preview-header">
+                    <h2 id="preview-title">Preview</h2>
+                    <div class="preview-actions" id="preview-actions" style="display:none;">
+                        <button class="btn btn-success btn-sm" onclick="confirmRollback()">Push Live</button>
+                        <button class="btn btn-danger btn-sm" onclick="confirmDelete()">Delete</button>
+                    </div>
+                </div>
+                <div class="preview-body" id="preview-body">
+                    <div class="placeholder"><div class="icon">&#128065;</div><p>Select an archived version to preview</p></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ MODALS ═══════════ -->
+
+    <!-- Confirm Modal -->
+    <div class="modal-overlay hidden" id="confirm-modal">
+        <div class="modal">
+            <h3 id="modal-title">Confirm</h3>
+            <p id="modal-message">Are you sure?</p>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeModal('confirm-modal')">Cancel</button>
+                <button class="btn btn-primary" id="modal-confirm-btn">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create from HTML Modal (archives) -->
+    <div class="modal-overlay hidden" id="html-modal">
+        <div class="modal modal-xl">
+            <h3>Create from HTML</h3>
+            <label for="html-label">Label (optional)</label>
+            <input type="text" id="html-label" placeholder="e.g. redesign-v2">
+            <label for="html-content">HTML Content</label>
+            <textarea id="html-content" style="font-family:'JetBrains Mono',monospace;font-size:0.8rem;min-height:200px;" placeholder="Paste your HTML here..."></textarea>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeModal('html-modal')">Cancel</button>
+                <button class="btn" onclick="previewHtml()">Preview</button>
+                <button class="btn btn-primary" onclick="doCreateFromHtml()">Save as Archive</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Create Modal -->
+    <div class="modal-overlay hidden" id="ai-modal">
+        <div class="modal modal-wide">
+            <h3>AI Page Generator</h3>
+            <!-- Input phase -->
+            <div id="ai-input-phase">
+                <label for="ai-page-type">Page</label>
+                <select id="ai-page-type"></select>
+                <label for="ai-prompt">Instructions</label>
+                <textarea id="ai-prompt" placeholder="e.g. Make the hero section more impactful, add testimonials, modernize the color scheme..."></textarea>
+            </div>
+            <!-- Progress phase (shown during generation) -->
+            <div id="ai-progress-phase" class="hidden">
+                <div class="ai-progress-box">
+                    <div class="ai-progress-header">
+                        <span class="spinner" style="border-color:rgba(139,92,246,0.3);border-top-color:var(--accent);"></span>
+                        <span id="ai-status-text">Connecting to Claude...</span>
+                    </div>
+                    <div class="ai-progress-stats">
+                        <span id="ai-stat-chars">0 characters</span>
+                        <span id="ai-stat-time">0s elapsed</span>
+                    </div>
+                    <div class="ai-progress-bar-track">
+                        <div class="ai-progress-bar-fill" id="ai-progress-bar"></div>
+                    </div>
+                    <div class="ai-progress-preview" id="ai-preview-snippet">Waiting for output...</div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn" id="ai-close-btn" onclick="closeAiModal()">Cancel</button>
+                <button class="btn btn-danger" id="ai-stop-btn" onclick="stopAiGenerate()" style="display:none;">Stop Generation</button>
+                <button class="btn btn-primary" id="ai-generate-btn" onclick="doAiGenerate()">Generate</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Deploy Routes Modal -->
+    <div class="modal-overlay hidden" id="routes-modal">
+        <div class="modal modal-xl">
+            <h3>Deploy Routes</h3>
+            <p id="routes-summary" style="margin-bottom:0.75rem;"></p>
+            <div class="yaml-preview" id="routes-yaml">Loading...</div>
+            <div class="modal-actions">
+                <button class="btn" onclick="closeModal('routes-modal')">Cancel</button>
+                <button class="btn btn-warning" id="routes-deploy-btn" onclick="doDeployRoutes()">Deploy to BB VPS</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Browser Modal -->
+    <div class="modal-overlay hidden" id="fb-modal">
+        <div class="fb-modal-inner">
+            <div class="fb-modal-header">
+                <h3>Browse Files</h3>
+                <button class="btn btn-sm" onclick="closeModal('fb-modal')">Close</button>
+            </div>
+            <div class="fb-path" id="fb-path"></div>
+            <div class="file-browser" id="fb-list"></div>
+            <div class="fb-selected-bar" id="fb-selected-bar">
+                <span>Selected: <strong id="fb-selected-name">—</strong></span>
+                <span style="flex:1;"></span>
+                <button class="btn btn-sm btn-primary" onclick="fbUseSelected()">Use This File</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // ── State ─────────────────────────────────
+        var pages = [];
+        var archives = [];
+        var selectedFile = null;
+        var currentPage = 'landing';
+        var currentView = 'pages';
+        var editorSlug = null;   // null = new page, string = editing
+        var editorMode = 'new';
+        var fbCurrentDir = 'tools/opai-billing/public-site';
+        var fbSelectedPath = null;
+
+        // ── API helpers ───────────────────────────
+        async function apiGet(url) { return (await fetch(url)).json(); }
+        async function apiRequest(method, url, body) {
+            var resp = await fetch(url, {
+                method: method,
+                headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+                body: body !== undefined ? JSON.stringify(body) : undefined,
+            });
+            var text = await resp.text();
+            try { return JSON.parse(text); }
+            catch (e) { throw new Error('Request failed: ' + (text.substring(0, 200) || resp.statusText)); }
+        }
+        async function apiPost(url, body) { return apiRequest('POST', url, body); }
+        async function apiPut(url, body) { return apiRequest('PUT', url, body); }
+        async function apiDelete(url) { return apiRequest('DELETE', url); }
+
+        function showToast(msg, type) {
+            var el = document.getElementById('toast');
+            el.textContent = msg;
+            el.className = 'toast toast-' + (type || 'success') + ' visible';
+            setTimeout(function() { el.classList.remove('visible'); }, 3000);
+        }
+        function escHtml(s) {
+            var d = document.createElement('div');
+            d.textContent = s || '';
+            return d.innerHTML;
+        }
+        function openModal(title, message, onConfirm, btnLabel) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-message').textContent = message;
+            var btn = document.getElementById('modal-confirm-btn');
+            btn.textContent = btnLabel || 'Confirm';
+            btn.onclick = function() { closeModal('confirm-modal'); onConfirm(); };
+            document.getElementById('confirm-modal').classList.remove('hidden');
+        }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+        // ═══════════════════════════════════════════
+        // ██ VIEW SWITCHING
+        // ═══════════════════════════════════════════
+
+        function showView(view) {
+            currentView = view;
+            document.getElementById('pages-view').style.display = view === 'pages' ? 'block' : 'none';
+            document.getElementById('editor-view').style.display = view === 'editor' ? 'block' : 'none';
+            document.getElementById('archives-view').style.display = view === 'archives' ? 'block' : 'none';
+            document.getElementById('header-subtitle').textContent =
+                view === 'editor' ? (editorMode === 'new' ? 'Add New' : 'Edit') :
+                view === 'archives' ? 'Archives' : 'Manager';
+            if (view === 'pages') loadPages();
+            if (view === 'archives') { buildPageTabs(); loadArchives(); }
+        }
+
+        // ═══════════════════════════════════════════
+        // ██ PAGES LIST (WordPress-style table)
+        // ═══════════════════════════════════════════
+
+        async function loadPages() {
+            var data = await apiGet('/api/pages/registry');
+            pages = data.pages || [];
+            renderPagesTable();
+        }
+
+        function renderPagesTable() {
+            var tbody = document.getElementById('pages-tbody');
+            if (!pages.length) {
+                tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="icon">&#128196;</div><p>No pages yet. Click "+ Add New" to create one.</p></div></td></tr>';
+                return;
+            }
+            tbody.innerHTML = pages.map(function(p) {
+                var statusCls = p.status === 'active' ? 'status-active' : 'status-draft';
+                var statusLabel = p.status === 'active' ? 'Active' : 'Draft';
+                var modified = p.updated_at ? p.updated_at.replace('T', ' ').replace('Z', '') : '—';
+                return '<tr>' +
+                    '<td class="page-title-cell">' +
+                        '<a class="page-title-link" onclick="openEditor(\'' + p.slug + '\')">' + escHtml(p.name) + '</a>' +
+                        '<div class="page-row-actions">' +
+                            '<a onclick="openEditor(\'' + p.slug + '\')">Edit</a>' +
+                            '<span class="sep">|</span>' +
+                            '<a href="/api/pages/' + p.slug + '/preview-source" target="_blank">Preview</a>' +
+                            '<span class="sep">|</span>' +
+                            '<a href="https://opai.boutabyte.com' + escHtml(p.route) + '" target="_blank">View Live</a>' +
+                            '<span class="sep">|</span>' +
+                            '<a onclick="viewPageArchives(\'' + p.slug + '\')">Archives</a>' +
+                            '<span class="sep">|</span>' +
+                            '<button class="danger" onclick="quickDelete(\'' + p.slug + '\')">Trash</button>' +
+                        '</div>' +
+                    '</td>' +
+                    '<td><span class="route-mono">' + escHtml(p.route) + '</span></td>' +
+                    '<td><span class="file-mono">' + escHtml(p.source_file) + '</span></td>' +
+                    '<td><span class="status-badge ' + statusCls + '">' + statusLabel + '</span></td>' +
+                    '<td style="font-size:0.8rem;color:var(--text-muted);">' + modified.slice(0, 16) + '</td>' +
+                '</tr>';
+            }).join('');
+        }
+
+        function quickDelete(slug) {
+            var page = pages.find(function(p) { return p.slug === slug; });
+            if (!page) return;
+            openModal('Delete Page',
+                'Permanently delete "' + page.name + '" and all its archives? This cannot be undone.',
+                async function() {
+                    var data = await apiDelete('/api/pages/' + slug);
+                    if (data.ok) {
+                        showToast('Deleted "' + page.name + '"');
+                        await loadPages();
+                    } else {
+                        showToast(data.error || 'Delete failed', 'error');
+                    }
+                }, 'Delete');
+        }
+
+        // ═══════════════════════════════════════════
+        // ██ EDITOR (unified add/edit)
+        // ═══════════════════════════════════════════
+
+        function openEditor(slug) {
+            if (slug) {
+                // Edit existing
+                var page = pages.find(function(p) { return p.slug === slug; });
+                if (!page) return;
+                editorSlug = slug;
+                editorMode = 'edit';
+                document.getElementById('ed-name').value = page.name;
+                document.getElementById('ed-slug').value = page.slug;
+                document.getElementById('ed-slug').readOnly = true;
+                document.getElementById('ed-slug').style.opacity = '0.5';
+                document.getElementById('ed-route').value = page.route;
+                document.getElementById('ed-source').value = page.source_file;
+                document.getElementById('ed-notes').value = page.notes || '';
+                document.getElementById('ed-status').value = page.status;
+                document.getElementById('editor-heading').textContent = 'Edit: ' + page.name;
+                document.getElementById('ed-delete-btn').style.display = '';
+                document.getElementById('ed-extra-actions').style.display = '';
+                document.getElementById('ed-save-btn').textContent = 'Update Page';
+                document.getElementById('editor-view-live').style.display = '';
+                document.getElementById('editor-view-live').onclick = function() {
+                    window.open('https://opai.boutabyte.com' + page.route, '_blank');
+                };
+                updateEditorStatusBadge();
+                // Load source file content into code editor
+                loadFileIntoEditor(page.source_file);
+            } else {
+                // New page
+                editorSlug = null;
+                editorMode = 'new';
+                document.getElementById('ed-name').value = '';
+                document.getElementById('ed-slug').value = '';
+                document.getElementById('ed-slug').readOnly = false;
+                document.getElementById('ed-slug').style.opacity = '1';
+                document.getElementById('ed-route').value = '';
+                document.getElementById('ed-source').value = '';
+                document.getElementById('ed-notes').value = '';
+                document.getElementById('ed-status').value = 'draft';
+                document.getElementById('ed-code').value = '';
+                document.getElementById('editor-heading').textContent = 'Add New Page';
+                document.getElementById('ed-delete-btn').style.display = 'none';
+                document.getElementById('ed-extra-actions').style.display = 'none';
+                document.getElementById('ed-save-btn').textContent = 'Create Page';
+                document.getElementById('editor-view-live').style.display = 'none';
+                updateEditorStatusBadge();
+            }
+            editorTab('code');
+            fbSelectedPath = null;
+            showView('editor');
+        }
+
+        async function loadFileIntoEditor(filename) {
+            var path = 'tools/opai-billing/public-site/' + filename;
+            try {
+                var data = await apiGet('/api/pages/read-file?path=' + encodeURIComponent(path));
+                if (data.content !== undefined) {
+                    document.getElementById('ed-code').value = data.content;
+                }
+            } catch (e) {
+                document.getElementById('ed-code').value = '<!-- File not found: ' + filename + ' -->';
+            }
+        }
+
+        function updateEditorStatusBadge() {
+            var status = document.getElementById('ed-status').value;
+            var badge = document.getElementById('ed-status-badge');
+            badge.textContent = status === 'active' ? 'Active' : 'Draft';
+            badge.className = 'status-badge ' + (status === 'active' ? 'status-active' : 'status-draft');
+        }
+        // Update badge when status changes
+        document.getElementById('ed-status').addEventListener('change', updateEditorStatusBadge);
+
+        function editorAutoSlug() {
+            if (editorMode === 'edit') return;
+            var name = document.getElementById('ed-name').value;
+            var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30);
+            document.getElementById('ed-slug').value = slug;
+            document.getElementById('ed-route').value = slug ? '/' + slug : '';
+            document.getElementById('ed-source').value = slug ? slug + '.html' : '';
+        }
+
+        function closeEditor() {
+            showView('pages');
+        }
+
+        // ── Editor tab switching ────────────────
+        function editorTab(tab) {
+            document.querySelectorAll('#editor-view .content-tab').forEach(function(t) {
+                t.classList.toggle('active', t.dataset.tab === tab);
+            });
+            document.getElementById('ed-tab-code').classList.toggle('hidden', tab !== 'code');
+            document.getElementById('ed-tab-preview').classList.toggle('hidden', tab !== 'preview');
+
+            if (tab === 'preview') {
+                var frame = document.getElementById('ed-preview-frame');
+                var html = document.getElementById('ed-code').value;
+                if (html) {
+                    frame.srcdoc = html;
+                } else if (editorSlug) {
+                    frame.src = '/api/pages/' + editorSlug + '/preview-source';
+                    frame.removeAttribute('srcdoc');
+                }
+            }
+        }
+
+        function openFileBrowser() {
+            fbSelectedPath = null;
+            document.getElementById('fb-selected-bar').classList.remove('visible');
+            document.getElementById('fb-modal').classList.remove('hidden');
+            fbBrowse(fbCurrentDir);
+        }
+
+        function previewEditorContent() {
+            var html = document.getElementById('ed-code').value;
+            if (!html && editorSlug) {
+                window.open('/api/pages/' + editorSlug + '/preview-source', '_blank');
+                return;
+            }
+            if (!html) { showToast('No content to preview', 'error'); return; }
+            var win = window.open('', '_blank', 'width=1280,height=800');
+            win.document.write(html);
+            win.document.close();
+        }
+
+        function viewEditorLive() {
+            if (!editorSlug) return;
+            var page = pages.find(function(p) { return p.slug === editorSlug; });
+            if (page) window.open('https://opai.boutabyte.com' + page.route, '_blank');
+        }
+
+        // ── Editor save (create or update) ──────
+        async function editorSave() {
+            var name = document.getElementById('ed-name').value.trim();
+            var slug = document.getElementById('ed-slug').value.trim();
+            var route = document.getElementById('ed-route').value.trim();
+            var source = document.getElementById('ed-source').value.trim();
+            var notes = document.getElementById('ed-notes').value.trim();
+            var status = document.getElementById('ed-status').value;
+            var html = document.getElementById('ed-code').value.trim();
+
+            if (!name) { showToast('Title is required', 'error'); return; }
+            if (!slug) { showToast('Slug is required', 'error'); return; }
+            if (!route) { showToast('Route is required', 'error'); return; }
+
+            var btn = document.getElementById('ed-save-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Saving...';
+
+            if (editorMode === 'new') {
+                // Create
+                var body = {
+                    name: name, slug: slug, route: route, notes: notes,
+                    source_file: source || undefined,
+                };
+                if (html) body.html_content = html;
+
+                var data = await apiPost('/api/pages/registry', body);
+                btn.disabled = false;
+                btn.textContent = 'Create Page';
+                if (data.ok) {
+                    // If status should be active, toggle it
+                    if (status === 'active') {
+                        await apiPost('/api/pages/' + slug + '/toggle-status');
+                    }
+                    showToast('Page "' + name + '" created');
+                    await loadPages();
+                    // Switch to edit mode
+                    editorSlug = slug;
+                    editorMode = 'edit';
+                    document.getElementById('ed-slug').readOnly = true;
+                    document.getElementById('ed-slug').style.opacity = '0.5';
+                    document.getElementById('ed-source').value = data.page.source_file;
+                    document.getElementById('editor-heading').textContent = 'Edit: ' + name;
+                    document.getElementById('ed-delete-btn').style.display = '';
+                    document.getElementById('ed-extra-actions').style.display = '';
+                    document.getElementById('ed-save-btn').textContent = 'Update Page';
+                    document.getElementById('editor-view-live').style.display = '';
+                } else {
+                    showToast(data.error || 'Create failed', 'error');
+                }
+            } else {
+                // Update metadata
+                var body = {
+                    name: name, route: route, notes: notes,
+                    source_file: source || undefined,
+                };
+                var data = await apiPut('/api/pages/' + editorSlug, body);
+
+                // Toggle status if changed
+                var page = pages.find(function(p) { return p.slug === editorSlug; });
+                if (page && page.status !== status) {
+                    await apiPost('/api/pages/' + editorSlug + '/toggle-status');
+                }
+
+                // Save HTML content if present
+                if (html) {
+                    await apiPost('/api/pages/' + editorSlug + '/save-content', { html: html });
+                }
+
+                btn.disabled = false;
+                btn.textContent = 'Update Page';
+                if (data.ok) {
+                    showToast('Page updated');
+                    await loadPages();
+                    document.getElementById('editor-heading').textContent = 'Edit: ' + name;
+                } else {
+                    showToast(data.error || 'Update failed', 'error');
+                }
+            }
+        }
+
+        function editorDelete() {
+            if (!editorSlug) return;
+            var page = pages.find(function(p) { return p.slug === editorSlug; });
+            openModal('Delete Page',
+                'Permanently delete "' + (page ? page.name : editorSlug) + '" and all archives?',
+                async function() {
+                    var data = await apiDelete('/api/pages/' + editorSlug);
+                    if (data.ok) {
+                        showToast('Deleted');
+                        closeEditor();
+                    } else {
+                        showToast(data.error || 'Failed', 'error');
+                    }
+                }, 'Delete');
+        }
+
+        // ═══════════════════════════════════════════
+        // ██ FILE BROWSER
+        // ═══════════════════════════════════════════
+
+        async function fbBrowse(dir) {
+            fbCurrentDir = dir;
+            var data = await apiGet('/api/pages/browse?dir=' + encodeURIComponent(dir));
+            renderFbPath(data.dir, data.parent);
+            renderFbList(data.items || []);
+        }
+
+        function renderFbPath(dir, parent) {
+            var parts = dir.split('/');
+            var pathEl = document.getElementById('fb-path');
+            var html = '';
+            // Root button
+            html += '<button class="fb-path-seg" onclick="fbBrowse(\'.\')">opai</button>';
+            var cumulative = '';
+            for (var i = 0; i < parts.length; i++) {
+                if (!parts[i] || parts[i] === '.') continue;
+                cumulative += (cumulative ? '/' : '') + parts[i];
+                html += ' / <button class="fb-path-seg" onclick="fbBrowse(\'' + escHtml(cumulative) + '\')">' + escHtml(parts[i]) + '</button>';
+            }
+            pathEl.innerHTML = html;
+        }
+
+        function renderFbList(items) {
+            var listEl = document.getElementById('fb-list');
+            if (!items.length) {
+                listEl.innerHTML = '<div class="empty-state"><p>Empty directory</p></div>';
+                return;
+            }
+            listEl.innerHTML = items.map(function(item) {
+                var icon = item.is_dir ? '&#128193;' : (item.name.endsWith('.html') ? '&#128196;' : '&#128462;');
+                var selected = fbSelectedPath === item.path ? ' selected' : '';
+                var onclick = item.is_dir
+                    ? 'fbBrowse(\'' + escHtml(item.path) + '\')'
+                    : 'fbSelectFile(\'' + escHtml(item.path) + '\',\'' + escHtml(item.name) + '\')';
+                return '<div class="fb-item' + selected + '" onclick="' + onclick + '">' +
+                    '<span class="fb-icon">' + icon + '</span>' +
+                    '<span class="fb-name' + (item.is_dir ? ' is-dir' : '') + '">' + escHtml(item.name) + '</span>' +
+                    (item.size_kb !== null ? '<span class="fb-meta">' + item.size_kb + ' KB</span>' : '') +
+                    '<span class="fb-meta">' + item.modified + '</span>' +
+                '</div>';
+            }).join('');
+        }
+
+        function fbSelectFile(path, name) {
+            fbSelectedPath = path;
+            document.getElementById('fb-selected-name').textContent = name;
+            document.getElementById('fb-selected-bar').classList.add('visible');
+            // Re-render to highlight
+            var items = document.querySelectorAll('#fb-list .fb-item');
+            items.forEach(function(el) {
+                var onclick = el.getAttribute('onclick') || '';
+                el.classList.toggle('selected', onclick.indexOf(path) !== -1 && onclick.indexOf('fbSelectFile') !== -1);
+            });
+        }
+
+        async function fbUseSelected() {
+            if (!fbSelectedPath) return;
+            try {
+                var data = await apiGet('/api/pages/read-file?path=' + encodeURIComponent(fbSelectedPath));
+                if (data.content !== undefined) {
+                    document.getElementById('ed-code').value = data.content;
+                    var parts = fbSelectedPath.split('/');
+                    document.getElementById('ed-source').value = parts[parts.length - 1];
+                    closeModal('fb-modal');
+                    editorTab('code');
+                    showToast('Loaded: ' + parts[parts.length - 1]);
+                }
+            } catch (e) {
+                showToast('Failed to load file', 'error');
+            }
+        }
+
+        // ═══════════════════════════════════════════
+        // ██ ARCHIVES VIEW
+        // ═══════════════════════════════════════════
+
+        function viewPageArchives(slug) {
+            currentPage = slug;
+            showView('archives');
+        }
+
+        function buildPageTabs() {
+            var tabsEl = document.getElementById('page-tabs');
+            if (!pages.length) { tabsEl.innerHTML = ''; return; }
+            tabsEl.innerHTML = pages.map(function(p) {
+                var cls = p.slug === currentPage ? ' active' : '';
+                return '<button class="page-tab' + cls + '" data-page="' + p.slug + '" ' +
+                    'onclick="switchArchivePage(\'' + p.slug + '\')">' +
+                    escHtml(p.name) + ' <span class="tab-label">' + escHtml(p.route) + '</span></button>';
+            }).join('');
+            // AI modal dropdown
+            var aiSelect = document.getElementById('ai-page-type');
+            aiSelect.innerHTML = pages.map(function(p) {
+                return '<option value="' + p.slug + '">' + escHtml(p.name) + '</option>';
+            }).join('');
+            updateArchiveHeader();
+        }
+
+        function switchArchivePage(slug) {
+            currentPage = slug;
+            selectedFile = null;
+            document.querySelectorAll('.page-tab').forEach(function(t) {
+                t.classList.toggle('active', t.dataset.page === slug);
+            });
+            updateArchiveHeader();
+            resetPreview();
+            loadArchives();
+        }
+
+        function updateArchiveHeader() {
+            var page = pages.find(function(p) { return p.slug === currentPage; });
+            if (page) {
+                document.getElementById('list-title').textContent = page.name + ' Versions';
+            }
+        }
+
+        function resetPreview() {
+            document.getElementById('preview-title').textContent = 'Preview';
+            document.getElementById('preview-actions').style.display = 'none';
+            document.getElementById('preview-body').innerHTML =
+                '<div class="placeholder"><div class="icon">&#128065;</div><p>Select an archived version to preview</p></div>';
+        }
+
+        async function loadArchives() {
+            var data = await apiGet('/api/archive/list?page=' + currentPage);
+            archives = data.archives || [];
+            renderArchiveList();
+        }
+
+        function getLabel(filename) {
+            if (filename.includes('pre-rollback')) return { text: 'Pre-Rollback', cls: 'label-rollback' };
+            if (filename.includes('ai-generated')) return { text: 'AI', cls: 'label-ai' };
+            if (filename.includes('manual') || filename.includes('pre-redesign')) return { text: 'Snapshot', cls: 'label-manual' };
+            return null;
+        }
+
+        function formatFilename(filename) {
+            var match = filename.match(/^[a-z0-9-]+_(\d{4}-\d{2}-\d{2})_(.+)\.html$/);
+            if (match) {
+                var suffix = match[2];
+                if (/^\d{6}$/.test(suffix)) suffix = suffix.slice(0,2) + ':' + suffix.slice(2,4) + ':' + suffix.slice(4,6);
+                return match[1] + '  ' + suffix;
+            }
+            return filename;
+        }
+
+        function renderArchiveList() {
+            var listEl = document.getElementById('archive-list');
+            document.getElementById('archive-count').textContent = archives.length;
+            var page = pages.find(function(p) { return p.slug === currentPage; });
+            var draftWarn = (page && page.status === 'draft')
+                ? '<div class="draft-banner">This page is in draft status.</div>' : '';
+            if (!archives.length) {
+                listEl.innerHTML = draftWarn +
+                    '<div class="empty-state"><div class="icon">&#128451;</div><p>No archived versions yet.</p></div>';
+                return;
+            }
+            listEl.innerHTML = draftWarn + archives.map(function(a) {
+                var label = getLabel(a.filename);
+                var active = selectedFile === a.filename ? ' active' : '';
+                return '<div class="archive-item' + active + '" onclick="selectArchive(\'' + a.filename + '\')">' +
+                    '<div class="archive-item-name">' + formatFilename(a.filename) + '</div>' +
+                    '<div class="archive-item-meta">' +
+                        '<span>' + a.modified + '</span><span>' + a.size_kb + ' KB</span>' +
+                        (label ? '<span class="archive-item-label ' + label.cls + '">' + label.text + '</span>' : '') +
+                    '</div></div>';
+            }).join('');
+        }
+
+        function selectArchive(filename) {
+            selectedFile = filename;
+            renderArchiveList();
+            document.getElementById('preview-title').textContent = formatFilename(filename);
+            document.getElementById('preview-actions').style.display = 'flex';
+            document.getElementById('preview-body').innerHTML =
+                '<iframe src="/api/archive/preview/' + encodeURIComponent(filename) + '" style="width:100%;height:100%;border:none;background:white;min-height:500px;"></iframe>';
+        }
+
+        async function saveSnapshot() {
+            var data = await apiPost('/api/archive/save', { page: currentPage });
+            if (data.ok) { showToast('Saved: ' + data.filename); await loadArchives(); }
+            else showToast(data.error || 'Save failed', 'error');
+        }
+
+        function confirmRollback() {
+            if (!selectedFile) return;
+            var page = pages.find(function(p) { return p.slug === currentPage; });
+            openModal('Push to Live',
+                'Replace current ' + (page ? page.name : currentPage) + ' with "' + formatFilename(selectedFile) + '" and deploy?',
+                doRollback, 'Push Live');
+        }
+
+        async function doRollback() {
+            var data = await apiPost('/api/archive/rollback', { filename: selectedFile });
+            if (!data.ok) { showToast(data.error || 'Rollback failed', 'error'); return; }
+            showToast('File updated. Deploying content + routes...');
+            var deploy = await apiPost('/api/pages/deploy-all');
+            if (deploy.ok) showToast('Deployed to opai.boutabyte.com (content + routes)');
+            else showToast('File updated but deploy had issues', 'error');
+            await loadArchives();
+        }
+
+        async function deployAll() {
+            showToast('Deploying content + routes...');
+            var data = await apiPost('/api/pages/deploy-all');
+            if (data.ok) showToast('Deployed to opai.boutabyte.com (content + routes)');
+            else {
+                var msg = 'Deploy issue:';
+                if (data.details) {
+                    if (!data.details.content.ok) msg += ' Content failed.';
+                    if (!data.details.routes.ok) msg += ' Routes failed.';
+                }
+                showToast(msg, 'error');
+            }
+        }
+
+        function confirmDelete() {
+            if (!selectedFile) return;
+            openModal('Delete Archive',
+                'Permanently delete "' + formatFilename(selectedFile) + '"?',
+                doArchiveDelete, 'Delete');
+        }
+
+        async function doArchiveDelete() {
+            var data = await apiDelete('/api/archive/' + encodeURIComponent(selectedFile));
+            if (data.ok) { showToast('Deleted'); selectedFile = null; resetPreview(); await loadArchives(); }
+            else showToast(data.error || 'Delete failed', 'error');
+        }
+
+        // ── Create from HTML (archives view) ────
+        function openHtmlModal() {
+            document.getElementById('html-label').value = '';
+            document.getElementById('html-content').value = '';
+            document.getElementById('html-modal').classList.remove('hidden');
+        }
+
+        function previewHtml() {
+            var html = document.getElementById('html-content').value;
+            if (!html) { showToast('Paste HTML first', 'error'); return; }
+            var win = window.open('', '_blank', 'width=1024,height=768');
+            win.document.write(html);
+            win.document.close();
+        }
+
+        async function doCreateFromHtml() {
+            var html = document.getElementById('html-content').value;
+            var label = document.getElementById('html-label').value.trim();
+            if (!html || html.indexOf('<') === -1) { showToast('Paste valid HTML', 'error'); return; }
+            var data = await apiPost('/api/pages/' + currentPage + '/create-from-html', {
+                html: html, label: label || 'manual',
+            });
+            if (data.ok) {
+                closeModal('html-modal');
+                showToast('Saved: ' + data.filename);
+                await loadArchives();
+                selectArchive(data.filename);
+            } else showToast(data.error || 'Save failed', 'error');
+        }
+
+        // ── AI Create ───────────────────────────
+        var aiAbortController = null;
+        var aiTimer = null;
+        var aiGenerating = false;
+
+        function resetAiModal() {
+            document.getElementById('ai-input-phase').classList.remove('hidden');
+            document.getElementById('ai-progress-phase').classList.add('hidden');
+            document.getElementById('ai-generate-btn').disabled = false;
+            document.getElementById('ai-generate-btn').textContent = 'Generate';
+            document.getElementById('ai-generate-btn').style.display = '';
+            document.getElementById('ai-stop-btn').style.display = 'none';
+            document.getElementById('ai-close-btn').style.display = '';
+            if (aiTimer) { clearInterval(aiTimer); aiTimer = null; }
+            aiAbortController = null;
+            aiGenerating = false;
+        }
+
+        function openAiModal() {
+            populateAiDropdown();
+            document.getElementById('ai-page-type').value = currentPage;
+            document.getElementById('ai-prompt').value = '';
+            resetAiModal();
+            document.getElementById('ai-modal').classList.remove('hidden');
+        }
+
+        function openAiModalForEditor() {
+            populateAiDropdown();
+            if (editorSlug) {
+                document.getElementById('ai-page-type').value = editorSlug;
+            }
+            document.getElementById('ai-prompt').value = '';
+            resetAiModal();
+            document.getElementById('ai-modal').classList.remove('hidden');
+        }
+
+        function populateAiDropdown() {
+            var aiSelect = document.getElementById('ai-page-type');
+            aiSelect.innerHTML = pages.map(function(p) {
+                return '<option value="' + p.slug + '">' + escHtml(p.name) + '</option>';
+            }).join('');
+        }
+
+        function closeAiModal() {
+            if (aiGenerating) {
+                stopAiGenerate();
+            } else {
+                resetAiModal();
+                closeModal('ai-modal');
+            }
+        }
+
+        async function stopAiGenerate() {
+            // Kill server-side process
+            var stopBtn = document.getElementById('ai-stop-btn');
+            stopBtn.disabled = true;
+            stopBtn.textContent = 'Stopping...';
+            try {
+                await fetch('/api/pages/generate/stop', { method: 'POST' });
+            } catch (e) { /* best effort */ }
+
+            // Abort client-side stream
+            if (aiAbortController) {
+                aiAbortController.abort();
+                aiAbortController = null;
+            }
+            if (aiTimer) { clearInterval(aiTimer); aiTimer = null; }
+            aiGenerating = false;
+
+            // Show "stopped" state with try again option
+            document.getElementById('ai-status-text').textContent = 'Stopped';
+            var bar = document.getElementById('ai-progress-bar');
+            bar.classList.remove('indeterminate');
+            bar.style.background = 'var(--danger, #ef4444)';
+            document.getElementById('ai-preview-snippet').textContent = 'Generation was stopped.';
+
+            // Swap buttons: hide stop, show try again + close
+            stopBtn.style.display = 'none';
+            stopBtn.disabled = false;
+            stopBtn.textContent = 'Stop Generation';
+            document.getElementById('ai-generate-btn').textContent = 'Try Again';
+            document.getElementById('ai-generate-btn').style.display = '';
+            document.getElementById('ai-generate-btn').disabled = false;
+            document.getElementById('ai-close-btn').style.display = '';
+
+            showToast('Generation stopped', 'error');
+        }
+
+        async function doAiGenerate() {
+            var prompt = document.getElementById('ai-prompt').value.trim();
+            if (!prompt) { showToast('Enter instructions first', 'error'); return; }
+            var pageType = document.getElementById('ai-page-type').value;
+
+            aiGenerating = true;
+
+            // Switch to progress phase
+            document.getElementById('ai-input-phase').classList.add('hidden');
+            document.getElementById('ai-progress-phase').classList.remove('hidden');
+            document.getElementById('ai-generate-btn').style.display = 'none';
+            document.getElementById('ai-close-btn').style.display = 'none';
+            document.getElementById('ai-stop-btn').style.display = '';
+            document.getElementById('ai-stop-btn').disabled = false;
+            document.getElementById('ai-stop-btn').textContent = 'Stop Generation';
+
+            // Reset progress UI
+            document.getElementById('ai-status-text').textContent = 'Connecting to Claude...';
+            document.getElementById('ai-stat-chars').textContent = '0 characters';
+            document.getElementById('ai-stat-time').textContent = '0s elapsed';
+            document.getElementById('ai-preview-snippet').textContent = 'Waiting for output...';
+            var bar = document.getElementById('ai-progress-bar');
+            bar.style.width = '0%';
+            bar.style.background = '';
+            bar.classList.add('indeterminate');
+
+            // Start elapsed timer
+            var startTime = Date.now();
+            aiTimer = setInterval(function() {
+                var elapsed = Math.floor((Date.now() - startTime) / 1000);
+                var min = Math.floor(elapsed / 60);
+                var sec = elapsed % 60;
+                document.getElementById('ai-stat-time').textContent =
+                    min > 0 ? min + 'm ' + sec + 's elapsed' : sec + 's elapsed';
+            }, 1000);
+
+            // Put editor into code tab and clear it (visible behind modal)
+            if (currentView === 'editor') {
+                document.getElementById('ed-code').value = '';
+                editorTab('code');
+            }
+
+            // Stream via SSE fetch
+            aiAbortController = new AbortController();
+            var chars = 0;
+            var collected = '';
+            var filename = null;
+
+            try {
+                var resp = await fetch('/api/pages/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: prompt, page: pageType }),
+                    signal: aiAbortController.signal,
+                });
+
+                if (!resp.ok) {
+                    var errText = await resp.text();
+                    throw new Error(errText || resp.statusText);
+                }
+
+                var reader = resp.body.getReader();
+                var decoder = new TextDecoder();
+                var sseBuffer = '';
+
+                while (true) {
+                    var result = await reader.read();
+                    if (result.done) break;
+
+                    sseBuffer += decoder.decode(result.value, { stream: true });
+
+                    var lines = sseBuffer.split('\n');
+                    sseBuffer = lines.pop();
+
+                    var currentEvent = null;
+                    for (var i = 0; i < lines.length; i++) {
+                        var line = lines[i];
+                        if (line.startsWith('event: ')) {
+                            currentEvent = line.substring(7);
+                        } else if (line.startsWith('data: ') && currentEvent) {
+                            var rawData = line.substring(6);
+                            var parsed;
+                            try { parsed = JSON.parse(rawData); } catch(e) { continue; }
+
+                            if (currentEvent === 'status') {
+                                document.getElementById('ai-status-text').textContent = parsed;
+                            } else if (currentEvent === 'heartbeat') {
+                                document.getElementById('ai-status-text').textContent = parsed;
+                            } else if (currentEvent === 'chunk') {
+                                collected += parsed;
+                                chars += parsed.length;
+
+                                document.getElementById('ai-stat-chars').textContent =
+                                    chars.toLocaleString() + ' characters';
+                                document.getElementById('ai-status-text').textContent =
+                                    'Generating HTML...';
+                                bar.classList.remove('indeterminate');
+                                var pct = Math.min(95, Math.round((chars / 15000) * 100));
+                                bar.style.width = pct + '%';
+
+                                var tail = collected.length > 120 ? '...' + collected.slice(-120) : collected;
+                                document.getElementById('ai-preview-snippet').textContent = tail;
+
+                                if (currentView === 'editor') {
+                                    document.getElementById('ed-code').value = collected;
+                                    var ta = document.getElementById('ed-code');
+                                    ta.scrollTop = ta.scrollHeight;
+                                }
+                            } else if (currentEvent === 'done') {
+                                var doneData;
+                                try { doneData = JSON.parse(parsed); } catch(e) { doneData = parsed; }
+                                filename = doneData.filename || null;
+                                bar.classList.remove('indeterminate');
+                                bar.style.width = '100%';
+                                document.getElementById('ai-status-text').textContent = 'Complete!';
+                            } else if (currentEvent === 'error') {
+                                throw new Error(parsed);
+                            }
+                            currentEvent = null;
+                        }
+                    }
+                }
+
+                // Generation finished
+                clearInterval(aiTimer); aiTimer = null;
+                aiGenerating = false;
+
+                if (filename) {
+                    closeModal('ai-modal');
+                    resetAiModal();
+                    showToast('Generated: ' + filename);
+                    if (currentView === 'archives') {
+                        currentPage = pageType;
+                        buildPageTabs();
+                        await loadArchives();
+                        selectArchive(filename);
+                    } else if (currentView === 'editor') {
+                        document.getElementById('ed-code').value = collected;
+                        editorTab('code');
+                        showToast('AI content loaded into editor');
+                    }
+                } else if (collected) {
+                    closeModal('ai-modal');
+                    resetAiModal();
+                    if (currentView === 'editor') {
+                        document.getElementById('ed-code').value = collected;
+                        editorTab('code');
+                    }
+                    showToast('Generation finished (no archive saved)', 'error');
+                } else {
+                    // No output — show try again
+                    aiGenerating = false;
+                    document.getElementById('ai-stop-btn').style.display = 'none';
+                    document.getElementById('ai-generate-btn').textContent = 'Try Again';
+                    document.getElementById('ai-generate-btn').style.display = '';
+                    document.getElementById('ai-generate-btn').disabled = false;
+                    document.getElementById('ai-close-btn').style.display = '';
+                    document.getElementById('ai-status-text').textContent = 'No output received';
+                    bar.classList.remove('indeterminate');
+                    bar.style.background = 'var(--danger, #ef4444)';
+                    showToast('No output received from Claude', 'error');
+                }
+            } catch (e) {
+                clearInterval(aiTimer); aiTimer = null;
+                aiGenerating = false;
+                if (e.name === 'AbortError') return; // user stopped — UI already handled
+                // Show error with try again
+                document.getElementById('ai-stop-btn').style.display = 'none';
+                document.getElementById('ai-generate-btn').textContent = 'Try Again';
+                document.getElementById('ai-generate-btn').style.display = '';
+                document.getElementById('ai-generate-btn').disabled = false;
+                document.getElementById('ai-close-btn').style.display = '';
+                document.getElementById('ai-status-text').textContent = 'Failed';
+                document.getElementById('ai-preview-snippet').textContent = e.message;
+                bar.classList.remove('indeterminate');
+                bar.style.background = 'var(--danger, #ef4444)';
+                showToast('Generation failed: ' + e.message, 'error');
+            }
+        }
+
+        // ── Deploy Routes ───────────────────────
+        async function openDeployRoutesModal() {
+            document.getElementById('routes-yaml').textContent = 'Loading...';
+            document.getElementById('routes-summary').textContent = '';
+            document.getElementById('routes-modal').classList.remove('hidden');
+            var data = await apiGet('/api/pages/routes-preview');
+            document.getElementById('routes-yaml').textContent = data.yaml || 'Error';
+            document.getElementById('routes-summary').textContent =
+                data.active_count + ' active route(s): ' +
+                (data.routes || []).map(function(r) { return r.route; }).join(', ');
+        }
+
+        async function doDeployRoutes() {
+            var btn = document.getElementById('routes-deploy-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Deploying...';
+            var data = await apiPost('/api/pages/deploy-routes');
+            btn.disabled = false;
+            btn.textContent = 'Deploy to BB VPS';
+            if (data.ok) { closeModal('routes-modal'); showToast('Routes deployed'); }
+            else showToast(data.error || 'Deploy failed', 'error');
+        }
+
+        // ── Init ────────────────────────────────
+        async function init() {
+            await loadPages();
+            if (pages.length && !pages.find(function(p) { return p.slug === currentPage; })) {
+                currentPage = pages[0].slug;
+            }
+        }
+        init();
+    </script>
+</body>
+</html>

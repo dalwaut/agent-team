@@ -1,0 +1,15 @@
+{
+  "name": "opai-ai-defaults",
+  "displayName": "OPAI AI Defaults",
+  "description": "Auto-opens the AI Chat panel on startup",
+  "version": "1.0.0",
+  "publisher": "opai",
+  "engines": {
+    "vscode": "^1.50.0"
+  },
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./extension.js",
+  "contributes": {}
+}

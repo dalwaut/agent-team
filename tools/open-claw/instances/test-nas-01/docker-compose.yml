@@ -1,0 +1,62 @@
+version: "3.8"
+services:
+  clawbot:
+    image: opai/clawbot:latest
+    container_name: clawbot-test-nas-01
+    restart: unless-stopped
+    env_file:
+      - /run/user/1000/opai-oc/test-nas-01.env
+    environment:
+      - BOT_NAME=NAS Test Bot
+      - INSTANCE_SLUG=test-nas-01
+      - LOG_LEVEL=info
+      - OC_BROKER_URL=http://host.docker.internal:8106
+      - OC_CALLBACK_TOKEN=oc_test-nas-01_b237d0b96ef147c6000552d6cad90924
+      - OC_WORKSPACE_MODE=nas
+      - OC_NAS_MODEL=a
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:9001:3000"
+    volumes:
+      - /workspace/users/_clawbots/test-nas-01/config:/app/config:ro
+      - /workspace/users/_clawbots/test-nas-01/knowledge:/app/knowledge:ro
+      - /workspace/users/_clawbots/test-nas-01/workspace:/app/workspace
+      - /workspace/users/_clawbots/test-nas-01/logs:/app/logs
+      - /workspace/users/_shared/knowledge:/app/shared-knowledge:ro
+      - /workspace/users/_shared/inbox/test-nas-01:/app/inbox
+      - /workspace/users/_shared/delegation/test-nas-01:/app/delegation
+      - /workspace/users/_shared/reports:/app/reports
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M
+      - /app/tmp:size=50M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 0.5
+    pids_limit: 100
+    networks:
+      - opai-claw
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "opai.service=clawbot"
+      - "opai.instance=test-nas-01"
+      - "opai.managed=true"
+      - "opai.workspace=nas"
+      - "opai.nas_model=a"
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+
+networks:
+  opai-claw:
+    external: true

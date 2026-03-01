@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DAM Bot — Do Anything Mode</title>
+    <link rel="stylesheet" href="/dam/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="/auth/static/js/navbar.js" defer></script>
+</head>
+<body>
+
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="loading-overlay">
+    <div class="loading-content">
+        <div class="loading-icon">DAM</div>
+        <div class="loading-sub">Do Anything Mode</div>
+        <div class="loading-bar"><div class="loading-fill"></div></div>
+    </div>
+</div>
+
+<!-- App Shell -->
+<div id="app" class="app hidden">
+
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <a href="/dam/" class="top-bar-logo">DAM Bot</a>
+            <span class="top-bar-version">v1.0</span>
+        </div>
+        <div class="top-bar-right">
+            <button class="btn btn-sm btn-accent" id="btn-new-session" onclick="DAM.showNewSessionModal()">+ New Session</button>
+            <span class="user-display" id="user-display"></span>
+        </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tab-nav" id="tab-nav">
+        <button class="tab-btn active" data-tab="sessions" onclick="DAM.showTab('sessions')">Sessions</button>
+        <button class="tab-btn" data-tab="approvals" onclick="DAM.showTab('approvals')">
+            Approvals
+            <span class="tab-badge" id="approvals-badge" style="display:none;"></span>
+        </button>
+        <button class="tab-btn" data-tab="skills" onclick="DAM.showTab('skills')">Skills</button>
+        <button class="tab-btn" data-tab="improvements" onclick="DAM.showTab('improvements')">Improvements</button>
+    </nav>
+
+    <!-- Tab Panels -->
+    <main class="tab-panels">
+        <div id="panel-sessions" class="tab-panel active">
+            <div class="panel-header">
+                <h2>Sessions</h2>
+                <div class="panel-filters">
+                    <select id="filter-status" onchange="DAM.loadSessions()">
+                        <option value="">All</option>
+                        <option value="draft">Draft</option>
+                        <option value="planning">Planning</option>
+                        <option value="executing">Executing</option>
+                        <option value="paused">Paused</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                </div>
+            </div>
+            <div id="sessions-list" class="card-list">
+                <div class="empty-state">Loading sessions...</div>
+            </div>
+        </div>
+
+        <div id="panel-session-detail" class="tab-panel">
+            <div id="session-detail-content"></div>
+        </div>
+
+        <div id="panel-approvals" class="tab-panel">
+            <div class="panel-header"><h2>Approval Queue</h2></div>
+            <div id="approvals-list" class="card-list">
+                <div class="empty-state">Loading approvals...</div>
+            </div>
+        </div>
+
+        <div id="panel-skills" class="tab-panel">
+            <div class="panel-header">
+                <h2>Skill Library</h2>
+                <button class="btn btn-sm" onclick="DAM.loadSkills()">Refresh</button>
+            </div>
+            <div id="skills-list" class="card-list">
+                <div class="empty-state">Loading skills...</div>
+            </div>
+        </div>
+
+        <div id="panel-improvements" class="tab-panel">
+            <div class="panel-header"><h2>Self-Improvement Queue</h2></div>
+            <div id="improvements-list" class="card-list">
+                <div class="empty-state">Loading improvements...</div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- New Session Modal -->
+<div id="modal-new-session" class="modal-overlay hidden">
+    <div class="modal">
+        <h3>New Session</h3>
+        <label>Title
+            <input type="text" id="new-title" placeholder="e.g., Build a landing page for XYZ">
+        </label>
+        <label>Goal
+            <div class="goal-examples">
+                <button type="button" class="example-chip" onclick="DAM.applyExample(this)">Build a landing page for my SaaS product</button>
+                <button type="button" class="example-chip" onclick="DAM.applyExample(this)">Audit the codebase for security issues</button>
+                <button type="button" class="example-chip" onclick="DAM.applyExample(this)">Create a content calendar for next month</button>
+                <button type="button" class="example-chip" onclick="DAM.applyExample(this)">Set up a new WordPress site with starter content</button>
+            </div>
+            <textarea id="new-goal" rows="5" placeholder="Describe what you want DAM Bot to accomplish..."></textarea>
+        </label>
+        <label>Model
+            <select id="new-model" class="modal-select">
+                <option value="auto" selected>Auto (Recommended)</option>
+                <option value="haiku">Haiku — Fast &amp; cheap</option>
+                <option value="sonnet">Sonnet — Balanced</option>
+                <option value="opus">Opus — Maximum capability</option>
+            </select>
+            <div class="model-hint">Auto analyzes each step and assigns the optimal model based on complexity.</div>
+        </label>
+        <label>Autonomy Level
+            <div class="range-row">
+                <input type="range" id="new-autonomy" min="1" max="4" value="3" oninput="DAM.updateAutonomyLabel(this.value)">
+                <span id="autonomy-val" class="autonomy-val">3</span>
+            </div>
+            <div class="autonomy-tooltip" id="autonomy-tooltip"></div>
+        </label>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" onclick="DAM.closeModals()">Cancel</button>
+            <button class="btn btn-accent" onclick="DAM.createSession()">Create Session</button>
+        </div>
+    </div>
+</div>
+
+<script src="/dam/static/js/app.js"></script>
+</body>
+</html>

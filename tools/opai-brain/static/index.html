@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2nd Brain — OPAI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/brain/static/style.css">
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">
+  <div class="spinner"></div>
+  <span>Loading 2nd Brain…</span>
+</div>
+
+<!-- Auth screen -->
+<div id="auth-screen" class="hidden">
+  <div class="auth-card">
+    <h2>🧠 2nd Brain</h2>
+    <p>Sign in to access your knowledge base</p>
+    <input type="email" id="auth-email" placeholder="Email">
+    <input type="password" id="auth-pass" placeholder="Password" onkeydown="if(event.key==='Enter') signIn()">
+    <p id="auth-error" style="color:#ef4444;font-size:13px;min-height:18px;"></p>
+    <button class="btn-primary" onclick="signIn()">Sign In</button>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app" class="hidden">
+
+  <!-- Top bar -->
+  <header class="top-bar">
+    <div class="logo-mark">BR</div>
+    <div class="app-title"><span>2nd Brain</span></div>
+    <button class="btn-icon" onclick="signOut()" title="Sign out" style="margin-left:auto;">⎋ Sign out</button>
+  </header>
+
+  <!-- Tab nav -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="library" onclick="switchTab('library')">Library</button>
+    <button class="tab-btn" data-tab="inbox" onclick="switchTab('inbox')">
+      Inbox
+      <span class="tab-badge" id="inbox-badge" style="display:none;"></span>
+    </button>
+    <button class="tab-btn" data-tab="canvas" onclick="switchTab('canvas')">Canvas</button>
+    <button class="tab-btn" data-tab="research" onclick="switchTab('research')">Research</button>
+    <button class="tab-btn" data-tab="graph" onclick="switchTab('graph')">Graph</button>
+  </nav>
+
+  <!-- ── Library Tab ── -->
+  <div id="tab-library" class="tab-panel active">
+    <div class="library-layout">
+
+      <!-- Sidebar -->
+      <aside class="lib-sidebar">
+        <div class="sidebar-top">
+          <!-- Search -->
+          <div class="search-bar">
+            <span class="search-icon">🔍</span>
+            <input type="search" id="search-input" placeholder="Search notes…" oninput="onSearch(this.value)">
+          </div>
+          <!-- Type filter pills -->
+          <div class="type-filters">
+            <button class="type-pill active" data-type="all"      onclick="filterType('all')">All</button>
+            <button class="type-pill"        data-type="note"     onclick="filterType('note')">Note</button>
+            <button class="type-pill"        data-type="concept"  onclick="filterType('concept')">Concept</button>
+            <button class="type-pill"        data-type="question" onclick="filterType('question')">Question</button>
+          </div>
+        </div>
+        <div class="note-list" id="note-list">
+          <div class="note-list-empty">Loading…</div>
+        </div>
+      </aside>
+
+      <!-- Editor -->
+      <section class="lib-editor">
+        <!-- Toolbar -->
+        <div class="editor-toolbar">
+          <button class="btn-new-note" onclick="newNote()">+ New</button>
+          <select class="type-select" id="node-type-select">
+            <option value="note">Note</option>
+            <option value="concept">Concept</option>
+            <option value="question">Question</option>
+          </select>
+          <div class="toolbar-spacer"></div>
+          <button class="btn-preview-toggle" id="btn-preview" onclick="togglePreview()">Preview</button>
+          <button class="btn-mode-toggle" id="btn-mode" onclick="toggleEditorMode()" title="Switch between block editor and raw markdown">⬚ Blocks</button>
+          <button class="btn-history" id="btn-history" onclick="toggleSnapshotDrawer()" title="Version history">🕐 History</button>
+          <button class="btn-save" id="btn-save" onclick="saveNode()" disabled>Save</button>
+          <button class="btn-delete" onclick="deleteNode()">Delete</button>
+        </div>
+
+        <!-- AI Toolbar (visible when a node is open) -->
+        <div class="ai-toolbar hidden" id="ai-toolbar">
+          <span class="ai-toolbar-label">✦ AI:</span>
+          <button class="btn-ai" onclick="aiAction('expand')" title="Expand selected text or full note">Expand</button>
+          <button class="btn-ai" onclick="aiAction('summarize')" title="Summarize into bullet points">Summarize</button>
+          <button class="btn-ai" onclick="aiAction('rewrite')" title="Rewrite for clarity">Rewrite</button>
+          <button class="btn-ai" onclick="aiAction('extract_tasks')" title="Extract action items as checklist">Extract Tasks</button>
+          <button class="btn-ai" onclick="aiAction('find_related')" title="Find related notes in your library">Find Related</button>
+          <span class="ai-toolbar-hint">Select text first to act on a selection</span>
+        </div>
+
+        <!-- Empty state -->
+        <div id="editor-empty" class="editor-empty">
+          <h3>No note selected</h3>
+          <p style="color:var(--text-muted);font-size:13px;">Select a note from the sidebar or create a new one</p>
+          <button class="btn-primary" onclick="newNote()">+ New Note</button>
+        </div>
+
+        <!-- Editor form -->
+        <div id="editor-form" class="editor-body hidden">
+          <div class="editor-title-row">
+            <input class="editor-title" id="node-title" placeholder="Title…" oninput="markDirty()">
+          </div>
+          <div class="tags-row" id="tags-row"></div>
+          <!-- Block editor (default) -->
+          <div id="editor-block" class="editor-block"></div>
+          <!-- Markdown textarea (hidden; toggled by mode switch) -->
+          <textarea class="editor-area hidden" id="node-content" placeholder="Write in Markdown…
+Use [[Note Title]] for wikilinks." oninput="markDirty(); if(_previewMode) renderPreview()"></textarea>
+          <div class="preview-area hidden" id="preview-area"></div>
+          <div class="editor-status-bar" id="editor-status-bar">
+            <span id="word-count">0 words</span>
+            <span id="char-count">0 chars</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- ── Inbox Tab ── -->
+  <div id="tab-inbox" class="tab-panel">
+    <div class="inbox-layout">
+
+      <div class="capture-box">
+        <h3>Quick Capture</h3>
+        <textarea class="capture-textarea" id="capture-textarea" placeholder="Capture a thought, link, quote, or idea…" rows="3"></textarea>
+        <div class="capture-actions">
+          <button class="btn-capture" id="btn-capture" onclick="captureInbox()">Capture</button>
+        </div>
+      </div>
+
+      <div class="inbox-list" id="inbox-list">
+        <div class="inbox-empty">Inbox is empty!</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Canvas Tab ── -->
+  <div id="tab-canvas" class="tab-panel canvas-panel">
+
+    <!-- Canvas toolbar -->
+    <div class="canvas-toolbar">
+      <button class="btn-canvas-action" onclick="canvasAddNode()" title="Add a new note at canvas center">+ Note</button>
+      <button class="btn-canvas-action" onclick="canvasAutoLayout()" title="Reset all positions to grid">Auto Layout</button>
+      <button class="btn-auto-suggest" id="btn-canvas-suggest" onclick="canvasSuggestLinks()" title="Find suggested links between notes">✦ Suggest Links</button>
+      <div class="canvas-toolbar-sep"></div>
+      <span class="canvas-hint">Drag nodes · Shift+drag port → connect · Right-click → menu</span>
+      <div style="flex:1"></div>
+      <span id="canvas-node-count" class="canvas-stat"></span>
+    </div>
+
+    <!-- Canvas surface -->
+    <div class="canvas-surface" id="canvas-surface">
+      <svg id="canvas-svg" width="100%" height="100%">
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#4a4a5a"/>
+          </marker>
+          <pattern id="grid-pattern" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e1e28" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <!-- All canvas content inside one zoom-transformed group -->
+        <g id="canvas-content">
+          <rect width="8000" height="8000" x="-4000" y="-4000" fill="url(#grid-pattern)" class="canvas-grid"/>
+          <g id="canvas-links"></g>
+          <line id="canvas-drag-line" class="canvas-drag-line" style="display:none"/>
+          <g id="canvas-nodes"></g>
+        </g>
+      </svg>
+      <!-- Context menu -->
+      <div id="canvas-ctx-menu" class="canvas-ctx-menu hidden">
+        <div class="ctx-item" id="ctx-new-here" onclick="ctxNewNode()">+ New note here</div>
+        <div class="ctx-item ctx-sep"></div>
+        <div class="ctx-item" id="ctx-auto-layout" onclick="canvasAutoLayout()">Auto layout</div>
+      </div>
+      <!-- Node context menu -->
+      <div id="node-ctx-menu" class="canvas-ctx-menu hidden">
+        <div class="ctx-item" id="nctx-edit" onclick="nctxEdit()">Edit in Library</div>
+        <div class="ctx-item ctx-danger" id="nctx-delete" onclick="nctxDelete()">Delete note</div>
+      </div>
+      <!-- Canvas empty state -->
+      <div id="canvas-empty" class="canvas-empty hidden">
+        <span style="font-size:36px;">🗺️</span>
+        <p>No notes yet — create one in the Library or click <strong>+ Note</strong> above.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Research Tab ── -->
+  <div id="tab-research" class="tab-panel">
+    <div class="research-layout">
+
+      <!-- Research form -->
+      <div class="research-form-box">
+        <h3>🔬 Research a Topic</h3>
+        <p class="research-desc">Claude synthesizes a structured knowledge note from its training data and deposits it directly into your Library.</p>
+        <div class="research-inputs">
+          <input type="text" id="research-query" class="research-query-input" placeholder="e.g. Retrieval-Augmented Generation, Zettelkasten method…" onkeydown="if(event.key==='Enter') startResearch()">
+          <input type="text" id="research-scope" class="research-scope-input" placeholder="Focus area (optional) — e.g. practical applications">
+          <button class="btn-research" id="btn-research" onclick="startResearch()">Research</button>
+        </div>
+      </div>
+
+      <!-- Session list -->
+      <div class="research-sessions">
+        <div class="research-sessions-header">
+          <span>Recent Sessions</span>
+          <button class="btn-refresh-research" onclick="loadResearch()" title="Refresh">⟳</button>
+        </div>
+        <div id="research-list">
+          <div class="research-empty">No research sessions yet.</div>
+        </div>
+      </div>
+
+      <!-- Agent Schedule (admin only) -->
+      <div class="schedule-panel hidden" id="schedule-panel">
+        <div class="schedule-panel-header">Agent Schedule</div>
+        <div class="schedule-agent-row">
+          <div class="schedule-agent-name">brain_curator</div>
+          <div class="schedule-agent-controls">
+            <label class="schedule-toggle">
+              <input type="checkbox" id="curator-enabled" onchange="scheduleChanged()">
+              <span>Enabled</span>
+            </label>
+            <label class="schedule-cron-label">Cron:
+              <input type="text" id="curator-cron" class="schedule-cron-input" placeholder="0 9 * * *" onchange="scheduleChanged()">
+            </label>
+            <span id="curator-next" class="schedule-next"></span>
+            <button class="btn-run-now" onclick="runAgentNow('curator')">Run Now</button>
+          </div>
+        </div>
+        <div class="schedule-agent-row">
+          <div class="schedule-agent-name">brain_linker</div>
+          <div class="schedule-agent-controls">
+            <label class="schedule-toggle">
+              <input type="checkbox" id="linker-enabled" onchange="scheduleChanged()">
+              <span>Enabled</span>
+            </label>
+            <label class="schedule-cron-label">Cron:
+              <input type="text" id="linker-cron" class="schedule-cron-input" placeholder="0 8 * * 1" onchange="scheduleChanged()">
+            </label>
+            <span id="linker-next" class="schedule-next"></span>
+            <button class="btn-run-now" onclick="runAgentNow('linker')">Run Now</button>
+          </div>
+        </div>
+        <div class="schedule-actions">
+          <button class="btn-save-schedule" id="btn-save-schedule" onclick="saveSchedule()" disabled>Save Schedule</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Graph Tab ── -->
+  <div id="tab-graph" class="tab-panel">
+    <div class="graph-layout">
+      <div class="graph-toolbar">
+        <span>Knowledge Graph</span>
+        <button class="btn-auto-suggest" id="btn-auto-suggest" onclick="autoSuggestGraph()">Auto-Suggest</button>
+        <button class="btn-canvas-action" id="btn-graph-legend" onclick="toggleGraphLegend()">Legend</button>
+        <div class="graph-toolbar-sep"></div>
+        <label class="graph-toolbar-label">Group:
+          <select class="graph-toolbar-select" id="graph-group-by" onchange="onGraphGroupChange(this.value)">
+            <option value="none">None</option>
+            <option value="source">Source Directory</option>
+            <option value="type">Node Type</option>
+          </select>
+        </label>
+        <div class="graph-toolbar-sep"></div>
+        <button class="btn-canvas-action" id="btn-graph-freeze" onclick="toggleGraphFreeze()">Freeze</button>
+        <button class="btn-canvas-action" id="btn-graph-lock-all" onclick="graphLockAll()">Lock All</button>
+        <button class="btn-canvas-action" id="btn-graph-reset" onclick="graphResetLayout()">Reset</button>
+        <span style="flex:1"></span>
+        <span id="graph-node-count" style="font-size:12px;"></span>
+      </div>
+      <div class="graph-container" id="graph-container">
+        <svg id="graph-svg"></svg>
+        <div class="graph-tooltip" id="graph-tooltip"></div>
+        <div class="graph-popover" id="graph-popover"></div>
+        <div class="graph-empty hidden" id="graph-empty">
+          <span style="font-size:32px;">🕸️</span>
+          <span>No nodes yet — create some notes in the Library!</span>
+        </div>
+        <!-- Graph side panel (double-click node preview) -->
+        <div class="graph-side-panel" id="graph-side-panel">
+          <div class="graph-side-panel-header">
+            <h3 id="graph-panel-title">Node</h3>
+            <button class="btn-icon" onclick="closeGraphPanel()">&#x2715;</button>
+          </div>
+          <div class="graph-side-panel-meta" id="graph-panel-meta"></div>
+          <div class="graph-side-panel-connections" id="graph-panel-connections"></div>
+          <div class="graph-side-panel-body" id="graph-panel-body">
+            <div style="color:var(--text-muted);">Loading...</div>
+          </div>
+          <div class="graph-side-panel-actions">
+            <button class="btn-primary" onclick="graphPanelOpenInLibrary()" style="font-size:12px;">Open in Library</button>
+            <button class="btn-canvas-action" onclick="closeGraphPanel()">Close</button>
+          </div>
+        </div>
+        <!-- Relationship type legend -->
+        <div class="graph-legend hidden" id="graph-legend">
+          <div class="graph-legend-title">Edge Types</div>
+          <div class="graph-legend-item"><span class="legend-line" style="background:#60a5fa;"></span> related</div>
+          <div class="graph-legend-item"><span class="legend-line" style="background:#22c55e;"></span> supports</div>
+          <div class="graph-legend-item"><span class="legend-line" style="background:#ef4444;"></span> contradicts</div>
+          <div class="graph-legend-item"><span class="legend-line" style="background:#a78bfa;"></span> derived_from</div>
+          <div class="graph-legend-item"><span class="legend-line legend-line-dashed" style="background:#f59e0b;"></span> suggested</div>
+          <div class="graph-legend-item"><span class="legend-line" style="background:#f97316;"></span> blocks</div>
+          <div class="graph-legend-item"><span class="legend-line" style="background:#06b6d4;"></span> enables</div>
+          <div class="graph-legend-item"><span class="legend-line" style="background:#6b7280;"></span> canvas_edge</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- AI Result modal -->
+<div id="ai-modal" class="modal-overlay hidden">
+  <div class="modal-box modal-box-wide">
+    <div class="modal-header">
+      <h3 id="ai-modal-title">AI Result</h3>
+      <button class="btn-icon" onclick="closeAiModal()">✕</button>
+    </div>
+    <div class="ai-modal-result" id="ai-modal-result"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeAiModal()">Dismiss</button>
+      <button class="btn-confirm" id="ai-modal-apply" onclick="applyAiResult()">Apply to Note</button>
+    </div>
+  </div>
+</div>
+
+<!-- Related Nodes modal -->
+<div id="related-modal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Related Notes</h3>
+      <button class="btn-icon" onclick="document.getElementById('related-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div id="related-list" class="related-list"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('related-modal').classList.add('hidden')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Promote modal -->
+<div id="promote-modal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h3>Promote to Library</h3>
+    <div class="modal-field">
+      <label>Title</label>
+      <input type="text" id="promote-title" placeholder="Note title…">
+    </div>
+    <div class="modal-field">
+      <label>Type</label>
+      <select id="promote-type">
+        <option value="note">Note</option>
+        <option value="concept">Concept</option>
+        <option value="question">Question</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closePromoteModal()">Cancel</button>
+      <button class="btn-confirm" onclick="confirmPromote()">Promote</button>
+    </div>
+  </div>
+</div>
+
+<!-- Snapshot history drawer -->
+<div id="snapshot-drawer" class="snapshot-drawer hidden">
+  <div class="snapshot-drawer-header">
+    <span>🕐 Version History</span>
+    <button class="btn-icon" onclick="toggleSnapshotDrawer()">✕</button>
+  </div>
+  <div id="snapshot-list" class="snapshot-list">
+    <div class="snapshot-empty">No snapshots yet.</div>
+  </div>
+  <div id="snapshot-preview" class="snapshot-preview hidden">
+    <div class="snapshot-preview-header">
+      <span id="snapshot-preview-date"></span>
+      <button class="btn-restore-snapshot" onclick="restoreSnapshot()">Restore</button>
+    </div>
+    <pre id="snapshot-preview-content" class="snapshot-preview-content"></pre>
+  </div>
+</div>
+
+<!-- Canvas label modal -->
+<div class="modal-overlay hidden" id="canvas-label-modal">
+  <div class="modal-box">
+    <h3>Connect Nodes</h3>
+    <div class="modal-field">
+      <label>Label (optional)</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="canvas-link-label" placeholder="e.g. supports, leads to…" style="flex:1;">
+        <button class="btn-suggest-label" id="btn-suggest-label" onclick="suggestCanvasLabel()">✦ Suggest</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="cancelCanvasLink()">Cancel</button>
+      <button class="btn-confirm" onclick="confirmCanvasLink()">Connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- Suggestion accept/dismiss popover -->
+<div class="sug-popover" id="sug-popover">
+  <div class="sug-popover-title" id="sug-popover-title"></div>
+  <div class="sug-popover-reason" id="sug-popover-reason"></div>
+  <div class="sug-popover-actions">
+    <button class="btn-sug-accept-full" onclick="sugPopoverAccept()">Accept</button>
+    <button class="btn-sug-dismiss-full" onclick="sugPopoverDismiss()">Dismiss</button>
+  </div>
+</div>
+
+<!-- Relationship create modal -->
+<div id="rel-modal" class="modal-overlay hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Create Relationship</h3>
+      <button class="btn-icon" onclick="closeRelModal()">&#x2715;</button>
+    </div>
+    <div class="modal-field">
+      <label>Source</label>
+      <input type="text" id="rel-source-label" readonly style="opacity:.7;">
+      <input type="hidden" id="rel-source-id">
+    </div>
+    <div class="modal-field">
+      <label>Target</label>
+      <input type="text" id="rel-target-search" placeholder="Search nodes..." oninput="filterRelTargets(this.value)">
+      <input type="hidden" id="rel-target-id">
+      <div class="rel-target-list" id="rel-target-list"></div>
+    </div>
+    <div class="modal-field">
+      <label>Type</label>
+      <div class="rel-type-radios" id="rel-type-radios">
+        <label class="rel-type-option"><input type="radio" name="rel-type" value="related" checked><span class="rel-type-dot" style="background:#60a5fa;"></span> related</label>
+        <label class="rel-type-option"><input type="radio" name="rel-type" value="supports"><span class="rel-type-dot" style="background:#22c55e;"></span> supports</label>
+        <label class="rel-type-option"><input type="radio" name="rel-type" value="contradicts"><span class="rel-type-dot" style="background:#ef4444;"></span> contradicts</label>
+        <label class="rel-type-option"><input type="radio" name="rel-type" value="derived_from"><span class="rel-type-dot" style="background:#a78bfa;"></span> derived_from</label>
+        <label class="rel-type-option"><input type="radio" name="rel-type" value="blocks"><span class="rel-type-dot" style="background:#f97316;"></span> blocks</label>
+        <label class="rel-type-option"><input type="radio" name="rel-type" value="enables"><span class="rel-type-dot" style="background:#06b6d4;"></span> enables</label>
+      </div>
+    </div>
+    <div class="modal-field">
+      <label>Label <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
+      <input type="text" id="rel-label" placeholder="e.g. provides evidence for...">
+    </div>
+    <div class="modal-field">
+      <label>Strength: <span id="rel-strength-val">0.7</span></label>
+      <input type="range" id="rel-strength" min="0" max="1" step="0.1" value="0.7" oninput="document.getElementById('rel-strength-val').textContent=this.value">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeRelModal()">Cancel</button>
+      <button class="btn-confirm" id="btn-rel-create" onclick="submitRelationship()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- D3 for graph -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<!-- Editor.js block editor -->
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/editorjs@2.29.0/dist/editorjs.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/header@2.8.1/dist/header.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/list@1.9.0/dist/list.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/checklist@1.6.0/dist/checklist.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/code@2.9.0/dist/code.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/quote@2.6.0/dist/quote.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@editorjs/delimiter@1.4.0/dist/delimiter.umd.min.js"></script>
+<!-- Navbar -->
+<script src="/auth/static/js/navbar.js" defer></script>
+<!-- App -->
+<script src="/brain/static/app.js"></script>
+</body>
+</html>

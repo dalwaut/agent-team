@@ -1,0 +1,17 @@
+[Unit]
+Description=OPAI Billing — Stripe billing management
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-billing
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-billing
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8094
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/workspace/synced/opai/tools/opai-billing/.env
+
+EnvironmentFile=-%t/opai-vault/opai-billing.env
+[Install]
+WantedBy=default.target

@@ -1,0 +1,21 @@
+{
+    "name": "opai-orchestrator",
+    "version": "1.0.0",
+    "description": "Central orchestrator for OPAI system automation",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js",
+        "dev": "nodemon index.js"
+    },
+    "keywords": [
+        "opai",
+        "orchestrator",
+        "automation"
+    ],
+    "author": "Dallas",
+    "license": "MIT",
+    "dependencies": {},
+    "devDependencies": {
+        "nodemon": "^3.0.0"
+    }
+}

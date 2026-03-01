@@ -1,0 +1,9 @@
+{
+  "contacts": [
+    { "id": "dallas", "name": "Dallas", "emails": ["dalwaut@gmail.com", "dallas@paradisewebfl.com", "dallas@boutabyte.com", "dallas@boutacare.com"], "primaryEmail": "dalwaut@gmail.com", "role": "owner" },
+    { "id": "denise", "name": "Denise Wauters", "emails": ["denise@paradisewebfl.com"], "primaryEmail": "denise@paradisewebfl.com", "role": "team" },
+    { "id": "caitlin", "name": "Caitlin Porter", "emails": ["caitlin@paradisewebfl.com"], "primaryEmail": "caitlin@paradisewebfl.com", "role": "team" },
+    { "id": "eric", "name": "Eric Westberg", "emails": ["e.westberg@hotmail.com"], "primaryEmail": "e.westberg@hotmail.com", "role": "client" }
+  ],
+  "specialAssignees": ["human", "agent"]
+}

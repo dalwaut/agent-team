@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRD Pipeline — OPAI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="static/style.css?v=1">
+</head>
+<body>
+    <div id="loading" class="loading-screen">
+        <div class="logo-mark">PRD</div>
+        <p>Loading...</p>
+    </div>
+
+    <div id="app" class="app hidden">
+        <!-- Navbar injected by auth-v3.js -->
+        <div id="navbar-mount"></div>
+
+        <div class="page-wrap">
+            <!-- Header -->
+            <div class="page-header">
+                <div class="page-header-left">
+                    <h1 class="page-title">
+                        <span class="page-icon">🧪</span>
+                        PRD Pipeline
+                    </h1>
+                    <p class="page-subtitle">Idea evaluation · PRDgent scoring · Project scaffolding</p>
+                </div>
+                <div class="page-header-right">
+                    <button class="btn btn-secondary" onclick="openImportModal()">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 1v10M4 7l4 4 4-4M2 14h12"/></svg>
+                        Import
+                    </button>
+                    <button class="btn btn-primary" onclick="openAddModal()">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v12M2 8h12"/></svg>
+                        Add Idea
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stats bar -->
+            <div class="stats-bar" id="stats-bar">
+                <div class="stat-pill" id="stat-total"><span class="stat-num">—</span><span class="stat-lbl">Total</span></div>
+                <div class="stat-pill pending" id="stat-pending"><span class="stat-num">—</span><span class="stat-lbl">Pending</span></div>
+                <div class="stat-pill good" id="stat-good"><span class="stat-num">—</span><span class="stat-lbl">Good Ideas</span></div>
+                <div class="stat-pill approved" id="stat-approved"><span class="stat-num">—</span><span class="stat-lbl">Approved</span></div>
+                <div class="stat-pill moved" id="stat-moved"><span class="stat-num">—</span><span class="stat-lbl">Moved to Project</span></div>
+                <div class="stat-pill rejected" id="stat-rejected"><span class="stat-num">—</span><span class="stat-lbl">Rejected</span></div>
+            </div>
+
+            <!-- Toolbar -->
+            <div class="toolbar">
+                <div class="toolbar-left">
+                    <input type="search" class="search-input" id="search-input" placeholder="Search ideas..." oninput="filterIdeas()">
+                    <select class="filter-select" id="filter-status" onchange="filterIdeas()">
+                        <option value="">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="evaluated">Evaluated</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="moved">Moved to Project</option>
+                    </select>
+                    <select class="filter-select" id="filter-verdict" onchange="filterIdeas()">
+                        <option value="">All Verdicts</option>
+                        <option value="good">Good</option>
+                        <option value="not_ready">Not Ready</option>
+                        <option value="poor">Poor</option>
+                    </select>
+                </div>
+                <div class="toolbar-right">
+                    <button class="btn btn-ghost" id="select-all-btn" onclick="toggleSelectAll()">Select All</button>
+                    <button class="btn btn-run" id="run-btn" onclick="runEvaluation()">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2l10 6-10 6V2z"/></svg>
+                        Run PRDgent
+                    </button>
+                </div>
+            </div>
+
+            <!-- Ideas list -->
+            <div id="ideas-container" class="ideas-container">
+                <div class="empty-state" id="empty-state">
+                    <div class="empty-icon">💡</div>
+                    <h3>No ideas yet</h3>
+                    <p>Add ideas manually or import from a Google Sheet / CSV.</p>
+                    <button class="btn btn-primary" onclick="openAddModal()">Add Your First Idea</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Add Idea Modal ── -->
+    <div id="add-modal" class="modal-backdrop hidden" onclick="closeModalBg(event,'add-modal')">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Add Idea</h2>
+                <button class="modal-close" onclick="closeModal('add-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <label class="field-label">Product / Idea Name <span class="req">*</span></label>
+                <input type="text" class="field-input" id="add-name" placeholder="e.g. Kitchen Recipe Tracker">
+
+                <label class="field-label">Description <span class="req">*</span></label>
+                <textarea class="field-input field-textarea" id="add-desc" placeholder="Describe the idea — what it does, the problem it solves, why it matters."></textarea>
+
+                <label class="field-label">Target Market</label>
+                <input type="text" class="field-input" id="add-market" placeholder="e.g. Home cooks aged 25-45">
+
+                <label class="field-label">Additional Notes</label>
+                <textarea class="field-input field-textarea small" id="add-notes" placeholder="Competitor research, personal experience, inspiration, etc."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('add-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="submitAddIdea()">Add Idea</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Import Modal ── -->
+    <div id="import-modal" class="modal-backdrop hidden" onclick="closeModalBg(event,'import-modal')">
+        <div class="modal modal-wide">
+            <div class="modal-header">
+                <h2>Import Ideas</h2>
+                <button class="modal-close" onclick="closeModal('import-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="import-tabs">
+                    <button class="import-tab active" onclick="switchImportTab('paste',this)">Paste CSV / TSV</button>
+                    <button class="import-tab" onclick="switchImportTab('sheets',this)">Google Sheets URL</button>
+                    <button class="import-tab" onclick="switchImportTab('json',this)">Paste JSON</button>
+                </div>
+
+                <!-- Paste CSV tab -->
+                <div id="import-tab-paste" class="import-tab-content">
+                    <p class="import-hint">
+                        Paste your spreadsheet rows directly. Expected columns (any order, flexible names):
+                        <code>name</code>, <code>description</code>, <code>target_market</code>, <code>notes</code>.
+                        First row must be headers.
+                    </p>
+                    <textarea class="field-input field-textarea tall" id="import-csv-text" placeholder="name,description,target_market,notes&#10;Recipe App,A smarter way to store and plan recipes,Home cooks,Inspired by personal frustration&#10;..."></textarea>
+                </div>
+
+                <!-- Google Sheets tab -->
+                <div id="import-tab-sheets" class="import-tab-content hidden">
+                    <p class="import-hint">
+                        Paste the URL of a <strong>publicly shared</strong> Google Sheet. The backend will fetch it as CSV.
+                        Make sure the sheet is set to "Anyone with the link can view."
+                    </p>
+                    <input type="url" class="field-input" id="import-sheets-url" placeholder="https://docs.google.com/spreadsheets/d/...">
+                    <p class="import-hint small">Tip: If your sheet has multiple tabs, add <code>&gid=SHEET_ID</code> to the URL.</p>
+                </div>
+
+                <!-- JSON tab -->
+                <div id="import-tab-json" class="import-tab-content hidden">
+                    <p class="import-hint">
+                        Paste a JSON array of idea objects. Each object must have at least <code>name</code> and <code>description</code>.
+                    </p>
+                    <textarea class="field-input field-textarea tall" id="import-json-text" placeholder='[{"name":"Recipe App","description":"Smarter recipe storage","target_market":"Home cooks"}]'></textarea>
+                </div>
+
+                <div class="import-preview" id="import-preview" style="display:none">
+                    <div class="import-preview-header">
+                        <span id="import-preview-count"></span>
+                        <button class="btn btn-ghost btn-sm" onclick="clearImportPreview()">Clear</button>
+                    </div>
+                    <ul class="import-preview-list" id="import-preview-list"></ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('import-modal')">Cancel</button>
+                <button class="btn btn-secondary" onclick="previewImport()">Preview</button>
+                <button class="btn btn-primary" onclick="submitImport()">Import</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Idea Detail Modal ── -->
+    <div id="detail-modal" class="modal-backdrop hidden" onclick="closeModalBg(event,'detail-modal')">
+        <div class="modal modal-wide">
+            <div class="modal-header" id="detail-modal-header">
+                <h2 id="detail-title">Idea Detail</h2>
+                <div class="detail-header-actions">
+                    <button class="btn btn-ghost btn-sm" id="detail-approve-btn" onclick="approveCurrentIdea()">Approve</button>
+                    <button class="btn btn-ghost btn-sm danger" id="detail-reject-btn" onclick="rejectCurrentIdea()">Reject</button>
+                    <button class="modal-close" onclick="closeModal('detail-modal')">✕</button>
+                </div>
+            </div>
+            <div class="modal-body" id="detail-body">
+                <!-- Rendered by JS -->
+            </div>
+            <div class="modal-footer" id="detail-footer">
+                <button class="btn btn-secondary" onclick="closeModal('detail-modal')">Close</button>
+                <button class="btn btn-move" id="detail-move-btn" onclick="openMoveModal()">
+                    🚀 Move to Project
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Move to Project Modal ── -->
+    <div id="move-modal" class="modal-backdrop hidden" onclick="closeModalBg(event,'move-modal')">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Move to Project</h2>
+                <button class="modal-close" onclick="closeModal('move-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="move-info">This will create a project folder at <code>Projects/<span id="move-slug-preview">...</span></code> with starter docs.</p>
+
+                <label class="field-label">Project Display Name <span class="req">*</span></label>
+                <input type="text" class="field-input" id="move-name" placeholder="e.g. Kitchen Recipe Tracker" oninput="updateMoveSlug()">
+
+                <label class="field-label">Project Folder Slug</label>
+                <input type="text" class="field-input" id="move-slug" placeholder="kitchen-recipe-tracker" oninput="syncMoveSlug()">
+                <p class="field-hint">Kebab-case. Auto-generated from display name.</p>
+
+                <div class="move-creates">
+                    <div class="move-creates-title">Will create:</div>
+                    <div class="move-creates-list">
+                        <span class="create-badge">📁 docs/</span>
+                        <span class="create-badge">📁 assets/</span>
+                        <span class="create-badge">📁 research/</span>
+                        <span class="create-badge">📁 designs/</span>
+                        <span class="create-badge">📄 README.md</span>
+                        <span class="create-badge">📄 PRD.md</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('move-modal')">Cancel</button>
+                <button class="btn btn-move" onclick="submitMoveToProject()">🚀 Create Project</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Evaluation Running Modal ── -->
+    <div id="eval-modal" class="modal-backdrop hidden">
+        <div class="modal modal-sm">
+            <div class="modal-body center">
+                <div class="spinner-ring"></div>
+                <h3 class="eval-running-title">PRDgent is evaluating...</h3>
+                <p class="eval-running-sub" id="eval-running-sub">Sending <span id="eval-count">0</span> idea(s) to Claude</p>
+                <p class="eval-note">This may take 30–90 seconds depending on idea count.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/auth/static/js/auth-v3.js"></script>
+    <script src="/auth/static/js/navbar.js"></script>
+    <script src="static/app.js?v=1"></script>
+</body>
+</html>

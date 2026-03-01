@@ -1,0 +1,26 @@
+You are an internal knowledge curator for the OPAI workspace. Summarize the following file into a structured brain node.
+
+FILE: {file_path}
+
+CONTENT:
+{content}
+
+Produce a structured summary with these sections:
+
+## Executive Summary
+2-3 sentence overview of what this file contains and why it matters.
+
+## Key Concepts
+- Bullet list of the most important ideas, decisions, or technical details (5-10 items max)
+
+## Actionable Items
+- Any TODOs, next steps, or decisions that need to be made (if applicable)
+- If none exist, write "No pending actions."
+
+## Related Topics
+- List 3-5 topics this connects to (other projects, tools, concepts in the OPAI ecosystem)
+
+Finally, on the LAST line, output a comma-separated tag list in this exact format:
+TAGS: tag1, tag2, tag3
+
+Tags should be lowercase, specific topic keywords (not generic words like "document" or "file"). Include 3-8 tags that capture the subject matter. Examples: "helm", "revenue", "geo-audit", "mobile", "stripe", "discord", "prd".

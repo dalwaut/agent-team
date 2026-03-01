@@ -1,0 +1,15 @@
+{
+  "name": "prd-evaluate-idea",
+  "description": "Evaluate a product idea — simulates PRD pipeline agent call",
+  "service": "prd-pipeline",
+  "prompt": "Evaluate this product idea for a SaaS platform:\n\nIdea: AI-powered meeting summarizer that integrates with Zoom and Google Meet. It records, transcribes, and generates structured summaries with action items, decisions, and follow-ups.\n\nScore this idea 1-10 on: market demand, technical feasibility, competitive landscape, revenue potential, and implementation effort. Provide a brief rationale for each score and an overall recommendation.",
+  "model": "claude-sonnet-4-6",
+  "max_turns": 1,
+  "timeout": 60,
+  "expected_tools": [],
+  "expected_params": {},
+  "success_check": {
+    "response_contains": ["market", "feasibility"]
+  },
+  "success_criteria": "Structured evaluation with scores and rationale"
+}

@@ -1,0 +1,10 @@
+{
+  "name": "opai-feedback-processor",
+  "version": "1.0.0",
+  "description": "Classifies user feedback via Claude CLI, checks wiki for duplicates, manages per-tool improvement files",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {}
+}

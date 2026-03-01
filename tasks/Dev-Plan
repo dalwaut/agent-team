@@ -1,0 +1,71 @@
+# WordPress MCP Server Implementation Plan
+
+## Goal Description
+Create a Model Context Protocol (MCP) server that interfaces with a WordPress website via its REST API. This server will allow AI agents to interact with WordPress content (posts, pages, media) directly.
+
+## User Review Required
+> [!IMPORTANT]
+> **Authentication**: The server will require `WORDPRESS_URL`, `WORDPRESS_USERNAME`, and `WORDPRESS_APPLICATION_PASSWORD` environment variables. Please ensure you have these ready.
+
+## Proposed Changes
+
+### Configuration
+#### [NEW] [package.json](file:///d:/SD/Home/OPAI/mcps/Wordpress-VEC/package.json)
+- Initialize project with `@modelcontextprotocol/sdk`.
+- Add build scripts.
+
+#### [NEW] [tsconfig.json](file:///d:/SD/Home/OPAI/mcps/Wordpress-VEC/tsconfig.json)
+- TypeScript configuration for Node.js environment.
+
+### Source Code
+#### [NEW] [src/index.ts](file:///d:/SD/Home/OPAI/mcps/Wordpress-VEC/src/index.ts)
+- Main server implementation.
+- Define tools:
+    - `list_posts`: Get recent posts.
+    - `get_post`: Get a specific post by ID.
+    - `create_post`: Create a new post (draft by default).
+    - `update_post`: Update an existing post.
+    - `list_pages`: Get pages.
+    - `upload_media`: Upload an image/media file.
+
+#### [NEW] [src/wordpress.ts](file:///d:/SD/Home/OPAI/mcps/Wordpress-VEC/src/wordpress.ts)
+- Helper class/functions to interact with WordPress REST API using `fetch` or `axios`.
+
+## Verification Plan
+
+### Automated Tests
+- Create a simple test script `test-server.ts` that mocks the MCP connection and calls the tools.
+- Verification will mostly happen by running the server and connecting it to a mock or real WordPress site if creds are provided (or mocking the API calls).
+
+### Manual Verification
+1.  Build the server: `npm run build`.
+2.  Run the server: `node dist/index.js`.
+3.  Use an MCP inspector or the `claude` CLI to connect and list tools.
+4.  Execute `list_posts` to verify API connectivity.
+
+# 404 Investigation Plan
+
+## Goal
+Identify why users are hitting 404 errors on the site and provide solutions.
+
+## Analysis
+Possible causes for 404s:
+1.  **Broken Internal Links**: Links within posts/pages pointing to non-existent content.
+2.  **Changed Permalinks**: Old links (e.g., from social media or other sites) no longer work because the slug structure changed.
+3.  **Typos in URLs**: Incoming links have typos.
+4.  **Deleted Content**: Pages were removed without a redirect.
+
+## Proposed Strategy
+1.  **Verify Domain**: Ensure we are connecting to the correct site (currently `visiteverbladecity.com` fails DNS).
+2.  **Crawler Script**: Create a script `check_404s.ts` that:
+    - Fetches all posts and pages.
+    - Extracts all links (`href` attributes) from the content.
+    - Checks if those links are reachable (return 200 OK).
+    - Reports broken internal links.
+3.  **Redirection Plugin**: Recommend installing a redirection plugin (e.g., "Redirection") to log 404s and manage 301 redirects.
+
+## Tasks
+- [ ] confirm correct domain (User input needed).
+- [ ] Create `check_404s.ts`.
+- [ ] Run crawler to find broken internal links.
+- [ ] Analyze results.

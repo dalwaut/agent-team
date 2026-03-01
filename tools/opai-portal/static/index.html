@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI — Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=20260225">
+</head>
+<body class="dashboard-body">
+    <!-- Loading state -->
+    <div id="loading" class="loading-screen">
+        <div class="logo-3d">OP</div>
+        <p>Loading...</p>
+    </div>
+
+    <!-- User dashboard (shown to regular users) -->
+    <div id="user-dashboard" class="dashboard hidden">
+        <header class="dash-header">
+            <div class="header-left">
+                <div class="logo-3d small">OP</div>
+                <h1>OPAI</h1>
+            </div>
+            <div class="header-right">
+                <span id="user-name" class="user-name"></span>
+                <button onclick="openFeedbackModal()" class="btn-feedback">Feedback</button>
+                <button onclick="opaiAuth.signOut()" class="btn-logout">Sign Out</button>
+            </div>
+        </header>
+        <div class="welcome-msg" id="user-welcome"></div>
+        <div class="card-grid" id="user-card-grid"></div>
+    </div>
+
+    <!-- Admin dashboard -->
+    <div id="admin-dashboard" class="dashboard hidden">
+        <header class="dash-header">
+            <div class="header-left">
+                <div class="logo-3d small">OP</div>
+                <h1>OPAI <span class="admin-badge">Admin</span></h1>
+            </div>
+            <div class="header-right">
+                <span id="admin-name" class="user-name"></span>
+                <button onclick="openFeedbackModal()" class="btn-feedback">Feedback</button>
+                <button onclick="opaiAuth.signOut()" class="btn-logout">Sign Out</button>
+            </div>
+        </header>
+
+        <!-- System status bar -->
+        <div class="status-bar" id="status-bar">
+            <div class="status-bar-left">
+                <span class="health-dot dot-gray" id="overall-health-dot"></span>
+                <span class="status-bar-text" id="overall-health-text">Checking systems...</span>
+            </div>
+            <div class="status-bar-right" id="status-bar-services"></div>
+        </div>
+
+        <!-- Quick system stats row -->
+        <div class="quick-stats" id="quick-stats">
+            <div class="qs-card">
+                <div class="qs-label">CPU</div>
+                <div class="qs-value" id="qs-cpu">--</div>
+                <div class="qs-bar"><div class="qs-fill" id="qs-cpu-bar" style="width:0%"></div></div>
+            </div>
+            <div class="qs-card">
+                <div class="qs-label">Memory</div>
+                <div class="qs-value" id="qs-mem">--</div>
+                <div class="qs-bar"><div class="qs-fill" id="qs-mem-bar" style="width:0%"></div></div>
+            </div>
+            <div class="qs-card">
+                <div class="qs-label">Disk</div>
+                <div class="qs-value" id="qs-disk">--</div>
+                <div class="qs-bar"><div class="qs-fill" id="qs-disk-bar" style="width:0%"></div></div>
+            </div>
+            <div class="qs-card">
+                <div class="qs-label">Uptime</div>
+                <div class="qs-value" id="qs-uptime">--</div>
+            </div>
+        </div>
+
+        <!-- Dashboard toolbar -->
+        <div class="dash-toolbar" id="admin-toolbar">
+            <div class="toolbar-left">
+                <input type="search" class="toolbar-search" id="admin-search" placeholder="Search tools..." autocomplete="off">
+                <select class="toolbar-sort" id="admin-sort" onchange="setAdminSort(this.value)">
+                    <option value="default">Custom order</option>
+                    <option value="az">Name A→Z</option>
+                    <option value="za">Name Z→A</option>
+                    <option value="status">Status: healthy first</option>
+                </select>
+            </div>
+            <div class="toolbar-right">
+                <div class="view-toggle" role="group" aria-label="View mode">
+                    <button class="view-btn active" id="view-grid-btn" onclick="setAdminView('grid')" title="Grid view">
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+                    </button>
+                    <button class="view-btn" id="view-list-btn" onclick="setAdminView('list')" title="List view">
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="2.5" rx="1"/><rect x="1" y="7" width="14" height="2.5" rx="1"/><rect x="1" y="12" width="14" height="2.5" rx="1"/></svg>
+                    </button>
+                </div>
+                <button class="save-layout-btn" id="save-layout-btn" onclick="saveAdminLayout()">Save Layout</button>
+            </div>
+        </div>
+
+        <!-- Service cards (JS-rendered) -->
+        <div class="card-grid admin-grid" id="admin-card-grid"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // ── Utilities ───────────────────────────────────────────────────────
+        function formatUptime(seconds) {
+            const d = Math.floor(seconds / 86400);
+            const h = Math.floor((seconds % 86400) / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            if (d > 0) return d + 'd ' + h + 'h';
+            if (h > 0) return h + 'h ' + m + 'm';
+            return m + 'm';
+        }
+
+        function setDot(id, healthy) {
+            const dot = document.getElementById(id);
+            if (!dot) return;
+            if (healthy === true) {
+                dot.className = 'health-dot dot-green';
+                dot.title = 'Healthy';
+            } else if (healthy === false) {
+                dot.className = 'health-dot dot-red';
+                dot.title = 'Unreachable';
+            } else {
+                dot.className = 'health-dot dot-gray';
+                dot.title = 'Unknown';
+            }
+        }
+
+        function setMeta(id, svc) {
+            const el = document.getElementById(id);
+            if (!el || !svc) return;
+            const parts = [];
+            if (svc.uptime_seconds != null) parts.push('Up ' + formatUptime(svc.uptime_seconds));
+            if (svc.memory_mb != null) parts.push(svc.memory_mb + ' MB');
+            el.textContent = parts.join(' · ');
+        }
+
+        // ── Admin Card Definitions ───────────────────────────────────────────
+        // v2 Active Services (2026-02-25)
+        const ADMIN_CARDS = [
+            // ── Core v2 Services ──────────────────────────────────────
+            { id: 'engine',       href: '/engine/',       icon: '🔧', title: 'Command Center',  desc: 'Tasks, workers, system health, logs, settings',        css: 'card-engine',       svcKey: 'engine' },
+            { id: 'files',        href: '/files/',        icon: '📁', title: 'OPAI Files',     desc: 'Browse, edit, and manage workspace files',             css: 'card-files',        svcKey: 'files' },
+            { id: 'team-hub',     href: '/team-hub/',     icon: '👥', title: 'Team Hub',       desc: 'Tasks, workspaces, and team collaboration',            css: 'card-team-hub',     svcKey: 'team-hub' },
+            { id: 'email-agent',  href: '/email-agent/',  icon: '📧', title: 'Email Agent',    desc: 'Autonomous email monitoring, drafting, and response',  css: 'card-email-agent',  svcKey: 'email-agent' },
+            { id: 'wordpress',    href: '/wordpress/',    icon: '🌐', title: 'OP WordPress',   desc: 'Multi-site WordPress management',                      css: 'card-wordpress',    svcKey: 'wordpress' },
+            { id: 'users',        href: '/users/',        icon: '🔑', title: 'User Controls',  desc: 'Manage users, access, preface prompts',                css: 'card-users',        svcKey: 'users' },
+            { id: 'openclaw',     href: '/engine/#openclaw', icon: '🦞', title: 'OpenClaw',       desc: 'Container instances, credential broker, Docker lifecycle', css: 'card-openclaw',     svcKey: 'oc-broker' },
+            // ── Utilities ─────────────────────────────────────────────
+            { id: 'n8n',          href: 'https://n8n.boutabyte.com', icon: '⚙️', title: 'n8n Automations', desc: 'Workflow automation — triggers, actions, integrations', css: 'card-n8n', external: true },
+            { id: 'pages-manager',href: '/archive/',      icon: '🗃️', title: 'Pages Manager', desc: 'Manage, version, and deploy opai.boutabyte.com pages', css: 'card-pages-manager' },
+            { id: 'rustdesk',     href: '#',              icon: '🖨️', title: 'Remote Desktop', desc: 'RustDesk remote access',                               css: 'card-rustdesk',     svcKey: 'rustdesk', special: 'rustdesk' },
+            { id: 'brain',        href: '/brain/',        icon: '🧠', title: '2nd Brain',      desc: 'Cognitive layer — Library, Inbox, knowledge graph',    css: 'card-brain',        svcKey: 'brain' },
+            // ── v3 Deferred (services stopped, coming back later) ─────
+            { id: 'billing',      href: '/billing/',      icon: '💳', title: 'Billing',        desc: 'Subscriptions, usage, invoices',                       css: 'card-billing',      svcKey: 'billing',  deferred: true },
+            { id: 'helm',         href: '/helm/',         icon: '⚓', title: 'HELM',            desc: 'Autonomous business runner',                           css: 'card-helm',         svcKey: 'helm',     deferred: true },
+            { id: 'dam',          href: '/dam/',          icon: '🎯', title: 'DAM Bot',         desc: 'Do Anything Mode — meta-orchestrator',                 css: 'card-dam',          svcKey: 'dam',      deferred: true },
+            { id: 'bx4',          href: '/bx4/',          icon: '📈', title: 'Bx4',            desc: 'AI business intelligence',                             css: 'card-bx4',          svcKey: 'bx4',      deferred: true },
+            { id: 'marq',         href: '/marq/',         icon: '🎪', title: 'Marq',           desc: 'App store publisher agent',                            css: 'card-marq',         svcKey: 'marq',     deferred: true },
+            { id: 'prd',          href: '/prd/',          icon: '🧪', title: 'PRD Pipeline',  desc: 'Evaluate product ideas with PRDgent',                  css: 'card-prd',          svcKey: 'prd',      deferred: true },
+        ];
+
+        // ── Admin Dashboard Layout State ─────────────────────────────────────
+        const DASH_KEY = 'opai_dashboard_layout';
+        let _adminSvcs    = {};
+        let _adminOrder   = ADMIN_CARDS.map(c => c.id);
+        let _adminView    = 'grid';
+        let _adminSearch  = '';
+        let _adminSort    = 'default';
+        let _adminUnsaved = false;
+        let _rustdeskData = null;
+
+        function loadAdminLayout() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(DASH_KEY) || '{}');
+                if (saved.order && Array.isArray(saved.order)) {
+                    // Merge: keep saved order, append any new cards not in saved list
+                    const known = new Set(saved.order);
+                    const extras = ADMIN_CARDS.map(c => c.id).filter(id => !known.has(id));
+                    _adminOrder = saved.order.filter(id => ADMIN_CARDS.find(c => c.id === id)).concat(extras);
+                }
+                if (saved.view === 'list' || saved.view === 'grid') _adminView = saved.view;
+            } catch (e) { /* use defaults */ }
+        }
+
+        function saveAdminLayout() {
+            localStorage.setItem(DASH_KEY, JSON.stringify({ order: _adminOrder, view: _adminView }));
+            _adminUnsaved = false;
+            updateSaveBtn();
+        }
+
+        function updateSaveBtn() {
+            const btn = document.getElementById('save-layout-btn');
+            if (!btn) return;
+            btn.classList.toggle('unsaved', _adminUnsaved);
+            btn.textContent = _adminUnsaved ? 'Save Layout*' : 'Save Layout';
+        }
+
+        function setAdminView(v) {
+            _adminView = v;
+            document.getElementById('view-grid-btn').classList.toggle('active', v === 'grid');
+            document.getElementById('view-list-btn').classList.toggle('active', v === 'list');
+            _adminUnsaved = true;
+            updateSaveBtn();
+            renderAdminCards();
+        }
+
+        function setAdminSort(s) {
+            _adminSort = s;
+            renderAdminCards();
+        }
+
+        // ── Render ───────────────────────────────────────────────────────────
+        function escHtml(str) {
+            return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        function highlightMatch(text, query) {
+            if (!query) return escHtml(text);
+            const re = new RegExp('(' + query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+            return escHtml(text).replace(re, '<mark>$1</mark>');
+        }
+
+        function getCardsToRender() {
+            // Build ordered list
+            let cards = _adminOrder
+                .map(id => ADMIN_CARDS.find(c => c.id === id))
+                .filter(Boolean);
+
+            // Apply search filter
+            if (_adminSearch) {
+                const q = _adminSearch.toLowerCase();
+                cards = cards.filter(c =>
+                    c.title.toLowerCase().includes(q) ||
+                    c.desc.toLowerCase().includes(q)
+                );
+            }
+
+            // Apply sort
+            if (_adminSort === 'az') {
+                cards = [...cards].sort((a, b) => a.title.localeCompare(b.title));
+            } else if (_adminSort === 'za') {
+                cards = [...cards].sort((a, b) => b.title.localeCompare(a.title));
+            } else if (_adminSort === 'status') {
+                cards = [...cards].sort((a, b) => {
+                    const aOk = a.svcKey && _adminSvcs[a.svcKey]?.status === 'healthy' ? 0 : 1;
+                    const bOk = b.svcKey && _adminSvcs[b.svcKey]?.status === 'healthy' ? 0 : 1;
+                    return aOk - bOk;
+                });
+            }
+            return cards;
+        }
+
+        function renderAdminCards() {
+            const grid = document.getElementById('admin-card-grid');
+            if (!grid) return;
+
+            const cards = getCardsToRender();
+            const isDraggable = _adminSort === 'default' && !_adminSearch;
+            const q = _adminSearch;
+
+            grid.className = 'card-grid admin-grid' + (_adminView === 'list' ? ' list-view' : '');
+
+            if (cards.length === 0) {
+                grid.innerHTML = '<p style="color:var(--text-muted);padding:2rem;grid-column:1/-1;">No tools match your search.</p>';
+                return;
+            }
+
+            grid.innerHTML = cards.map(c => {
+                const dotHtml  = c.svcKey ? '<span class="health-dot dot-gray" id="health-admin-' + c.id + '" title="Checking..."></span>' : '';
+                const metaHtml = c.svcKey ? '<div class="card-meta" id="meta-admin-' + c.id + '"></div>' : '';
+                const gripHtml = isDraggable ? '<span class="card-drag-grip" title="Drag to reorder">⠿</span>' : '';
+                const draggableAttr = isDraggable ? ' draggable="true"' : '';
+                const target = c.external ? ' target="_blank" rel="noopener"' : '';
+                const onclickAttr = c.special === 'rustdesk' ? ' onclick="openRustDesk(event)"' : '';
+                const titleHl = highlightMatch(c.title, q);
+                const descHl  = highlightMatch(c.desc, q);
+
+                const deferredCls = c.deferred ? ' card-deferred' : '';
+                const deferredBadge = c.deferred ? '<span class="deferred-badge">v3</span>' : '';
+
+                return '<a href="' + c.href + '"' + target + onclickAttr + ' class="dash-card ' + c.css + deferredCls + '" data-card-id="' + c.id + '"' + draggableAttr + '>' +
+                    '<div class="card-header-row">' +
+                        '<div class="card-icon">' + c.icon + '</div>' +
+                        '<div class="card-header-right">' + deferredBadge + gripHtml + dotHtml + '</div>' +
+                    '</div>' +
+                    '<div class="card-body">' +
+                        '<h2>' + titleHl + '</h2>' +
+                        '<p>' + descHl + '</p>' +
+                    '</div>' +
+                    metaHtml +
+                '</a>';
+            }).join('');
+
+            // Re-apply health data to newly rendered dots
+            applyHealthToAdminCards();
+
+            // Wire up drag-and-drop when applicable
+            if (isDraggable) initAdminDrag(grid);
+        }
+
+        // ── Drag and Drop ────────────────────────────────────────────────────
+        function initAdminDrag(grid) {
+            let dragSrc = null;
+
+            grid.querySelectorAll('.dash-card[draggable="true"]').forEach(card => {
+                card.addEventListener('dragstart', function(e) {
+                    dragSrc = this;
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', this.dataset.cardId);
+                    // Defer adding class so ghost image renders normally
+                    requestAnimationFrame(() => this.classList.add('drag-source'));
+                });
+
+                card.addEventListener('dragend', function() {
+                    this.classList.remove('drag-source');
+                    grid.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+                    // Capture new order from DOM
+                    _adminOrder = [...grid.querySelectorAll('.dash-card[data-card-id]')]
+                        .map(el => el.dataset.cardId);
+                    _adminUnsaved = true;
+                    updateSaveBtn();
+                    dragSrc = null;
+                });
+
+                card.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (!dragSrc || this === dragSrc) return;
+                    grid.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+                    this.classList.add('drag-over');
+                });
+
+                card.addEventListener('dragleave', function() {
+                    this.classList.remove('drag-over');
+                });
+
+                card.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    if (!dragSrc || this === dragSrc) return;
+                    this.classList.remove('drag-over');
+                    const rect = this.getBoundingClientRect();
+                    // In list view: compare Y; in grid view: compare X
+                    const insertBefore = _adminView === 'list'
+                        ? e.clientY < rect.top + rect.height / 2
+                        : e.clientX < rect.left + rect.width / 2;
+                    if (insertBefore) {
+                        grid.insertBefore(dragSrc, this);
+                    } else {
+                        grid.insertBefore(dragSrc, this.nextSibling);
+                    }
+                });
+            });
+        }
+
+        // ── Search (debounced) ───────────────────────────────────────────────
+        function initAdminSearch() {
+            const input = document.getElementById('admin-search');
+            if (!input) return;
+            let timer;
+            input.addEventListener('input', () => {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    _adminSearch = input.value.trim();
+                    renderAdminCards();
+                }, 150);
+            });
+        }
+
+        // ── Health ───────────────────────────────────────────────────────────
+        function applyHealthToAdminCards() {
+            ADMIN_CARDS.forEach(c => {
+                if (!c.svcKey) return;
+                const svc = _adminSvcs[c.svcKey];
+                const dotId  = 'health-admin-' + c.id;
+                const metaId = 'meta-admin-' + c.id;
+                if (svc) {
+                    setDot(dotId, svc.status === 'healthy');
+                    setMeta(metaId, svc);
+                }
+            });
+        }
+
+        async function fetchHealth(isAdmin) {
+            try {
+                const resp = await fetch('/engine/api/health/summary');
+                const data = await resp.json();
+                const svcs = data.services || {};
+
+                if (isAdmin) {
+                    _adminSvcs = svcs;
+
+                    // Status bar
+                    const allHealthy = data.status === 'healthy';
+                    setDot('overall-health-dot', allHealthy);
+                    document.getElementById('overall-health-text').textContent =
+                        allHealthy ? 'All Systems Operational' : 'Some Systems Degraded';
+
+                    // Mini dots in status bar
+                    const barRight = document.getElementById('status-bar-services');
+                    let dotsHtml = '';
+                    for (const [name, info] of Object.entries(svcs)) {
+                        const ok = info.status === 'healthy';
+                        dotsHtml += '<span class="health-dot-mini ' + (ok ? 'dot-green' : 'dot-red') + '" title="' + name + ': ' + info.status + '"></span>';
+                    }
+                    barRight.innerHTML = dotsHtml;
+
+                    // Apply to dynamic admin cards
+                    applyHealthToAdminCards();
+
+                    // Re-render if sorted by status (ordering may change)
+                    if (_adminSort === 'status') renderAdminCards();
+                } else {
+                    for (const [name, info] of Object.entries(svcs)) {
+                        setDot('health-user-' + name, info.status === 'healthy');
+                    }
+                }
+            } catch (e) {
+                if (isAdmin) {
+                    document.getElementById('overall-health-text').textContent = 'Monitor unreachable';
+                }
+            }
+        }
+
+        // ── RustDesk ─────────────────────────────────────────────────────────
+        async function fetchRustDesk() {
+            try {
+                const resp = await fetch('/api/rustdesk');
+                if (!resp.ok) return;
+                _rustdeskData = await resp.json();
+                setDot('health-admin-rustdesk', _rustdeskData.active);
+                const meta = document.getElementById('meta-admin-rustdesk');
+                if (meta && _rustdeskData.id) meta.textContent = 'ID: ' + _rustdeskData.id;
+            } catch (e) { /* silently degrade */ }
+        }
+
+        function openRustDesk(e) {
+            if (_rustdeskData && _rustdeskData.web_client) {
+                window.open(_rustdeskData.web_client, '_blank');
+            }
+            e.preventDefault();
+        }
+
+        // ── System Stats ─────────────────────────────────────────────────────
+        async function fetchStats() {
+            try {
+                const token = window._opaiToken;
+                const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
+                const resp = await fetch('/engine/api/monitor/system/stats', { headers });
+                if (!resp.ok) return;
+                const data = await resp.json();
+
+                const cpuPct  = data.cpu_percent || 0;
+                const memPct  = data.memory?.percent || 0;
+                const diskPct = data.disk?.percent || 0;
+
+                document.getElementById('qs-cpu').textContent  = cpuPct.toFixed(0) + '%';
+                document.getElementById('qs-cpu-bar').style.width  = cpuPct + '%';
+                document.getElementById('qs-mem').textContent  = memPct.toFixed(0) + '%';
+                document.getElementById('qs-mem-bar').style.width  = memPct + '%';
+                document.getElementById('qs-disk').textContent = diskPct.toFixed(0) + '%';
+                document.getElementById('qs-disk-bar').style.width = diskPct + '%';
+                if (data.uptime_seconds) {
+                    document.getElementById('qs-uptime').textContent = formatUptime(data.uptime_seconds);
+                }
+            } catch (e) { /* silently degrade */ }
+        }
+
+        // ── User Cards (unchanged) ────────────────────────────────────────────
+        // v2 User-visible apps (admin assigns via allowed_apps)
+        const APP_CARDS = {
+            files:     { href: '/files/',     icon: '📁', title: 'My Files',    desc: 'Browse, edit, and manage your workspace files',              css: 'card-files' },
+            'team-hub': { href: '/team-hub/', icon: '👥', title: 'Team Hub', desc: 'Tasks, workspaces, and team collaboration', css: 'card-team-hub' },
+            'my-vault': { href: '/vault/my/', icon: '🔐', title: 'My Vault', desc: 'Personal encrypted vault', css: 'card-vault' },
+            'email-agent': { href: '/email-agent/', icon: '📧', title: 'Email Agent', desc: 'Autonomous email monitoring, drafting, and response', css: 'card-email-agent' },
+            wordpress:  { href: '/wordpress/', icon: '🌐', title: 'OP WordPress', desc: 'Multi-site WordPress management', css: 'card-wordpress' },
+            users:     { href: '/users/',     icon: '🔑', title: 'User Controls',desc: 'Manage users, access, preface prompts',                    css: 'card-users' },
+            engine:    { href: '/engine/',    icon: '🔧', title: 'Command Center', desc: 'Tasks, workers, system health, logs',                    css: 'card-engine' },
+        };
+
+        const _cb = '?_=' + Date.now();
+
+        function renderUserCards(allowedApps) {
+            const grid = document.getElementById('user-card-grid');
+            if (!allowedApps || !allowedApps.length) {
+                grid.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:2rem;">No apps assigned. Contact your admin.</p>';
+                return;
+            }
+            grid.innerHTML = allowedApps
+                .filter(id => APP_CARDS[id])
+                .map(id => {
+                    const c = APP_CARDS[id];
+                    const href = c.external ? c.href : c.href + _cb;
+                    const target = c.external ? ' target="_blank" rel="noopener"' : '';
+                    return '<a href="' + href + '"' + target + ' class="dash-card ' + c.css + '">' +
+                        '<div class="card-header-row">' +
+                            '<div class="card-icon">' + c.icon + '</div>' +
+                            '<span class="health-dot dot-gray" id="health-user-' + id + '" title="Checking..."></span>' +
+                        '</div>' +
+                        '<h2>' + c.title + '</h2>' +
+                        '<p>' + c.desc + '</p>' +
+                    '</a>';
+                }).join('');
+        }
+
+        // ── Init ──────────────────────────────────────────────────────────────
+        (async () => {
+            const resp = await fetch('/auth/config');
+            const cfg = await resp.json();
+
+            if (!cfg.supabase_url || !cfg.supabase_anon_key) {
+                document.getElementById('loading').innerHTML = '<p>Auth not configured</p>';
+                return;
+            }
+
+            window.OPAI_SUPABASE_URL = cfg.supabase_url;
+            window.OPAI_SUPABASE_ANON_KEY = cfg.supabase_anon_key;
+
+            const sb = window.supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
+            const { data: { session } } = await sb.auth.getSession();
+
+            if (!session) {
+                window.location.href = '/auth/login?return=/dashboard';
+                return;
+            }
+
+            const user = session.user;
+            const role = user.app_metadata?.role || 'user';
+            const displayName = user.user_metadata?.display_name || user.email.split('@')[0];
+
+            if (role !== 'admin') {
+                try {
+                    const obResp = await fetch('/onboard/status', {
+                        headers: { 'Authorization': 'Bearer ' + session.access_token },
+                    });
+                    if (obResp.ok) {
+                        const obData = await obResp.json();
+                        if (!obData.onboarded) { window.location.href = '/onboard/'; return; }
+                    }
+                } catch (e) { /* proceed */ }
+            }
+
+            window._opaiUserId    = user.id;
+            window._opaiUserEmail = user.email;
+            window._opaiToken     = session.access_token;
+            sb.auth.onAuthStateChange((_event, sess) => {
+                if (sess) window._opaiToken = sess.access_token;
+            });
+
+            document.getElementById('loading').classList.add('hidden');
+
+            const isAdmin = role === 'admin';
+
+            if (isAdmin) {
+                document.getElementById('admin-name').textContent = displayName;
+                document.getElementById('admin-dashboard').classList.remove('hidden');
+
+                // Load saved layout and render
+                loadAdminLayout();
+                setAdminView(_adminView); // syncs toggle buttons
+                renderAdminCards();
+                initAdminSearch();
+
+                fetchHealth(true);
+                fetchStats();
+                fetchRustDesk();
+                setInterval(() => fetchHealth(true), 30000);
+                setInterval(fetchStats, 10000);
+                setInterval(fetchRustDesk, 60000);
+            } else {
+                document.getElementById('user-name').textContent = displayName;
+                document.getElementById('user-welcome').textContent = 'Welcome, ' + displayName;
+
+                let allowedApps = ['files', 'team-hub'];
+                try {
+                    const appsResp = await fetch('/api/me/apps', {
+                        headers: { 'Authorization': 'Bearer ' + session.access_token },
+                    });
+                    if (appsResp.ok) {
+                        const appsData = await appsResp.json();
+                        if (appsData.allowed_apps && appsData.allowed_apps.length) {
+                            allowedApps = appsData.allowed_apps;
+                        }
+                    }
+                } catch (e) { /* use fallback */ }
+
+                renderUserCards(allowedApps);
+                document.getElementById('user-dashboard').classList.remove('hidden');
+                fetchHealth(false);
+                setInterval(() => fetchHealth(false), 30000);
+            }
+
+            window.opaiAuth = {
+                signOut: async () => {
+                    await sb.auth.signOut();
+                    window.location.href = '/auth/login';
+                }
+            };
+        })();
+    </script>
+    <!-- Feedback / Request Modal -->
+    <div class="fb-overlay" id="fb-overlay" onclick="if(event.target===this)closeFeedbackModal()">
+        <div class="fb-modal">
+            <div class="fb-modal-header">
+                <h3>Send Feedback</h3>
+                <button class="fb-close" onclick="closeFeedbackModal()">&times;</button>
+            </div>
+            <div class="fb-tabs">
+                <button class="fb-tab active" data-tab="feedback" onclick="switchFbTab('feedback')">Feedback</button>
+                <button class="fb-tab" data-tab="request" onclick="switchFbTab('request')">Request</button>
+            </div>
+            <div class="fb-body">
+                <!-- Feedback panel -->
+                <div class="fb-panel active" id="fb-panel-feedback">
+                    <label class="fb-label">What's on your mind?</label>
+                    <textarea class="fb-textarea" id="fb-text" placeholder="Bug report, suggestion, or general feedback..."></textarea>
+                    <p class="fb-hint">Your feedback is reviewed by the team and AI agents to improve the platform.</p>
+                    <button class="fb-submit" id="fb-submit" onclick="submitFeedback()">Send Feedback</button>
+                    <div class="fb-status" id="fb-status"></div>
+                </div>
+                <!-- Request panel -->
+                <div class="fb-panel" id="fb-panel-request">
+                    <label class="fb-label">Request Type</label>
+                    <select class="fb-select" id="req-type">
+                        <option value="app">App / Tool</option>
+                        <option value="agent">AI Agent</option>
+                        <option value="integration">Integration</option>
+                        <option value="feature">Feature Enhancement</option>
+                    </select>
+                    <label class="fb-label">Describe your request</label>
+                    <textarea class="fb-textarea" id="req-text" placeholder="What would you like to see built or added? Be as specific as you can..."></textarea>
+                    <p class="fb-hint">Requests are submitted as system tasks, reviewed by AI agents, and triaged for the team.</p>
+                    <button class="fb-submit" id="req-submit" onclick="submitRequest()">Submit Request</button>
+                    <div class="fb-status" id="req-status"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function openFeedbackModal() {
+        document.getElementById('fb-overlay').classList.add('open');
+    }
+    function closeFeedbackModal() {
+        document.getElementById('fb-overlay').classList.remove('open');
+        document.getElementById('fb-status').textContent = '';
+        document.getElementById('fb-status').className = 'fb-status';
+        document.getElementById('req-status').textContent = '';
+        document.getElementById('req-status').className = 'fb-status';
+    }
+    function switchFbTab(tab) {
+        document.querySelectorAll('.fb-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+        document.querySelectorAll('.fb-panel').forEach(p => p.classList.toggle('active', p.id === 'fb-panel-' + tab));
+    }
+
+    async function submitFeedback() {
+        const text = document.getElementById('fb-text').value.trim();
+        const status = document.getElementById('fb-status');
+        const btn = document.getElementById('fb-submit');
+        if (!text) { status.textContent = 'Please enter your feedback.'; status.className = 'fb-status error'; return; }
+
+        btn.disabled = true;
+        btn.textContent = 'Sending...';
+        status.textContent = '';
+        try {
+            const resp = await fetch('/api/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_text: text,
+                    tool: 'portal',
+                    page_path: '/dashboard',
+                    user_id: window._opaiUserId || null,
+                    user_email: window._opaiUserEmail || null,
+                }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                status.textContent = 'Thank you! Your feedback has been submitted.';
+                status.className = 'fb-status success';
+                document.getElementById('fb-text').value = '';
+                setTimeout(closeFeedbackModal, 2000);
+            } else {
+                status.textContent = data.error || 'Something went wrong.';
+                status.className = 'fb-status error';
+            }
+        } catch (e) {
+            status.textContent = 'Network error. Please try again.';
+            status.className = 'fb-status error';
+        }
+        btn.disabled = false;
+        btn.textContent = 'Send Feedback';
+    }
+
+    async function submitRequest() {
+        const type = document.getElementById('req-type').value;
+        const text = document.getElementById('req-text').value.trim();
+        const status = document.getElementById('req-status');
+        const btn = document.getElementById('req-submit');
+        if (!text) { status.textContent = 'Please describe your request.'; status.className = 'fb-status error'; return; }
+
+        btn.disabled = true;
+        btn.textContent = 'Submitting...';
+        status.textContent = '';
+        try {
+            const resp = await fetch('/api/request', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    request_type: type,
+                    description: text,
+                    user_id: window._opaiUserId || null,
+                    user_email: window._opaiUserEmail || null,
+                }),
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                status.textContent = 'Request submitted! Task ' + data.task_id + ' created.';
+                status.className = 'fb-status success';
+                document.getElementById('req-text').value = '';
+                setTimeout(closeFeedbackModal, 2500);
+            } else {
+                status.textContent = data.error || 'Something went wrong.';
+                status.className = 'fb-status error';
+            }
+        } catch (e) {
+            status.textContent = 'Network error. Please try again.';
+            status.className = 'fb-status error';
+        }
+        btn.disabled = false;
+        btn.textContent = 'Submit Request';
+    }
+    </script>
+
+    <!-- v2: messenger + docs widgets removed (services archived) -->
+</body>
+</html>

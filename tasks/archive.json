@@ -1,0 +1,1498 @@
+{
+  "tasks": {
+    "t-20260212-056": {
+      "id": "t-20260212-056",
+      "title": "Add Amazon Associate disclaimer to Westberg website \u2014 review and suggest placement",
+      "description": "COMPLETED: Disclaimer already present in two locations: (1) Books page footer: 'As an Amazon Associate, we earn from qualifying purchases.' (2) Privacy Policy page: full Amazon Affiliate Disclosure section. No further action needed unless site-wide footer placement desired (requires Avada theme panel).",
+      "source": "manual",
+      "sourceRef": {
+        "sender": "e.westberg@hotmail.com",
+        "senderName": "Eric Westberg",
+        "subject": "Re: Pioneers of Personal Development"
+      },
+      "project": "Westberg",
+      "assignee": "human",
+      "status": "completed",
+      "priority": "normal",
+      "deadline": "2026-02-12",
+      "routing": {
+        "type": "content",
+        "squads": [],
+        "mode": "propose"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-12T14:00:00.000Z",
+      "updatedAt": null,
+      "completedAt": null,
+      "archivedAt": "2026-02-14T00:30:01.836945Z"
+    },
+    "t-20260212-057": {
+      "id": "t-20260212-057",
+      "title": "Set and communicate new website launch date to Eric",
+      "description": "MERGED into t-20260212-051 (Re: AI pic reply). Launch date communication is included in that draft: 'fully launched within a week once content is organized' + retainer/per-update pricing. No separate action needed.",
+      "source": "manual",
+      "sourceRef": {
+        "sender": "e.westberg@hotmail.com",
+        "senderName": "Eric Westberg",
+        "subject": "Re: Fw: Website Feedback"
+      },
+      "project": "Westberg",
+      "assignee": "human",
+      "status": "completed",
+      "priority": "high",
+      "deadline": "2026-02-12",
+      "routing": {
+        "type": "communication",
+        "squads": [
+          "email"
+        ],
+        "mode": "propose"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-12T14:00:00.000Z",
+      "updatedAt": null,
+      "completedAt": null,
+      "archivedAt": "2026-02-14T00:30:01.836945Z"
+    },
+    "t-20260212-052": {
+      "id": "t-20260212-052",
+      "title": "Place Eric's bio on the website About page",
+      "description": "Eric sent 'Website Bio-Eric Westberg.docx' on Feb 5 (subject: 'Bio Book Review'). Place on About Me page (WP id:8, currently has Lorem Ipsum placeholder). Gmail: https://mail.google.com/mail/u/0/#search/from%3Ae.westberg%40hotmail.com+subject%3A%22Bio+Book+Review%22 \u2014 WP access: username 'weadm' (see popd_hostinger.md). BLOCKED: need .docx content \u2014 provide in next chat or save to Clients/Westberg/.",
+      "source": "manual",
+      "sourceRef": {
+        "sender": "e.westberg@hotmail.com",
+        "senderName": "Eric Westberg",
+        "subject": "Bio Book Review"
+      },
+      "project": "Westberg",
+      "assignee": "human",
+      "status": "completed",
+      "priority": "high",
+      "deadline": "2026-02-12",
+      "routing": {
+        "type": "review",
+        "squads": [
+          "review"
+        ],
+        "mode": "propose"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-12T14:00:00.000Z",
+      "updatedAt": null,
+      "completedAt": null,
+      "notes": "Bio pushed to About Me page (WP id:8). Replaced Lorem Ipsum text blocks and Damon Vaughn placeholder with Eric Westberg bio. Live at https://pioneersofpersonaldevelopment.com/about-me/",
+      "archivedAt": "2026-02-14T00:30:01.836945Z"
+    },
+    "t-20260218-002": {
+      "id": "t-20260218-002",
+      "title": "[TeamHub] Tasks need a follow-up date to be used as a reminder to follow up with a client after steps have been taken and comments",
+      "description": "Tasks need a follow-up date to be used as a reminder to follow up with a client after steps have been taken and comments have been added.",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771444427744_5eb901",
+        "tool": "TeamHub",
+        "severity": "LOW",
+        "category": "feature-request",
+        "file": "Feedback-TeamHub.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-18T22:17:59.922567Z",
+      "updatedAt": "2026-02-18T22:24:14.326889Z",
+      "completedAt": "2026-02-18T22:24:14.326889Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "claude-direct",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "## Changes Applied\n\n### Files Modified\n- `routes_api.py` \u2014 Added `follow_up_date` to `CreateItem` and `UpdateItem` models, create/update handlers, batch operations allowed fields, internal update endpoint, all `select` statements, and home dashboard (new `follow_ups_due` response field)\n- `routes_spaces.py` \u2014 Added `follow_up_date` to all `select` statements (calendar, list items, dashboard queries)\n- `static/app.js` \u2014 Added follow-up date picker in detail panel, \"Follow-ups Due\" home dashboard tile, follow-up badge in board card view, \"Follow-up\" column in list view, `formatFollowUpBadge()` helper function\n- `static/style.css` \u2014 Added `.th-card-follow-up` and `.follow-up-overdue` styles\n- `config/supabase-migrations/020_team_items_follow_up_date.sql` \u2014 Migration to add `follow_up_date` date column to `team_items`\n\n### What Was Done\nAdded a `follow_up_date` field to Team Hub tasks, allowing users to set a reminder date for client follow-ups. The field appears in the task detail panel (as a date picker next to Due Date), in the list view (as a new \"Follow-up\" column), on board cards (as a bell icon badge), and on the home dashboard (as a new \"Follow-ups Due\" tile showing items with follow-up dates due within the next 7 days, with overdue highlighting).\n\n### Remaining Items\n- **Migration must be run**: Execute `020_team_items_follow_up_date.sql` against Supabase to add the `follow_up_date` column to `team_items`\n- **Service restart needed**: Restart `opai-team-hub` to pick up the backend changes\n- The calendar view currently only shows items by `due_date` \u2014 follow-up dates are not shown on the calendar (could be a future enhancement)",
+        "reportFile": "/workspace/reports/2026-02-18/task-t-20260218-002-feedback-fix.md",
+        "completedAt": "2026-02-18T22:24:14.326889Z"
+      },
+      "attachments": [],
+      "archivedAt": "2026-02-18T22:26:16.911662Z"
+    },
+    "t-20260218-003": {
+      "id": "t-20260218-003",
+      "title": "[Monitor] add a \"Open\" button to the Running Agents section for each process to allow the view of the running session",
+      "description": "add a \"Open\" button to the Running Agents section for each process to allow the view of the running session",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771399928907_b576f8",
+        "tool": "Monitor",
+        "severity": "LOW",
+        "category": "feature-request",
+        "file": "Feedback-Monitor.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-18T01:43:01.645555Z",
+      "updatedAt": "2026-02-18T01:45:40.466353Z",
+      "completedAt": "2026-02-18T01:45:40.466353Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "All changes are syntactically valid.\n\n## Changes Applied\n\n### Files Modified\n- `collectors.py` \u2014 Added `get_agent_detail(pid)` function that returns detailed process info (CWD, RSS memory, threads, FDs, full cmdline args, start time)\n- `routes_api.py` \u2014 Added `GET /api/agents/{pid}` endpoint that returns detailed agent session info\n- `static/index.html` \u2014 Added Agent Detail Modal markup (before report modal)\n- `static/app.js` \u2014 Added \"Open\" button to agents table, `openAgent(pid)` function that fetches and displays session details in modal, `closeAgentModal()`, and Escape key handler\n- `static/style.css` \u2014 Added `.agent-detail-grid`, `.agent-detail-section`, `.agent-detail-label`, `.agent-detail-value`, `.agent-detail-cmd` styles\n\n### What Was Done\nAdded an \"Open\" button next to the existing \"Kill\" button in the Running Agents table. Clicking \"Open\" opens a modal showing the agent's full session details: name, PID, status, CPU/memory usage, RSS memory, uptime with start timestamp, thread/FD counts, working directory, and the full command line with arguments. The modal also includes a \"Kill Process\" button for quick action.\n\n### Remaining Items\n- Service restart needed: `systemctl --user restart opai-monitor` to apply the backend changes\n- The frontend CSS/JS changes will take effect on page reload after restart",
+        "reportFile": "/workspace/reports/2026-02-18/task-t-20260218-003-feedback-fix.md",
+        "completedAt": "2026-02-18T01:45:40.466353Z"
+      },
+      "attachments": [],
+      "archivedAt": "2026-02-18T01:46:18.740825Z"
+    },
+    "t-20260218-001": {
+      "id": "t-20260218-001",
+      "title": "[TeamHub] we need to bring in the docs also associated with each space. Upgrade the migration too to be able to do this and bring ",
+      "description": "we need to bring in the docs also associated with each space. Upgrade the migration too to be able to do this and bring them in attached to the correct space/folder/list/task.",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771355095103_d63e05",
+        "tool": "TeamHub",
+        "severity": "LOW",
+        "category": "feature-request",
+        "file": "Feedback-TeamHub.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-18T22:37:05.530233Z",
+      "updatedAt": "2026-02-18T22:49:24.914427Z",
+      "completedAt": "2026-02-18T22:49:24.914427Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "## Changes Applied\n\n### Files Modified\n- `routes_api.py` \u2014 Fixed ClickUp docs import parent-matching logic (3 edits)\n\n### What Was Done\n\nThe docs feature was already **fully implemented** across all layers \u2014 the migration file (`021_team_docs.sql`), backend CRUD endpoints (`routes_spaces.py`), import pipeline (`routes_api.py`), and frontend UI (`static/app.js`) were all in place. The **missing piece was the migration hadn't been applied to Supabase**, so the `team_docs` and `team_doc_pages` tables didn't exist in the database.\n\n1. **Applied migration `021_team_docs.sql`** to Supabase \u2014 created `team_docs` and `team_doc_pages` tables with full RLS policies\n2. **Fixed a bug in the ClickUp docs import parent-matching** \u2014 the old code iterated through folder/list caches and grabbed the *first* match for the workspace instead of matching by the actual ClickUp parent ID. Added `cu_folder_id_map` and `cu_list_id_map` dictionaries that map ClickUp folder/list IDs to Supabase UUIDs, populated during the folder/list import phase, and used for precise parent matching when importing docs.\n\n### Remaining Items\n- **Service restart needed**: `opai-team-hub` service needs to be restarted to pick up the `routes_api.py` changes\n- **Re-import recommended**: If a ClickUp import was already run, docs may have been skipped (tables didn't exist) or misassigned (parent bug). Consider re-running the import for affected spaces \u2014 the dedup logic (`source_id` check) will skip already-imported docs, so only new/missing ones will be added",
+        "reportFile": "/workspace/reports/2026-02-18/task-t-20260218-001-feedback-fix.md",
+        "completedAt": "2026-02-18T22:49:24.914427Z"
+      },
+      "attachments": [],
+      "archivedAt": "2026-02-18T22:50:02.825895Z"
+    },
+    "t-20260219-001": {
+      "id": "t-20260219-001",
+      "title": "[Forum] Critical: Global: we need an \"are you sure you want to close\" popup confirmation before closing any popup input like the",
+      "description": "Critical: Global: we need an \"are you sure you want to close\" popup confirmation before closing any popup input like the feedback input.",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771494071995_ca4af9",
+        "tool": "Forum",
+        "severity": "MEDIUM",
+        "category": "uncategorized",
+        "file": "Feedback-Forum.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "high",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T03:45:01.613329Z",
+      "updatedAt": "2026-02-19T03:54:31.127610Z",
+      "completedAt": "2026-02-19T03:54:31.127610Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "The edit is clean. Let me review what the Forum tool already had vs what was missing:\n\n## Changes Applied\n\n### Files Modified\n- `static/js/forum.js` \u2014 Added Escape key handling for the feedback modal overlay with unsaved-input confirmation guard\n\n### What Was Done\nThe Forum already had comprehensive \"are you sure\" guards for its own inputs (new post form, edit mode, reply forms, comment input \u2014 all with `confirmDiscardInput()`, `hasNewPostContent()`, `hasUnsavedComment()`, and `hasEditChanges()`). The shared navbar's feedback modal (`navbar.js`) also already had a `guardedClose()` function for Cancel button clicks and overlay clicks. The only gap was that pressing **Escape** while the feedback modal was open had no handler \u2014 it would either do nothing or accidentally trigger forum-specific close actions behind the modal. The fix adds the feedback modal as the first check in the Escape key handler, with the same unsaved-input confirmation pattern used everywhere else.\n\n### Remaining Items\n- The shared `navbar.js` (in `opai-portal`) could also benefit from its own Escape key listener for the feedback modal \u2014 currently it relies on each tool's Escape handler. That file is outside this tool's scope.\n- A service restart of `opai-forumbot` may be needed if static files are cached (though typically they're served directly by Caddy and don't need a restart).",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-001-feedback-fix.md",
+        "completedAt": "2026-02-19T03:54:31.127610Z"
+      },
+      "attachments": [],
+      "retryCount": 1,
+      "archivedAt": "2026-02-19T03:55:03.460556Z"
+    },
+    "t-20260219-003": {
+      "id": "t-20260219-003",
+      "title": "[Monitor] the Claude Settings panel, make the documents mentioned clickable to open in a popup with raw and markdown views.",
+      "description": "the Claude Settings panel, make the documents mentioned clickable to open in a popup with raw and markdown views.",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771492100050_dbfc53",
+        "tool": "Monitor",
+        "severity": "LOW",
+        "category": "feature-request",
+        "file": "Feedback-Monitor.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T03:45:17.740119Z",
+      "updatedAt": "2026-02-19T03:56:50.401544Z",
+      "completedAt": "2026-02-19T03:56:50.401544Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "I notice that `openDocument` uses `fetch` directly (line 1768) instead of `authFetch`. If the Monitor requires auth, this could fail. But that's a separate issue from what the feedback is about.\n\n## Changes Applied\n\n### No Changes Needed\n\nThe feature described in the feedback \u2014 **making documents in the Claude Settings panel clickable to open in a popup with raw and markdown views** \u2014 is **already fully implemented** in the current codebase:\n\n| Component | Location | Status |\n|-----------|----------|--------|\n| Clickable links for Setting Sources | `app.js:1755-1757` | Working |\n| Clickable links for Memory docs | `app.js:1741-1743` | Working |\n| Document viewer modal (popup) | `index.html:371-386` | Working |\n| Raw/Markdown toggle | `app.js:1786-1807` | Working |\n| Backend document reader API | `routes_api.py:477-495` | Working |\n| `.doc-link` CSS styling | `style.css:1475-1484` | Working |\n| Markdown renderer | `app.js:70` | Working |\n\n### How It Works\n- The Claude Status panel shows \"Memory\" and \"Setting sources\" rows\n- Each document (CLAUDE.md, MEMORY.md, etc.) renders as a blue clickable link\n- Clicking opens a modal popup with the file content\n- The popup has **Markdown** and **Raw** toggle buttons at the top\n- The `/claude/document` API whitelists paths under `~/.claude/` and the workspace `CLAUDE.md`\n\n### Remaining Items\n- The `openDocument()` function uses `fetch()` instead of `authFetch()` \u2014 if auth is enforced on this endpoint, it should be updated. This is outside the scope of this feedback item.\n- This feedback can be marked as **already implemented**.",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-003-feedback-fix.md",
+        "completedAt": "2026-02-19T03:56:50.401544Z"
+      },
+      "attachments": [],
+      "retryCount": 1,
+      "archivedAt": "2026-02-19T03:58:05.484965Z"
+    },
+    "t-20260219-002": {
+      "id": "t-20260219-002",
+      "title": "[Forum] owners of form posts need to be able to esit the posts when on their post, place an edit button at the top of the screen",
+      "description": "owners of form posts need to be able to esit the posts when on their post, place an edit button at the top of the screen when they are on their own post. if they click it they can simply click on areas like the title or body of the post to edit them. click the save button (edit button transformed the moment the edit mode was entered) to save, place a Cancel button next to the edit button once clicked that canceled and discards all edits.",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771494268624_43ccd2",
+        "tool": "Forum",
+        "severity": "MEDIUM",
+        "category": "uncategorized",
+        "file": "Feedback-Forum.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "high",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T03:45:09.739865Z",
+      "updatedAt": "2026-02-19T03:50:47.902635Z",
+      "completedAt": "2026-02-19T03:50:47.902635Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "## Changes Applied\n\n### Files Modified\n- `static/js/forum.js` \u2014 Added edit mode state management, edit/save/cancel functions, edit button bar in post detail view, exposed methods on `forumApp`, added `SVG_EDIT` icon, gave title and body elements IDs + `data-raw-content` attribute for raw markdown storage\n- `static/css/forum.css` \u2014 Added styles for `.edit-btn-bar` (show/hide logic via `.editing` class), `.editable-active` outline highlight, monospace styling for content editing\n\n### What Was Done\nWhen a user views their own post, an **Edit Post** button now appears above the post card. Clicking it:\n1. Transforms the button bar to show **Save** and **Cancel** buttons (Edit disappears)\n2. Makes the title (`<h2>`) and body (`<div class=\"post-body\">`) contenteditable with a purple outline indicator\n3. The body switches from rendered markdown to raw text for editing\n4. **Save** calls `PUT /api/posts/{id}` (existing endpoint, already checks `author_id`) and re-renders the post\n5. **Cancel** discards all edits and restores the original title/content with re-rendered markdown\n\n### Remaining Items\n- The `opai-forum` service needs a restart for static file cache to clear (if any caching is in place) \u2014 a human should restart it\n- Admins who are also post owners will see the Edit button (this is correct behavior \u2014 admins can always edit their own posts via the owner check in the API)",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-002-feedback-fix.md",
+        "completedAt": "2026-02-19T03:50:47.902635Z"
+      },
+      "attachments": [],
+      "retryCount": 1,
+      "archivedAt": "2026-02-19T03:51:36.471293Z"
+    },
+    "t-20260219-004": {
+      "id": "t-20260219-004",
+      "title": "[TeamHub] the landing page needs an equivalent list view to sort through and display all tasks in the team hub",
+      "description": "the landing page needs an equivalent list view to sort through and display all tasks in the team hub",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771476159180_14049c",
+        "tool": "TeamHub",
+        "severity": "LOW",
+        "category": "feature-request",
+        "file": "Feedback-TeamHub.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T03:45:21.551542Z",
+      "updatedAt": "2026-02-19T03:55:38.715854Z",
+      "completedAt": "2026-02-19T03:55:38.715854Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "## Changes Applied\n\n### Files Modified\n- `static/app.js` \u2014 Added tab bar (Dashboard / All Tasks) to `renderHomeTiles()`, `renderHomeListView()`, and `renderHomeListTable()`; added `switchHomeTab()` function\n- `static/style.css` \u2014 Added styles for `.home-header-top`, `.home-view-tabs`, `.home-view-tab`, and `.home-list-subheader`\n\n### What Was Done\nAdded a visible tab switcher (\"Dashboard\" / \"All Tasks\") directly on the Team Hub home/landing page header. Both views share the same welcome header with the user's name and date, and tabs below let users toggle between the tile dashboard and the full sortable/filterable all-tasks list view. The tabs stay in sync with the header view switcher icons. The all-tasks list view already existed with sorting, filtering, and search \u2014 it was just hidden behind the small header icon. Now it's prominently discoverable.\n\n### Remaining Items\n- Service restart needed to serve updated static files (if caching is involved)\n- The existing header view switcher buttons (board/list/calendar) still work and stay synced with the home tabs",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-004-feedback-fix.md",
+        "completedAt": "2026-02-19T03:55:38.715854Z"
+      },
+      "attachments": [],
+      "retryCount": 1,
+      "archivedAt": "2026-02-19T03:56:13.476915Z"
+    },
+    "t-20260219-005": {
+      "id": "t-20260219-005",
+      "title": "[Monitor] add a Save Layout button to the top of the top of the monitor page, clicking it saves the panel layout exactly as is to ",
+      "description": "add a Save Layout button to the top of the top of the monitor page, clicking it saves the panel layout exactly as is to redisplay this exact display when the user visits the tool.",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771494663237_4db2a3",
+        "tool": "Monitor",
+        "severity": "LOW",
+        "category": "feature-request",
+        "file": "Feedback-Monitor.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T04:13:08.471808Z",
+      "updatedAt": "2026-02-19T04:14:44.681453Z",
+      "completedAt": "2026-02-19T04:14:44.681453Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "All changes are clean and correct.\n\n## Changes Applied\n\n### Files Modified\n- `static/index.html` \u2014 Added \"Save Layout\" button to header (first button in header-right)\n- `static/style.css` \u2014 Added `.header-btn-layout` styles (purple border/text, green flash on save)\n- `static/app.js` \u2014 Added `saveLayout()` and `restoreSavedLayout()` functions; `restoreSavedLayout()` runs at the start of `init()`\n\n### What Was Done\nAdded a \"Save Layout\" button to the top-right of the Monitor header. Clicking it captures a complete layout snapshot (panel order, panel sizes, and panel visibility) into a single `opai-monitor-saved-layout` localStorage key. On page load, `restoreSavedLayout()` restores this snapshot before the panel systems initialize, so the user sees exactly what they saved. The button briefly flashes green with \"Saved!\" text as confirmation.\n\n### Remaining Items\n- Service restart needed (`opai-monitor`) for changes to take effect on the live instance",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-005-feedback-fix.md",
+        "completedAt": "2026-02-19T04:14:44.681453Z"
+      },
+      "attachments": [],
+      "retryCount": 1,
+      "archivedAt": "2026-02-19T04:15:23.100365Z"
+    },
+    "t-20260219-006": {
+      "id": "t-20260219-006",
+      "title": "[Wordpress] we need to be able to search orders",
+      "description": "we need to be able to search orders",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771500396744_760995",
+        "tool": "Wordpress",
+        "severity": "MEDIUM",
+        "category": "uncategorized",
+        "file": "Feedback-Wordpress.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "high",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T05:28:55.168599Z",
+      "updatedAt": "2026-02-19T05:44:04.671203Z",
+      "completedAt": "2026-02-19T05:44:04.671203Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "(Agent produced no output)",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-006-feedback-fix.md",
+        "completedAt": "2026-02-19T05:44:04.671203Z"
+      },
+      "attachments": [],
+      "retryCount": 1,
+      "lastSessionId": "c48d65de-409c-4259-b905-0985f19a8155",
+      "archivedAt": "2026-02-19T05:44:36.435849Z"
+    },
+    "t-20260219-007": {
+      "id": "t-20260219-007",
+      "title": "[Tasks] the re-submit button on the All Tasks tab needs to be on the Audit tab soo for each report and resubmit the task to the ",
+      "description": "the re-submit button on the All Tasks tab needs to be on the Audit tab soo for each report and resubmit the task to the queue",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771510430953_507051",
+        "tool": "Tasks",
+        "severity": "MEDIUM",
+        "category": "uncategorized",
+        "file": "Feedback-Tasks.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "high",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T08:14:12.522297Z",
+      "updatedAt": "2026-02-19T08:14:50.461073Z",
+      "completedAt": "2026-02-19T08:14:50.461073Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "claude-direct",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "(Agent produced no output)",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-007-feedback-fix.md",
+        "completedAt": "2026-02-19T08:14:50.461073Z"
+      },
+      "attachments": [],
+      "retryCount": 1,
+      "lastSessionId": "c9169804-d299-452e-a167-3dfc1b769171",
+      "archivedAt": "2026-02-19T08:15:27.380818Z"
+    },
+    "t-20260219-008": {
+      "id": "t-20260219-008",
+      "title": "[Wordpress] the updated rows still are not removed from the page **[Context: the plugin rows]**",
+      "description": "the updated rows still are not removed from the page **[Context: the plugin rows]**",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771510491375_414878",
+        "tool": "Wordpress",
+        "severity": "MEDIUM",
+        "category": "uncategorized",
+        "file": "Feedback-Wordpress.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "high",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "execute"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-19T08:15:19.348483Z",
+      "updatedAt": "2026-02-19T08:15:59.513601Z",
+      "completedAt": "2026-02-19T08:15:59.513601Z",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "claude-direct",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "## Changes Applied\n\n- `/workspace/synced/opai/tools/opai-wordpress/static/js/updates.js` \u2014 Fixed plugin/theme rows not being removed from the page after updating. After a successful `updateSingle` call, the updated item is now immediately filtered out of `WP.Updates.data.plugins` (or `.themes`) and `renderContent()` is called right away so the row disappears instantly. Same for `updateType` \u2014 after bulk-updating all plugins/themes/core, the respective list is cleared and the view re-renders immediately. A background `checkNow` still fires after 5 seconds to sync the real server state. No service restart needed (static JS file).",
+        "reportFile": "/workspace/reports/2026-02-19/task-t-20260219-008-feedback-fix.md",
+        "completedAt": "2026-02-19T08:15:59.513601Z"
+      },
+      "attachments": [],
+      "retryCount": 1,
+      "lastSessionId": "af24de10-55dc-46b4-b0f4-8153d7ea3c29",
+      "archivedAt": "2026-02-19T08:16:36.379252Z"
+    },
+    "t-20260221-017": {
+      "id": "t-20260221-017",
+      "title": "[TeamHub] The folders need to display a dashboard/list/calendar views when a folder is selected. **[Context: build out/ connect th",
+      "description": "The folders need to display a dashboard/list/calendar views when a folder is selected. **[Context: build out/ connect the Grid (not dashboard), List, and calendar views on the Team hub so that when we click on a Folder of list that we see the same type of display that we do on the spaces for the Grid, List, and calendar views but tapered to present that level on down's information and tasks.]**",
+      "source": "feedback",
+      "sourceRef": {
+        "feedbackId": "fb_1771444359416_ce9875",
+        "tool": "TeamHub",
+        "severity": "LOW",
+        "category": "feature-request",
+        "file": "Feedback-TeamHub.md"
+      },
+      "project": null,
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "normal",
+      "deadline": null,
+      "routing": {
+        "type": "feedback-fix",
+        "squads": [],
+        "mode": "queued"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T22:46:12.506508+00:00",
+      "updatedAt": "2026-02-21T22:48:35.139754+00:00",
+      "completedAt": "2026-02-21T22:48:35.139754+00:00",
+      "agentConfig": {
+        "agentId": "feedback-fixer",
+        "agentType": "agent",
+        "agentName": "Feedback Fixer",
+        "instructions": "",
+        "response": "(Agent produced no output)",
+        "reportFile": "/workspace/reports/2026-02-21/task-t-20260221-017-feedback-fix.md",
+        "completedAt": "2026-02-21T22:48:35.139754+00:00"
+      },
+      "attachments": [],
+      "retryCount": 1,
+      "lastSessionId": "3a1587cc-b64c-4852-9123-17f5a1ae5b26",
+      "archivedAt": "2026-02-21T22:50:04.082046+00:00"
+    },
+    "t-20260221-001": {
+      "id": "t-20260221-001",
+      "title": "Push OP Connector v1.3.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.3.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 32s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T06:57:05.366397+00:00",
+      "updatedAt": "2026-02-21T06:57:38.311361+00:00",
+      "completedAt": "2026-02-21T06:57:38.311361+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.3.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "auto",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-002": {
+      "id": "t-20260221-002",
+      "title": "Push OP Connector v1.3.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.3.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 35s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T07:24:53.567227+00:00",
+      "updatedAt": "2026-02-21T07:25:28.683013+00:00",
+      "completedAt": "2026-02-21T07:25:28.683013+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.3.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-003": {
+      "id": "t-20260221-003",
+      "title": "Push OP Connector v1.3.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.3.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 33s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T08:01:07.086248+00:00",
+      "updatedAt": "2026-02-21T08:01:40.975484+00:00",
+      "completedAt": "2026-02-21T08:01:40.975484+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.3.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-004": {
+      "id": "t-20260221-004",
+      "title": "Push OP Connector v1.3.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.3.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 33s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T08:11:59.551337+00:00",
+      "updatedAt": "2026-02-21T08:12:32.684063+00:00",
+      "completedAt": "2026-02-21T08:12:32.684063+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.3.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-005": {
+      "id": "t-20260221-005",
+      "title": "Push OP Connector v1.3.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.3.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 30s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T08:21:04.583455+00:00",
+      "updatedAt": "2026-02-21T08:21:34.779877+00:00",
+      "completedAt": "2026-02-21T08:21:34.779877+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.3.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-006": {
+      "id": "t-20260221-006",
+      "title": "Push OP Connector v1.3.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.3.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 42s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T14:39:37.871479+00:00",
+      "updatedAt": "2026-02-21T14:40:20.471079+00:00",
+      "completedAt": "2026-02-21T14:40:20.471079+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.3.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-008": {
+      "id": "t-20260221-008",
+      "title": "Push OP Connector v1.3.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.3.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 35s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T15:19:59.056901+00:00",
+      "updatedAt": "2026-02-21T15:20:34.378255+00:00",
+      "completedAt": "2026-02-21T15:20:34.378255+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.3.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-007": {
+      "id": "t-20260221-007",
+      "title": "Push OP Connector v1.3.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.3.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 33s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T15:02:49.237177+00:00",
+      "updatedAt": "2026-02-21T15:03:22.579197+00:00",
+      "completedAt": "2026-02-21T15:03:22.579197+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.3.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-009": {
+      "id": "t-20260221-009",
+      "title": "Push OP Connector v1.3.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.3.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 32s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T15:37:33.306247+00:00",
+      "updatedAt": "2026-02-21T15:38:06.165278+00:00",
+      "completedAt": "2026-02-21T15:38:06.165278+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.3.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-010": {
+      "id": "t-20260221-010",
+      "title": "Push OP Connector v1.3.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.3.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 30s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T15:47:23.789010+00:00",
+      "updatedAt": "2026-02-21T15:47:54.632630+00:00",
+      "completedAt": "2026-02-21T15:47:54.632630+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.3.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-011": {
+      "id": "t-20260221-011",
+      "title": "Push OP Connector v1.4.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.4.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 35s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T17:37:14.447915+00:00",
+      "updatedAt": "2026-02-21T17:37:50.331234+00:00",
+      "completedAt": "2026-02-21T17:37:50.331234+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.4.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-012": {
+      "id": "t-20260221-012",
+      "title": "Push OP Connector v1.4.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.4.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 33s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T17:49:20.178327+00:00",
+      "updatedAt": "2026-02-21T17:49:53.580527+00:00",
+      "completedAt": "2026-02-21T17:49:53.580527+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.4.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-013": {
+      "id": "t-20260221-013",
+      "title": "Push OP Connector v1.4.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.4.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 35s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T18:11:26.203409+00:00",
+      "updatedAt": "2026-02-21T18:12:01.357527+00:00",
+      "completedAt": "2026-02-21T18:12:01.357527+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.4.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-014": {
+      "id": "t-20260221-014",
+      "title": "Push OP Connector v1.4.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.4.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 36s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T18:38:21.374925+00:00",
+      "updatedAt": "2026-02-21T18:38:57.988142+00:00",
+      "completedAt": "2026-02-21T18:38:57.988142+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.4.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-015": {
+      "id": "t-20260221-015",
+      "title": "Push OP Connector v1.4.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.4.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 35s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T18:42:34.299912+00:00",
+      "updatedAt": "2026-02-21T18:43:09.570671+00:00",
+      "completedAt": "2026-02-21T18:43:09.570671+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.4.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    },
+    "t-20260221-016": {
+      "id": "t-20260221-016",
+      "title": "Push OP Connector v1.4.0 \u2014 2/2 sites",
+      "description": "**Plugin Version:** v1.4.0\n**Result:** 2/2 pushed automatically, 0 manual required, 0 errors\n**Run time:** 32s\n\n### Per-site Results\n\n| Site | Method | Status | Note |\n|------|--------|--------|------|\n| Constitution for the People | admin_upload | \u2705 pushed |  |\n| WautersEdge | admin_upload | \u2705 pushed |  |",
+      "source": "system",
+      "sourceRef": {
+        "tool": "op-wordpress",
+        "event": "push-op"
+      },
+      "project": "OP WordPress",
+      "client": null,
+      "assignee": "agent",
+      "status": "completed",
+      "priority": "low",
+      "deadline": null,
+      "routing": {
+        "type": "system-event",
+        "squads": [],
+        "mode": "log"
+      },
+      "queueId": null,
+      "createdAt": "2026-02-21T18:43:21.699065+00:00",
+      "updatedAt": "2026-02-21T18:43:54.433327+00:00",
+      "completedAt": "2026-02-21T18:43:54.433327+00:00",
+      "agentConfig": {
+        "agentId": "push-op",
+        "agentType": "system",
+        "agentName": "Push OP",
+        "instructions": ""
+      },
+      "attachments": [],
+      "metadata": {
+        "plugin_version": "1.4.0",
+        "sites_total": 2,
+        "sites_pushed": 2,
+        "sites_manual": 0,
+        "sites_error": 0,
+        "push_results": [
+          {
+            "site_id": "60b3f158-1dfb-48d6-96c0-06011e1bcf25",
+            "name": "Constitution for the People",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          },
+          {
+            "site_id": "4d02d2fc-66a3-4395-a2ca-3d68486bee9e",
+            "name": "WautersEdge",
+            "deploy_method": "admin_upload",
+            "status": "pushed",
+            "method": "admin_upload",
+            "message": "Connector installed via wp-admin upload."
+          }
+        ]
+      },
+      "archivedAt": "2026-02-24T03:17:22.549193+00:00"
+    }
+  },
+  "archivedCount": 31,
+  "lastUpdated": "2026-02-24T03:17:22.553228+00:00"
+}

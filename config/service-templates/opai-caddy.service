@@ -1,0 +1,15 @@
+[Unit]
+Description=OPAI Caddy — Reverse Proxy
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/caddy run --config /workspace/synced/opai/config/Caddyfile
+ExecReload=/usr/bin/caddy reload --config /workspace/synced/opai/config/Caddyfile
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+EnvironmentFile=-%t/opai-vault/.env
+[Install]
+WantedBy=default.target
