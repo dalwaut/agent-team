@@ -1,5 +1,5 @@
 # Orchestrator
-> Last updated: 2026-02-25 | Source: `tools/opai-orchestrator/index.js`, `config/orchestrator.json`
+> Last updated: 2026-03-02 | Source: `config/orchestrator.json`, `tools/opai-engine/background/`
 
 > **v2 MIGRATION (2026-02-25)**: The standalone orchestrator has been **merged into the [OPAI Engine](opai-v2.md)**. All scheduling, health monitoring, task routing, and feedback processing now runs as Python background tasks inside `tools/opai-engine/background/`. The Node.js daemon at `tools/opai-orchestrator/` has been deleted. The `opai-orchestrator` systemd unit no longer exists. See [OPAI v2](opai-v2.md) for the current architecture.
 >
@@ -157,4 +157,84 @@ See [Sandbox System](sandbox-system.md) for full sandbox architecture.
 - **Writes**: `orchestrator-state.json`, `logs/orchestrator.log`, `reports/HITL/*.md`
 - **Consumed by**: [Task Control Panel](task-control-panel.md) — My Queue reads HITL briefings, HITL respond endpoint updates registry and archives briefings
 - **Uses**: work-companion for task classification/routing
-- **Managed by**: [Services & systemd](services-systemd.md) (`opai-orchestrator` service)
+- **Managed by**: [Services & systemd](services-systemd.md) (`opai-engine` service)
+
+## v3.5 Configuration Additions
+
+The following sections were added to `config/orchestrator.json` for the v3.5 "Team Hub Backbone" phase:
+
+### `fleet_coordinator` — Work Dispatch
+
+Routes identified work to the right worker (local or NFS), tracks execution, integrates with Team Hub. See [Fleet Coordinator & Action Items](../infra/fleet-action-items.md).
+
+```json
+"fleet_coordinator": {
+    "enabled": true,
+    "interval_minutes": 5,
+    "max_concurrent_dispatches": 3,
+    "auto_dispatch_approved": true,
+    "escalation_threshold_hours": 1,
+    "stale_task_threshold_hours": 24,
+    "routing": {
+        "code_review": "project-reviewer",
+        "code_build": "project-builder",
+        "research": "researcher",
+        "security": "security-scanner",
+        "wiki_update": "wiki-librarian",
+        "default": "self-assessor"
+    }
+}
+```
+
+### `proactive_intelligence` — Pattern Detection
+
+Heartbeat-driven detection of overdue items, stalled assignments, recurring patterns, and idle workers. See [Heartbeat](../infra/heartbeat.md).
+
+```json
+"proactive_intelligence": {
+    "enabled": true,
+    "check_interval_cycles": 3,
+    "overdue_threshold_minutes": 60,
+    "assigned_stall_minutes": 120,
+    "idle_worker_minutes": 60,
+    "pattern_detection_min_count": 3,
+    "auto_act_enabled": false,
+    "max_suggestions_per_cycle": 5
+}
+```
+
+### `nfs_dispatcher` — NFS Drop-Folder Communication
+
+Bridges Engine to external ClaudeClaw workers via file-based inbox/outbox protocol. See [NFS Dispatcher](../infra/nfs-dispatcher.md).
+
+```json
+"nfs_dispatcher": {
+    "enabled": true,
+    "poll_interval_seconds": 30,
+    "base_path": "/workspace/users/_clawbots",
+    "admin_hitl_path": "/workspace/users/_admin/hitl",
+    "max_concurrent_nfs_tasks": 5,
+    "heartbeat_stale_minutes": 10,
+    "hitl_sync_enabled": true,
+    "admin_response_poll": true
+}
+```
+
+### `bottleneck_detector` — Approval Bottleneck Detection
+
+Tracks approval patterns and flags workflow bottlenecks. Runs every 6 hours.
+
+```json
+"bottleneck_detector": {
+    "enabled": true,
+    "interval_hours": 6,
+    "approval_threshold": 10,
+    "lookback_days": 7
+}
+```
+
+### `command_channels` — Trust Model
+
+Defines per-channel trust levels for incoming commands. Channels can be `command` (auto-execute), `proposal` (create task for review), or `context` (read-only).
+
+See `config/orchestrator.json` for the full trust configuration.

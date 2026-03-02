@@ -49,7 +49,9 @@ Other: `workflows/`, `Cursor/`, `mcps/`, `gemini-scribe/`, `Clients/`, `Research
 | User Controls | `Library/opai-wiki/infra/user-controls.md` |
 | Vault | `Library/opai-wiki/infra/vault.md` |
 | Browser Automation | `Library/opai-wiki/infra/browser-automation.md` |
-| Heartbeat (v3) | `Library/opai-wiki/infra/heartbeat.md` |
+| Heartbeat (v3.5) + Proactive Intelligence | `Library/opai-wiki/infra/heartbeat.md` |
+| Fleet Coordinator & Action Items (v3.5) | `Library/opai-wiki/infra/fleet-action-items.md` |
+| NFS Drop-Folder Dispatcher (v3.5) | `Library/opai-wiki/infra/nfs-dispatcher.md` |
 | Headless Display | `Library/opai-wiki/infra/headless-display.md` |
 | Task Control Panel | `Library/opai-wiki/tools/task-control-panel.md` |
 | Billing / Stripe | `Library/opai-wiki/tools/billing.md` |

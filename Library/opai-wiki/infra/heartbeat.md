@@ -1,19 +1,19 @@
-# Proactive Heartbeat (v3 Phase 3.0)
+# Proactive Heartbeat (v3.5)
 
-> Last updated: 2026-02-28 | Source: `tools/opai-engine/background/heartbeat.py`
+> Last updated: 2026-03-02 | Source: `tools/opai-engine/background/heartbeat.py`
 
 ## Overview
 
-The heartbeat is a background loop inside the Engine that transforms OPAI from a reactive tool suite into a proactive team member. Every 30 minutes it aggregates work items from all tracking systems, detects changes (completions, failures, stalls), auto-recovers crashed workers, sends Telegram alerts, and generates daily notes.
+The heartbeat is a background loop inside the Engine that transforms OPAI from a reactive tool suite into a proactive team member. Every 30 minutes it aggregates work items from all tracking systems, detects changes (completions, failures, stalls), auto-recovers crashed workers, sends Telegram alerts, generates daily notes, checks HITL escalation timers, and runs **proactive intelligence** — detecting actionable patterns without being asked.
 
-**Success criteria**: You wake up, check Telegram, and OPAI has already told you: "3 tasks completed overnight, 1 needs your decision, all services healthy."
+**Success criteria**: You wake up, check Telegram, and OPAI has already told you: "3 tasks completed overnight, 1 needs your decision, all services healthy, and I noticed 2 items are overdue — want me to auto-route them?"
 
 ## Architecture
 
-The heartbeat is the 8th background task in the Engine, sitting alongside the existing 7. It is a **pure aggregation layer** — it reads from existing systems without modifying them (except `restart_worker()` for stall recovery).
+The heartbeat is the 10th background task in the Engine, sitting alongside 9 others. It is primarily an **aggregation layer** — it reads from existing systems, detects patterns, and takes corrective action (stall recovery, proactive suggestions, HITL escalation).
 
 ```
-Engine Background Tasks (8 total)
+Engine Background Tasks (11 total)
 ├── scheduler (60s)           ← heartbeat READS active_jobs, last_run
 ├── service-monitor (300s)
 ├── auto-executor (30s)
@@ -21,7 +21,10 @@ Engine Background Tasks (8 total)
 ├── updater (300s)
 ├── stale-sweeper (120s)
 ├── worker-health (60s)       ← heartbeat READS worker health/status
-└── heartbeat (1800s)         ← aggregates, detects, notifies
+├── bottleneck-detector (6h)  ← detects approval/workflow bottlenecks
+├── fleet-coordinator (5m)    ← work dispatch + Team Hub integration
+├── nfs-dispatcher (30s)      ← NFS drop-folder worker communication
+└── heartbeat (1800s)         ← aggregates, detects, notifies, proactive intelligence
 ```
 
 ### What Shares the 30-Minute Interval
@@ -41,12 +44,14 @@ Additionally, `task_processor.cooldown_minutes: 30` is a **cooldown** (minimum g
 
 | File | Purpose |
 |------|---------|
-| `tools/opai-engine/background/heartbeat.py` | Core `Heartbeat` class: loop, snapshot, change detection, stall recovery |
-| `tools/opai-engine/background/notifier.py` | Telegram Bot API notifications via httpx |
+| `tools/opai-engine/background/heartbeat.py` | Core `Heartbeat` class: loop, snapshot, change detection, stall recovery, proactive intelligence (~1000 lines) |
+| `tools/opai-engine/background/notifier.py` | Telegram Bot API notifications: alerts, HITL buttons, escalation tracking |
 | `tools/opai-engine/background/daily_note.py` | End-of-day note generation + AI summary |
 | `tools/opai-engine/routes/heartbeat.py` | API endpoints (latest, daily-notes, trigger) |
 | `tools/opai-engine/data/heartbeat-state.json` | Persisted state (survives restarts) |
-| `config/orchestrator.json` → `heartbeat` | Runtime configuration |
+| `tools/opai-engine/data/proactive-state.json` | Proactive intelligence state (dedup, patterns, last run) |
+| `config/orchestrator.json` → `heartbeat` | Heartbeat runtime configuration |
+| `config/orchestrator.json` → `proactive_intelligence` | PI thresholds and behavior |
 
 ## Configuration
 
@@ -60,7 +65,9 @@ In `config/orchestrator.json`:
     "daily_note_minute": 55,
     "notifications_enabled": true,
     "ai_summary_enabled": true,
-    "max_notifications_per_cycle": 5
+    "max_notifications_per_cycle": 5,
+    "hitl_thread_id": 112,
+    "digest_interval_cycles": 6
 }
 ```
 
@@ -72,6 +79,34 @@ In `config/orchestrator.json`:
 | `notifications_enabled` | true | Master switch for Telegram notifications |
 | `ai_summary_enabled` | true | Whether daily notes get a Claude Haiku AI summary |
 | `max_notifications_per_cycle` | 5 | Cap on items per Telegram message (batches beyond this) |
+| `hitl_thread_id` | 112 | Telegram forum topic for HITL notifications |
+| `digest_interval_cycles` | 6 | Cycles between activity digest messages |
+
+### Proactive Intelligence Configuration
+
+```json
+"proactive_intelligence": {
+    "enabled": true,
+    "check_interval_cycles": 3,
+    "overdue_threshold_minutes": 60,
+    "assigned_stall_minutes": 120,
+    "idle_worker_minutes": 60,
+    "pattern_detection_min_count": 3,
+    "auto_act_enabled": false,
+    "max_suggestions_per_cycle": 5
+}
+```
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `enabled` | true | Master switch for proactive intelligence |
+| `check_interval_cycles` | 3 | Run PI every N heartbeat cycles (= every 90 min at 30-min interval) |
+| `overdue_threshold_minutes` | 60 | Flag unassigned Team Hub items older than this |
+| `assigned_stall_minutes` | 120 | Flag assigned items with no progress after this long |
+| `idle_worker_minutes` | 60 | Flag NFS workers idle longer than this when tasks are pending |
+| `pattern_detection_min_count` | 3 | Minimum completions of same type before suggesting automation |
+| `auto_act_enabled` | false | Whether PI can auto-act (currently proposal-only) |
+| `max_suggestions_per_cycle` | 5 | Cap suggestions per PI run |
 
 ## Snapshot Data Model
 
@@ -231,17 +266,94 @@ The heartbeat writes to `tasks/audit.json` using the shared `log_audit()` functi
 | `heartbeat:stall` | health | Stall detected (managed or non-managed) |
 | `heartbeat:restart` | health | Auto-restart attempted (success or failure) |
 
+## Proactive Intelligence (v3.5)
+
+The proactive intelligence subsystem runs inside the heartbeat loop every N cycles (default 3, = every 90 minutes). It answers the question: **"What should the system do that nobody has asked for?"**
+
+### Detection Rules
+
+| Rule | Query | Suggestion |
+|------|-------|------------|
+| **Overdue items** | Team Hub items with status `open` or `awaiting-human`, no assignee, older than threshold | "Auto-route to {best worker}" |
+| **Stalled assignments** | Team Hub items with status `assigned` or `in-progress`, older than threshold | "Check on {assignee} or reassign" |
+| **Recurring patterns** | Fleet coordinator completions grouped by worker — same worker completing 3+ of same type | "Create automation for {pattern}" |
+| **Idle workers with pending work** | NFS workers reporting healthy + idle, while registry has pending tasks matching their capabilities | "Dispatch {task} to idle {worker}" |
+
+### Suggestion Flow
+
+```
+PI Detection → Deduplicate (skip if already suggested in last 24h)
+             → Create Team Hub item (type: "idea", list: HITL Queue)
+             → Log to proactive-state.json
+             → Item appears in My Queue as low-priority suggestion
+```
+
+Suggestions are currently **proposal-only** (`auto_act_enabled: false`). They create Team Hub items of type "idea" that appear in the action items feed for human review. The `auto_act_enabled` flag is reserved for future low-risk auto-actions.
+
+### State Persistence
+
+`data/proactive-state.json` tracks:
+- `last_run` — timestamp of last PI cycle
+- `cycle_counter` — incremented each heartbeat, PI runs when divisible by `check_interval_cycles`
+- `recent_suggestions` — dedup set (suggestion hashes with timestamps, pruned after 24h)
+- `pattern_cache` — fleet coordinator completion patterns for trend detection
+
+---
+
+## HITL Escalation (v3.5)
+
+The notifier tracks escalation timers for HITL items sent via Telegram. If a notification is not acknowledged within 15 minutes, an escalation reminder is sent.
+
+### Escalation Flow
+
+```
+1. HITL notification sent → start escalation timer
+2. Every heartbeat cycle → check_hitl_escalations()
+3. If item not acknowledged within 15 min → send escalation reminder
+4. If acknowledged (any button press, including "Picked up in GC") → clear timer
+5. Prune entries older than 4 hours
+```
+
+### Acknowledgment Methods
+
+| Method | Effect |
+|--------|--------|
+| Any Telegram button (Run, Approve, Dismiss, Reject) | Clear timer + execute action |
+| "Picked up in GC" button | Clear timer only (no status change) |
+| GravityClaw `.response` file | NFS dispatcher clears timer via action items API |
+| Engine dashboard action | API clears timer |
+
+### Notification Buttons (v3.5)
+
+HITL notifications now include 5 action buttons in 3 rows:
+
+```
+Row 1: [▶️ Run]  [✅ Approve]
+Row 2: [🗑️ Dismiss]  [❌ Reject]
+Row 3: [💻 Picked up in GC]
+```
+
+Button callbacks route through the Engine action items API when the callback key is a Team Hub UUID (`hitl:{action}:{uuid}`), or through the legacy HITL endpoint for older file-based items (`hitl:{action}:{filename}`).
+
+---
+
 ## What the Heartbeat Does NOT Touch
 
-- **Telegram service** (`tools/opai-telegram/`) — zero changes. 8 AM briefing continues independently
+- **Telegram service** (`tools/opai-telegram/`) — heartbeat sends notifications via Bot API (independent of the Telegram service process). 8 AM briefing continues independently
 - **Scheduler** — heartbeat reads but never writes to scheduler state
 - **Worker manager** — reads status, only calls `restart_worker()` for stall recovery
-- **Task registry** — read-only
-- **Other background tasks** — all 7 existing tasks run unchanged
+- **Task registry** — read-only (proactive intelligence reads only)
+- **Team Hub** — proactive intelligence creates "idea" items (write), reads items for overdue/stall detection
+- **Fleet coordinator** — PI reads completion history for pattern detection (read-only)
+- **NFS dispatcher** — PI reads worker health for idle detection (read-only)
 
 ## Dependencies
 
-- `httpx` (already an Engine dependency) — for Telegram API calls
+- `httpx` (already an Engine dependency) — for Telegram API calls + Team Hub internal API
 - `psutil` (already an Engine dependency) — via session collector
 - `tools/shared/claude_api.py` — for AI daily note summaries (optional, graceful fallback)
 - `tools/shared/audit.py` — for audit trail entries
+- [Team Hub](../tools/team-hub.md) internal API — proactive intelligence reads/writes items
+- [Fleet Coordinator](fleet-action-items.md) — PI reads completion history
+- [NFS Dispatcher](nfs-dispatcher.md) — PI reads worker health
+- [Notifier](fleet-action-items.md) — HITL escalation tracking (`check_hitl_escalations()`)

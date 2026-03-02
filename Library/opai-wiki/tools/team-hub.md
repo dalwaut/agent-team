@@ -1,5 +1,5 @@
 # OPAI Team Hub
-> Last updated: 2026-02-28 (tile flex-fill, board enhancements, mentions fix, file preview) | Source: `tools/opai-team-hub/`
+> Last updated: 2026-03-02 (v3.5 Workers workspace, Engine HITL integration, live item sync, Telegram tab, space reorder) | Source: `tools/opai-team-hub/`
 
 ClickUp-style task and project management system built into OPAI. Provides workspace-based project tracking with folders, lists, tags, assignments, comments, dashboards, Discord integration, and a cross-workspace AI assistant. Includes a per-user ClickUp import pipeline with live SSE progress streaming, a ClickUp API proxy for transition continuity, and a comprehensive internal MCP API for programmatic workspace management.
 
@@ -63,7 +63,7 @@ Six layers:
 | Table | Purpose | Key Columns |
 |-------|---------|-------------|
 | `team_workspaces` | Spaces/projects | name, slug, icon, color, owner_id, is_personal, discord_server_id, discord_channel_id, bot_prompt |
-| `team_membership` | User-workspace roles | user_id, workspace_id, role (owner/admin/member/viewer) |
+| `team_membership` | User-workspace roles | user_id, workspace_id, role (owner/admin/member/viewer), orderindex (per-user space display order) |
 | `team_items` | Tasks, notes, ideas, decisions, bugs | workspace_id, type, title, description, status, priority, due_date, list_id, folder_id, source, created_by |
 | `team_assignments` | Item assignments | item_id, assignee_type (user/agent/squad), assignee_id |
 | `team_comments` | Item comments | item_id, author_id, content, is_agent_report |
@@ -114,7 +114,7 @@ Items reference both `list_id` and `folder_id` directly (denormalized for query 
 
 ### Core (`routes_api.py`, prefix `/api`)
 
-**Workspaces**: `GET/POST /workspaces`, `GET/PATCH/DELETE /workspaces/{ws_id}`
+**Workspaces**: `GET/POST /workspaces`, `POST /workspaces/reorder`, `GET/PATCH/DELETE /workspaces/{ws_id}`
 
 **Items**: `GET/POST /workspaces/{ws_id}/items`, `GET/PATCH/DELETE /items/{item_id}`
 - Filter by: type, status, priority, assignee, search query
@@ -449,7 +449,11 @@ Backend queries: user's workspace memberships → assigned item IDs → all item
 
 ### UI Components
 
-- **Sidebar**: Workspace selector + folder/list tree hierarchy with expand/collapse
+- **Sidebar**: Workspace selector + folder/list tree hierarchy with expand/collapse. Supports drag-and-drop at every level:
+  - **Space reorder**: Drag any space row up/down to reorder. Purple indicator line shows insertion position (above/below target). Order is per-user (stored as `orderindex` on `team_membership`), persisted via `POST /workspaces/reorder`. Optimistic UI — reverts on API failure.
+  - **Folder move**: Drag a folder onto a different space to move it between spaces.
+  - **List move**: Drag a list onto a folder (to nest it) or onto a space (to make it folderless). Works across spaces.
+  - **Task move**: Drag a task card from the main content area onto a sidebar list to move it.
 - **Detail panel**: Slide-out (60vw, max 900px) with colored pill-dropdown pickers for status and priority; header action buttons (Move, Duplicate, Delete); assignees (OPAI users only), tags, markdown description with Pretty/Raw toggle, files with preview popup, comments with @mention autocomplete. Navbar-aware positioning (`top: 44px`, `height: calc(100vh - 44px)`).
 - **Header**: Home (house icon), Search (global, `/` shortcut), Create New (5 types: Space, Folder, List, Task, Structure), Templates, Invite (Add Team Member), Settings (gear icon), **AI panel toggle** (brain icon), notifications bell
 - **AI Panel**: Slide-in panel from the right (340px wide, z-index 200, below detail panel z-index 300). Cross-workspace knowledge, optional workspace focus hint. See [AI Panel](#ai-panel) section.
@@ -537,7 +541,7 @@ Title: **"TeamHub Settings"**. Opens from any context — home, within a space, 
 3. **Priorities** — Owner: info text explaining these are built-in system-wide levels. Non-owner: info text noting these are set by the workspace owner. Both see read-only color badges (critical, high, medium, low, none).
 4. **Tags** — Owner: full CRUD (inline color picker, rename, delete). Non-owner: read-only list with info text.
 5. **Import** — ClickUp import flow (see [ClickUp Migration > Web Import](#web-import-primary--settings-modal))
-6. **Discord AI** — Per-workspace Discord bot integration and AI configuration (see [Discord Integration](#discord-integration))
+6. **Telegram** — Info page with instructions to join the OPAI Telegram group's Team Hub topic, and a direct contact link to Dallas (`t.me/Dalwaut`) for access requests or troubleshooting
 
 See [Global Settings Ownership Model](#global-settings-ownership-model) for the full architecture.
 
@@ -635,23 +639,18 @@ A slide-in conversational AI assistant with cross-workspace knowledge, personali
 
 **Config**: No API key required — uses Claude CLI subscription via shared `call_claude` wrapper.
 
-### Discord Integration
+### Telegram Integration
 
-The Discord AI tab in Settings provides a unified interface for connecting the OPAI Discord bot to Team Hub workspaces. This enables the bot to answer questions in a Discord channel with workspace-scoped context.
+The Telegram tab in Settings (formerly "Discord AI") is an informational page that directs users to the OPAI Telegram group for Team Hub bot access.
 
-**Configuration flow** (Settings > Discord AI tab):
+**Content:**
+- Instructions to join the OPAI Telegram group and find the **Team Hub** topic
+- What the bot can do (create/search/update tasks, manage spaces/folders/lists, comments, summaries)
+- Contact link to Dallas on Telegram (`t.me/Dalwaut`) for access requests or troubleshooting
 
-1. **Server ID** — Enter the Discord guild (server) ID. An invite banner appears with a link to add the bot to the server and step-by-step instructions.
-2. **Channel ID** — Enter the Discord channel ID where the bot should listen and respond.
-3. **Bot Prompt** — Optional custom system prompt that shapes how the AI responds in this channel.
-4. **Workspace Scoping** — Toggle checkboxes to select which workspaces the bot has access to. Each workspace's `bot_prompt` is included in the AI context when the bot answers in the linked channel.
-5. **Save & Apply** — Persists settings via `PATCH /api/workspaces/{ws_id}/discord` for each modified workspace.
+**Key function**: `renderSettingsDiscordAI()` (internal name retained for tab routing compatibility)
 
-**State variables**: `_discordAIWorkspaces`, `_discordAIConnection` (`{server_id, channel_id, bot_prompt}`), `_discordAIDirty`
-
-**Key functions**: `renderSettingsDiscordAI()`, `saveDiscordAISettings()`, `_updateBotInviteLink()`
-
-**Discord bridge resolution**: When the Discord bridge receives a message in a channel, it calls `GET /api/internal/resolve-channel?channel_id=...` which queries `team_workspaces` by `discord_channel_id` to find the linked workspace(s) and their `bot_prompt`.
+**Backend**: Discord settings routes (`GET/PATCH /workspaces/{ws_id}/discord`) still exist for the Telegram bridge's channel resolution via `GET /api/internal/resolve-channel`.
 
 ### System Update Banner
 
@@ -661,13 +660,23 @@ Function: `showSystemUpdateBanner(message)`
 
 ### Realtime
 
-Supabase Realtime broadcast channel (`team-hub-live`) for live cross-user updates:
-- `task_updated` — updates task in-place, refreshes detail panel if open
-- `task_created` — reloads list if created in current list
+**Postgres Changes — Live Item Sync** (`team-items-{listId}` channel):
+
+When a list is selected, Team Hub subscribes to `postgres_changes` on `team_items` filtered by `list_id`. This catches ALL changes regardless of source (browser, Telegram bot, MCP tools, direct API):
+- **UPDATE** — patches the task in `_tasks` in-place, re-renders list/board, updates detail panel if open (skips if user is editing)
+- **INSERT** — adds new task to `_tasks` (deduplicates if already added optimistically), re-renders view
+- **DELETE** — removes from `_tasks`, closes detail panel if viewing that task, re-renders
+- Subscription managed via `subscribeToListItems(listId)` / `unsubscribeFromListItems()` — auto-switches when navigating between lists, unsubscribes when going to home/dashboard
+- Requires `REPLICA IDENTITY FULL` on `team_items` (set) for DELETE old-row data
+
+**Broadcast channel** (`team-hub-live`) for cross-user events:
 - `comment_added` — refreshes comments if detail panel is open for that task
 - `structure_changed` — space/folder/list deleted, live-updates sidebar for other users
 - `system_update` — displays refresh banner when system has been updated
-- `team_notifications` postgres_changes listener for instant notification badges
+- `task_updated` / `task_created` — kept as no-op placeholders (Postgres Changes handles data sync)
+
+**Postgres Changes — Notifications** (`team-hub-notifs` channel):
+- `team_notifications` INSERT listener for instant notification badges
 
 ### State Management
 
@@ -686,6 +695,7 @@ Key state variables in `app.js`:
 | `_tasks` | Items loaded for current list |
 | `_allAssignees` | OPAI-only assignees for active workspace |
 | `_detailTask` | Currently open task in detail panel |
+| `_itemsChannel` | Postgres Changes subscription for current list's `team_items` (auto-managed) |
 | `_inviteSelectedSpaces` | Set of space IDs selected in invite modal |
 | `_inviteSpaceMembers` | Map of spaceId → member user_id arrays |
 | `_settingsStatuses` / `_settingsTags` | Data for settings modal tabs (loaded from personal workspace) |
@@ -801,13 +811,97 @@ Team Hub supports programmatic ClickUp workspace binding via the internal API an
 - **Tag data inconsistency across workspaces** — After the global settings migration (040), the personal workspace may have fewer tags than other workspaces (e.g., 2 vs 10+). Running settings sync before setting up canonical tags in the personal workspace would delete the extras. The owner should configure their full tag set in settings first, then sync will propagate.
 - **Owner-only settings migration (040)** — RLS policies on `team_statuses` and `team_tags` were tightened from `IN ('owner','admin')` to `= 'owner'`. Admins can no longer create/edit/delete statuses or tags. Previously there was no UPDATE policy on `team_tags` — migration adds one.
 
+## OPAI Workers Workspace (v3.5)
+
+A dedicated workspace in Team Hub serves as the **single source of truth** for all agent/system task management — replacing scattered `tasks/registry.json`, `tasks/queue.json`, and `reports/HITL/*.md` files. Both humans and agents interact through the same system.
+
+### Workspace Structure
+
+```
+OPAI Workers (workspace: d27944f3-8079-4e40-9e5d-c323d6cf7b0f)
+├── "System" Folder
+│   ├── "HITL Queue" List (ac6071d1-c86b-4c09-b379-cae8e4f5bd63)
+│   │     Items needing human decision (status: awaiting-human)
+│   ├── "Active Work" List (0e074890-a10f-4f7f-9155-9bf0094f9559)
+│   │     Items currently being executed by agents
+│   └── "Completed" List
+│         Done items (auto-archive after 7 days)
+├── "Agents" Folder
+│   ├── "Research" List
+│   ├── "Build" List
+│   ├── "Review" List
+│   └── "Maintenance" List
+└── "External Workers" Folder
+    └── Per-worker lists (e.g., "cc-research-01")
+```
+
+### Custom Statuses
+
+| Status | Type | Meaning |
+|--------|------|---------|
+| `open` | open | New, unassigned |
+| `awaiting-human` | open | **HITL: needs Dallas's decision** |
+| `assigned` | active | Assigned to agent/worker, not started |
+| `in-progress` | active | Agent actively working |
+| `blocked` | active | Agent stuck, needs input |
+| `review` | active | Work done, needs human review |
+| `done` | done | Completed successfully |
+| `dismissed` | closed | Rejected/not needed |
+| `failed` | closed | Execution failed |
+
+### Item Types
+
+| Type | Created By | Purpose |
+|------|-----------|---------|
+| `task` | Fleet coordinator, manual | Work to be executed |
+| `decision` | Task processor (HITL) | Human decision required |
+| `idea` | Proactive intelligence | System suggestion, low priority |
+
+### Tags
+
+`hitl`, `auto-routed`, `external-worker`, `high-priority`, `escalated`
+
+### How the Engine Uses Workers Workspace
+
+1. **Task processor** creates `decision` items (status: `awaiting-human`) when HITL approval is needed
+2. **Fleet coordinator** updates items to `in-progress` on dispatch, `review` on completion
+3. **NFS dispatcher** syncs `awaiting-human` items to admin HITL directory for GravityClaw
+4. **Proactive intelligence** creates `idea` items when it detects patterns
+5. **Action items API** aggregates all items into a single prioritized feed
+6. **Notifier** sends Telegram alerts with action buttons for `awaiting-human` items
+
+### System User
+
+All Engine-created items use the system user ID: `1c93c5fe-d304-40f2-9169-765d0d2b7638` (same as Dallas's profile — acts as the system identity).
+
+### Internal API Usage
+
+The Engine communicates with Team Hub via the unauthenticated internal API at `http://127.0.0.1:8089/api/internal/`:
+
+| Operation | Endpoint | Parameters |
+|-----------|----------|------------|
+| Create item | `POST /create-item` | workspace_id, type, title, description, priority, status, list_id |
+| Update status | `PATCH /update-item` | item_id, status |
+| Add comment | `POST /add-comment` | item_id, content, author_id |
+| List items | `GET /list-items` | workspace_id, status (filter) |
+| Get item | `GET /get-item` | item_id |
+
+**Priority values**: `low`, `medium`, `high`, `urgent` (NOT `normal` — violates check constraint).
+
+See [Fleet Coordinator & Action Items](../infra/fleet-action-items.md) and [NFS Dispatcher](../infra/nfs-dispatcher.md) for full integration details.
+
+---
+
 ## Cross-References
 
-- [Auth & Network](auth-network.md) — JWT validation, Caddy proxy
-- [Discord Bridge](discord-bridge.md) — Discord bot uses internal endpoints
-- [Portal](portal.md) — Navigation includes Team Hub link
-- [Services & systemd](services-systemd.md) — Service unit management
-- [Shared Navbar](navbar.md) — Injected navigation bar
-- [OPAI Files](opai-files.md) — TeamTask button creates tasks with smart descriptions + file attachments
+- [Auth & Network](../core/auth-network.md) — JWT validation, Caddy proxy
+- [Discord Bridge](../integrations/discord-bridge.md) — Discord bot uses internal endpoints
+- [Portal](../core/portal.md) — Navigation includes Team Hub link
+- [Services & systemd](../core/services-systemd.md) — Service unit management
+- [Shared Navbar](../core/navbar.md) — Injected navigation bar
+- [OPAI Files](../core/opai-files.md) — TeamTask button creates tasks with smart descriptions + file attachments
 - [Task Control Panel](task-control-panel.md) — Internal task system; registry work tasks migrate to Team Hub via `registry:` tags
-- [Feedback System](feedback-system.md) — Collects Team Hub improvement suggestions
+- [Feedback System](../infra/feedback-system.md) — Collects Team Hub improvement suggestions
+- [Fleet Coordinator & Action Items](../infra/fleet-action-items.md) — Uses Workers workspace for dispatch tracking + HITL
+- [NFS Dispatcher](../infra/nfs-dispatcher.md) — Syncs HITL items to admin directory for GravityClaw
+- [Heartbeat](../infra/heartbeat.md) — Proactive intelligence creates "idea" items in Workers workspace

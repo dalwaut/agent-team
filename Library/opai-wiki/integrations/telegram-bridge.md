@@ -1,6 +1,6 @@
 # Telegram Bridge — OPAI Communication Hub
 
-> **Status**: Phases 1-5 Complete (2026-03-01)
+> **Status**: Phases 1-5 Complete (2026-03-02, v3.5 HITL buttons + escalation)
 > **Port**: 8110
 > **Path**: `tools/opai-telegram/`
 > **Service**: `opai-telegram`
@@ -30,7 +30,7 @@ grammY-based Telegram bot serving as the primary OPAI communication channel. Web
 - Mini App API proxy to internal services (WP, Team Hub)
 - Job tracking with restart recovery
 - Autonomous execution: `/danger` command + "Run Dangerously" inline button on plan-like responses (owner-only, confirmation gate, git backup option, audit trail)
-- Worker approval gate: `/approve` command with inline approve/deny keyboards, HITL briefing run/dismiss
+- Worker approval gate: `/approve` command with inline approve/deny keyboards, HITL 5-button gate (Run/Approve/Dismiss/Reject/Picked up in GC) with 15-min escalation
 - Claude usage monitoring: `/usage` with visual progress bars
 - 2nd Brain access: `/brain` search, save, inbox, suggestions
 - Task registry management: `/tasks` summary, list, complete, cancel
@@ -987,7 +987,18 @@ Both flows show a confirmation gate with **Backup First** (git commit+push) / **
 | `/approve hitl` | Admin | List HITL briefings awaiting response (with Run/Dismiss buttons) |
 | `/approve <id>` | Admin | View approval detail with inline Approve/Deny keyboard |
 
-Callbacks: `appr:yes:<id>` → POST `/workers/approvals/{id}/approve`, `appr:no:<id>` → POST `/workers/approvals/{id}/deny`, `hitl:run:<file>` → POST `/hitl/{file}/respond {action:"run"}`, `hitl:dismiss:<file>` → POST `/hitl/{file}/respond {action:"dismiss"}`
+Worker approval callbacks: `appr:yes:<id>` → POST `/workers/approvals/{id}/approve`, `appr:no:<id>` → POST `/workers/approvals/{id}/deny`
+
+HITL callbacks (v3.5 — 5 actions, Team Hub routed):
+- `hitl:run:<key>` → Run immediately (dispatch to fleet)
+- `hitl:approve:<key>` → Approve (status → assigned)
+- `hitl:dismiss:<key>` → Dismiss (status → dismissed)
+- `hitl:reject:<key>` → Reject (status → dismissed + comment)
+- `hitl:gc:<key>` → "Picked up in GravityClaw" — acknowledge only, no status change, clears escalation timer
+
+When `<key>` is a UUID, callbacks route through Engine `/api/action-items/{id}/act` → Team Hub. When `<key>` is a filename (legacy), callbacks route through Engine `/hitl/{file}/respond`. The bot detects UUID format via regex (`/^[0-9a-f]{8}-[0-9a-f]{4}-/`).
+
+HITL escalation: Unacknowledged notifications get reminder messages after 15 minutes (configurable). Any button press or GC acknowledgment clears the escalation timer. See [Heartbeat](../infra/heartbeat.md) for escalation details.
 
 ### Intelligence (Admin)
 

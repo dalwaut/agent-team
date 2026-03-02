@@ -29,12 +29,12 @@ Living architecture documentation for OPAI internal tools and systems. Maintaine
 | [Terminal & Claude Code](tools/terminal.md) | PTY-backed web terminals: bash shell + Claude Code CLI via xterm.js + WebSocket | 2026-02-14 |
 | [Billing](tools/billing.md) | Stripe billing: dual-Supabase (OPAI auth + BB2.0 data), product/price CRUD, checkout sessions, webhook lifecycle, subscription management, auto-provisioning queue, public landing site on BB VPS | 2026-02-17 |
 | [Marketplace](tools/marketplace.md) | BoutaByte catalog integration, tier-based access, admin controls | 2026-02-16 |
-| [Team Hub](tools/team-hub.md) | ClickUp-style task/project management: workspaces, folders, lists, board/list/calendar views, markdown description, @mention, item actions, settings modal, ClickUp import, dashboards, Discord integration, registry task migration with `registry:` traceability tags | 2026-02-19 |
+| [Team Hub](tools/team-hub.md) | ClickUp-style task/project management: workspaces, folders, lists, board/list/calendar views, markdown description, @mention, item actions, settings modal, ClickUp import, dashboards, Discord integration, registry task migration with `registry:` traceability tags. **v3.5: OPAI Workers workspace** — single source of truth for agent/system tasks, HITL decisions, and proactive suggestions. Engine creates/updates items via internal API | 2026-03-02 |
 | [PRD Pipeline](tools/prd-pipeline.md) | Product idea evaluation + project scaffolding: **PRDgent** agent scores ideas across 5 criteria (market demand, differentiation, feasibility, monetization, timing), verdicts (good/not_ready/poor), CSV/Google Sheets/JSON import, human approve/reject gate, Move to Project creates `Projects/<slug>/` with full doc scaffold (README + PRD.md + 4 subdirs). Uses shared Claude wrapper | 2026-02-24 |
 | [TUI Dashboard](tools/tui-dashboard.md) | Terminal-based admin dashboard (Textual 8.x): live Claude plan usage bars + threshold alerts, system resource gauges (CPU/mem/disk/net), process task manager with kill command, Claude process classifier. No server/port — runs in any terminal | 2026-02-23 |
 | [SCC IDE](tools/scc-ide.md) | Native Linux desktop app (Electron 31 + React + TS + Tailwind). 3-panel layout, 72-plugin panel, 26-squad runner, HITL watcher, thinking display, conversation management, vision/image pipeline | 2026-02-22 |
 | [OPAIxClaude](tools/opai-agent.md) | Standalone Claude Code desktop wrapper. White UI, accent #4a56e6. 2-panel layout, parallel conversations, branch-based self-improvement loop, GitHub PAT integration | 2026-02-22 |
-| [Task Control Panel](tools/task-control-panel.md) | Internal system task management: My Queue (HITL review), Feedback tab, Audit tab, Token Budget, Heartbeat Control Panel, agent execution with auto-delegation flow, registry migration to Team Hub (v2: merged into Engine) | 2026-02-25 |
+| [Task Control Panel](tools/task-control-panel.md) | Internal system task management: My Queue (HITL review from Team Hub + 5 other sources), Feedback tab, Audit tab, Token Budget, Heartbeat Control Panel, agent execution with auto-delegation flow, CC "Needs Attention" widget, action items API (v3.5: merged into Engine, Team Hub backbone) | 2026-03-02 |
 | [Docs Portal](tools/docs.md) | Auto-updating docs portal: wiki-sourced, role-filtered, content-sanitized, fuzzy search, background watcher | 2026-02-15 |
 
 ### Agents — Framework & Management
@@ -51,7 +51,7 @@ Living architecture documentation for OPAI internal tools and systems. Maintaine
 | Entry | Description | Last Updated |
 |-------|-------------|-------------|
 | [Discord Bridge](integrations/discord-bridge.md) | Discord bot bridging messages to Claude Code CLI, per-guild isolation, admin/team bot access control, workspace AI with MCP tools | 2026-02-17 |
-| [Telegram Bridge](integrations/telegram-bridge.md) | **Phases 1-4A Live** — grammY Telegram bot, primary comms channel. Multi-conversation isolation, custom RBAC, 5-state memory, fast-path routing, Claude CLI fire-and-forget, inline keyboards, 24+ commands, assistant mode, morning briefing, Mini Apps (WordPress Manager via auth bridge + API proxy), file delivery. Port 8110 | 2026-02-27 |
+| [Telegram Bridge](integrations/telegram-bridge.md) | **Phases 1-5 Live** — grammY Telegram bot, primary comms channel. Multi-conversation isolation, custom RBAC, 5-state memory, fast-path routing, Claude CLI fire-and-forget, inline keyboards, 24+ commands, assistant mode, morning briefing, Mini Apps (WordPress Manager via auth bridge + API proxy), file delivery. **v3.5: 5-button HITL gate** (Run/Approve/Dismiss/Reject/GC) with 15-min escalation, Team Hub UUID routing. Port 8110 | 2026-03-02 |
 | [Email Agent](integrations/email-agent.md) | Persistent autonomous email agent (v5): multi-account monitoring, whitelist + **blacklist** (mutual exclusion), 3-mode, **trash classification** (manual + AI auto-trash 48h delay + rescue), **custom classifications** with pattern learning (understandings → auto-suggestions), **Recompose** (re-draft with guidance → Gmail Drafts), **Needs Action** (move/delete/forward/TeamHub task), ARL, CLI checker, inbox-style UI, feedback loop. Port 8093 | 2026-02-27 |
 | [Email Checker](integrations/email-checker.md) | IMAP email fetcher with classification, task extraction, response drafting | 2026-02-14 |
 | [OP WordPress](integrations/op-wordpress.md) | Multi-site WordPress management (ManageWP replacement): multi-strategy connector deployment, **Push OP**, self-healing connection retry agent, per-site method pinning, WooCommerce, site-specific AI Agents UI, task logging to registry/audit | 2026-02-19 |
@@ -76,7 +76,9 @@ Living architecture documentation for OPAI internal tools and systems. Maintaine
 | [Usage Throttling](infra/usage-throttling.md) | Plan usage limits, task prioritization tiers, model routing strategy, throttling thresholds | 2026-02-19 |
 | [User Controls](infra/user-controls.md) | User management, invite, permissions, sandbox provisioning, network lockdown | 2026-02-16 |
 | [Browser Automation](infra/browser-automation.md) | Headless Playwright via Claude CLI: job queue API (submit/list/cancel), named session persistence, temp MCP config generation, admin auth, localhost-only. Port 8107 | 2026-02-27 |
-| [Heartbeat](infra/heartbeat.md) | **v3 Phase 3.0** — Proactive 30-min background loop: aggregates workers/tasks/sessions/resources into snapshots, detects changes (completions/failures/stalls), auto-restarts crashed managed workers, sends Telegram alerts, generates daily notes with AI summary. Pure aggregation layer — reads from existing systems. Port 8080 (Engine) | 2026-02-28 |
+| [Heartbeat](infra/heartbeat.md) | **v3.5** — Proactive 30-min background loop: aggregates workers/tasks/sessions/resources into snapshots, detects changes (completions/failures/stalls), auto-restarts crashed managed workers, sends Telegram alerts with HITL escalation (15-min timer), generates daily notes with AI summary, runs **proactive intelligence** (overdue detection, stall detection, pattern recognition, idle worker alerts). Port 8080 (Engine) | 2026-03-02 |
+| [Fleet Coordinator & Action Items](infra/fleet-action-items.md) | **v3.5** — Work dispatch backbone: identifies work from signals (heartbeat, registry, Team Hub), routes to workers via category/keyword matching, tracks execution, Team Hub integration. Action Items API aggregates 6 sources into priority-scored feed. Engine "My Queue" tab + CC widget. HITL items are Team Hub items with inline Telegram actions | 2026-03-02 |
+| [NFS Drop-Folder Dispatcher](infra/nfs-dispatcher.md) | **v3.5** — File-based communication with external ClaudeClaw workers via NFS. Inbox/outbox with READY/DONE sentinels, worker health monitoring, admin HITL sync (renders .md briefings for GravityClaw, polls .response files), Team Hub status updates. Base path: `/workspace/users/_clawbots/` | 2026-03-02 |
 | [Headless Display](infra/headless-display.md) | Virtual desktop at 2560x1440 with no physical monitor: NVIDIA ConnectedMonitor + MetaModes, RustDesk remote access, SSH/Tailscale recovery. HP Z420 + GTX 980 | 2026-02-28 |
 | [OP IDE](infra/dev-ide.md) | Browser IDE (Theia): per-project workspaces, built-in AI assistant, extension library, Docker lifecycle | 2026-02-15 |
 
@@ -132,7 +134,7 @@ OPAI's knowledge lives in a **three-tier system**:
                    ▼
 ┌─────────────────────────────────────────────┐
 │  Library/opai-wiki/ (Universal knowledge)   │
-│  - 54 system architecture docs              │
+│  - 56 system architecture docs              │
 │  - 6 subfolders: core/tools/agents/         │
 │    integrations/infra/plans/                │
 │  - Read by agents, orchestrator, docs portal│
