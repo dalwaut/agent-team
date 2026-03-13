@@ -12,12 +12,22 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+import httpx
 
 import config
 from audit import log_audit
-from background.notifier import notify_changes
+from background.notifier import (
+    check_hitl_escalations,
+    check_telegram_recovery,
+    flush_notifications,
+    notify_activity_digest,
+    notify_changes,
+    notify_service_recovered,
+    notify_synology_rescan,
+)
 from background.resource_monitor import get_resource_state
 
 logger = logging.getLogger("opai-engine.heartbeat")
@@ -35,6 +45,8 @@ class Heartbeat:
         self._daily_note_sent_date: str | None = None
         self._consolidation_run_date: str | None = None
         self._consecutive_unhealthy: dict[str, int] = {}
+        self._first_unhealthy_at: dict[str, float] = {}  # key → timestamp
+        self._alerted_unhealthy: set[str] = set()  # keys we've sent "failed" alerts for
         self._consolidator = None  # Set by app.py after init
         self._load_state()
 
@@ -79,11 +91,44 @@ class Heartbeat:
             except Exception as e:
                 logger.warning("Notification failed: %s", e)
 
+            # Send recovery notifications for Telegram-initiated restarts
+            for c in changes:
+                if c.get("type") == "recovered":
+                    try:
+                        await notify_service_recovered(c["title"])
+                    except Exception as e:
+                        logger.warning("Recovery notification failed: %s", e)
+
+        # Flush queued notifications (HITL briefings, worker approvals)
+        try:
+            delivered = await flush_notifications()
+            if delivered:
+                logger.info("Delivered %d queued notifications", delivered)
+        except Exception as e:
+            logger.warning("Flush notifications failed: %s", e)
+
+        # Check HITL escalations (unacknowledged items)
+        try:
+            escalated = await check_hitl_escalations(escalation_minutes=15)
+            if escalated:
+                logger.info("Sent %d HITL escalation(s)", escalated)
+        except Exception as e:
+            logger.warning("HITL escalation check failed: %s", e)
+
+        # Periodic activity digest
+        await self._check_activity_digest(snapshot)
+
+        # Synology rescan monitor (temporary — auto-stops when rescan finishes)
+        await self._check_synology_rescan(snapshot)
+
         # Check if daily note should be generated
         await self._check_daily_note(snapshot)
 
         # Check if memory consolidation should run
         await self._check_consolidation(snapshot)
+
+        # Proactive intelligence — detect actionable patterns
+        await self._check_proactive_intelligence(snapshot)
 
         # Save state
         self._previous_snapshot = snapshot
@@ -124,12 +169,14 @@ class Heartbeat:
         work_items = {}
         total = 0
         healthy = 0
+        worker_total = 0
         running_tasks = 0
         active_sessions = 0
 
         # 1. Worker manager status
         worker_status = self.worker_manager.get_status()
         for wid, ws in worker_status.items():
+            wtype = ws.get("type")
             item = {
                 "source": "worker",
                 "status": "healthy" if ws.get("healthy") else (
@@ -139,7 +186,7 @@ class Heartbeat:
                 "running": ws.get("running"),
                 "pid": ws.get("pid"),
                 "restarts": ws.get("restarts", 0),
-                "type": ws.get("type"),
+                "type": wtype,
             }
             # Add uptime for managed workers
             detail = self.worker_manager.get_worker_detail(wid)
@@ -148,8 +195,11 @@ class Heartbeat:
 
             work_items[f"worker:{wid}"] = item
             total += 1
-            if ws.get("healthy"):
-                healthy += 1
+            # Only count long-running/hybrid workers in healthy ratio
+            if wtype in ("long-running", "hybrid"):
+                worker_total += 1
+                if ws.get("healthy"):
+                    healthy += 1
 
         # 2. Scheduler active jobs
         for job_id, job in self.scheduler.active_jobs.items():
@@ -205,8 +255,40 @@ class Heartbeat:
         cpu = res.get("cpu", 0)
         memory = res.get("memory", 0)
 
+        # 6. Agent feedback stats (lightweight — single query)
+        feedback_stats = {"active_hints": 0, "recent_24h": 0, "gaps": 0, "corrections": 0}
+        try:
+            if config.SUPABASE_URL and config.SUPABASE_SERVICE_KEY:
+                sb_headers = {
+                    "apikey": config.SUPABASE_SERVICE_KEY,
+                    "Authorization": f"Bearer {config.SUPABASE_SERVICE_KEY}",
+                }
+                fb_url = f"{config.SUPABASE_URL}/rest/v1/engine_agent_feedback"
+                with httpx.Client(timeout=5) as hc:
+                    # Total active hints
+                    r = hc.get(fb_url, headers=sb_headers, params={
+                        "active": "eq.true", "select": "id,feedback_type,created_at",
+                        "limit": "1000",
+                    })
+                    if r.status_code == 200:
+                        fb_items = r.json()
+                        feedback_stats["active_hints"] = len(fb_items)
+                        cutoff_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+                        feedback_stats["recent_24h"] = sum(
+                            1 for f in fb_items if (f.get("created_at") or "") > cutoff_24h
+                        )
+                        feedback_stats["gaps"] = sum(
+                            1 for f in fb_items if f.get("feedback_type") == "missing_context"
+                        )
+                        feedback_stats["corrections"] = sum(
+                            1 for f in fb_items if f.get("feedback_type") == "correction"
+                        )
+        except Exception as e:
+            logger.debug("Agent feedback stats unavailable: %s", e)
+
         summary = {
             "total": total,
+            "worker_total": worker_total,
             "healthy": healthy,
             "running_tasks": running_tasks,
             "completed_since_last": 0,  # Filled by _detect_changes
@@ -215,6 +297,7 @@ class Heartbeat:
             "active_sessions": active_sessions,
             "cpu": round(cpu, 1),
             "memory": round(memory, 1),
+            "agent_feedback": feedback_stats,
         }
 
         return {
@@ -268,15 +351,38 @@ class Heartbeat:
             if not prev:
                 continue
 
-            # Worker went from healthy to unhealthy
+            # Worker status transitions (10-minute grace period before alerting)
             if curr.get("source") == "worker":
-                if prev.get("status") == "healthy" and curr.get("status") == "unhealthy":
-                    changes.append({
-                        "type": "failed",
-                        "item": key,
-                        "title": key.replace("worker:", ""),
-                    })
-                    failed_count += 1
+                if curr.get("status") == "unhealthy":
+                    if key not in self._first_unhealthy_at:
+                        self._first_unhealthy_at[key] = time.time()
+                    down_seconds = time.time() - self._first_unhealthy_at[key]
+                    grace_minutes = 10
+                    if (
+                        key not in self._alerted_unhealthy
+                        and down_seconds >= grace_minutes * 60
+                    ):
+                        changes.append({
+                            "type": "failed",
+                            "item": key,
+                            "title": key.replace("worker:", ""),
+                        })
+                        self._alerted_unhealthy.add(key)
+                        failed_count += 1
+                elif curr.get("status") == "healthy":
+                    # Clear grace timer and alert flag on recovery
+                    self._first_unhealthy_at.pop(key, None)
+                    self._alerted_unhealthy.discard(key)
+
+                # Worker recovered — check if it was a Telegram-initiated restart
+                if prev.get("status") == "unhealthy" and curr.get("status") == "healthy":
+                    worker_id = key.replace("worker:", "")
+                    if check_telegram_recovery(worker_id):
+                        changes.append({
+                            "type": "recovered",
+                            "item": key,
+                            "title": worker_id,
+                        })
 
             # Task status changed to failed
             if curr.get("source") == "task_registry":
@@ -318,7 +424,7 @@ class Heartbeat:
                     worker_id = key.replace("worker:", "")
                     w = self.worker_manager.workers.get(worker_id)
 
-                    if w and w.get("managed") and w.get("restart_on_failure"):
+                    if w and w.get("restart_on_failure"):
                         max_restarts = w.get("max_restarts", 5)
                         current_restarts = self.worker_manager.restart_counts.get(
                             worker_id, 0
@@ -413,6 +519,46 @@ class Heartbeat:
 
         return changes
 
+    # ── Activity Digest ──────────────────────────────────────
+
+    async def _check_activity_digest(self, snapshot: dict):
+        """Send periodic activity digest to Server Status topic."""
+        orch = config.load_orchestrator_config()
+        hb_cfg = orch.get("heartbeat", {})
+        interval = hb_cfg.get("digest_interval_cycles", 12)
+
+        if interval <= 0 or self._cycle_count % interval != 0:
+            return
+
+        try:
+            await notify_activity_digest(snapshot)
+            logger.info("Activity digest sent (cycle %d)", self._cycle_count)
+        except Exception as e:
+            logger.warning("Activity digest failed: %s", e)
+
+    # ── Synology Rescan Monitor (temporary) ─────────────────
+
+    async def _check_synology_rescan(self, snapshot: dict):
+        """Send rescan progress on same cadence as activity digest.
+
+        Auto-stops when rescan finishes (notify_synology_rescan returns None).
+        """
+        orch = config.load_orchestrator_config()
+        hb_cfg = orch.get("heartbeat", {})
+        interval = hb_cfg.get("digest_interval_cycles", 12)
+
+        if interval <= 0 or self._cycle_count % interval != 0:
+            return
+
+        try:
+            result = await notify_synology_rescan()
+            if result is True:
+                logger.info("Synology rescan progress sent (cycle %d)", self._cycle_count)
+            elif result is None:
+                logger.info("Synology rescan complete or daemon idle — monitor inactive")
+        except Exception as e:
+            logger.warning("Synology rescan monitor failed: %s", e)
+
     # ── Daily Note Trigger ────────────────────────────────────
 
     async def _check_daily_note(self, snapshot: dict):
@@ -471,6 +617,375 @@ class Heartbeat:
             except Exception as e:
                 logger.error("Memory consolidation failed: %s", e)
 
+    # ── Proactive Intelligence ─────────────────────────────────
+
+    async def _check_proactive_intelligence(self, snapshot: dict):
+        """Determine if the system should act on anything without being asked.
+
+        Runs every N heartbeat cycles (configurable). Detects patterns and
+        either logs suggestions (default) or auto-acts on low-risk items.
+
+        Detection rules:
+          1. Overdue items in Team Hub with no assignee → suggest auto-routing
+          2. Items in "assigned" for >2 hours with no progress → flag stall
+          3. Patterns: same type of task completed 3+ times → suggest automation
+          4. External NFS worker idle for >1hr with pending tasks → suggest dispatch
+        """
+        orch = config.load_orchestrator_config()
+        pi_cfg = orch.get("proactive_intelligence", {})
+        if not pi_cfg.get("enabled", True):
+            return
+
+        interval = pi_cfg.get("check_interval_cycles", 3)
+        if self._cycle_count % interval != 0:
+            return
+
+        # Load proactive state
+        pro_state = self._load_proactive_state()
+        suggestions = []
+        now = datetime.now(timezone.utc)
+        max_suggestions = pi_cfg.get("max_suggestions_per_cycle", 5)
+
+        # Already-suggested IDs (avoid duplicates within 24h)
+        recent_ids = {
+            s.get("item_id")
+            for s in pro_state.get("recent_suggestions", [])
+            if s.get("suggested_at", "") > (now - timedelta(hours=24)).isoformat()
+        }
+
+        try:
+            # ── 1. Overdue unassigned Team Hub items ──
+            overdue_min = pi_cfg.get("overdue_threshold_minutes", 60)
+            overdue = await self._pi_find_overdue_items(overdue_min)
+            for item in overdue:
+                iid = item.get("id", "")
+                if iid in recent_ids or len(suggestions) >= max_suggestions:
+                    continue
+                suggestions.append({
+                    "type": "auto_route",
+                    "item_id": iid,
+                    "title": f"Unassigned for {item.get('age_min', 0)}m: {item.get('title', '')[:50]}",
+                    "detail": f"Item has been in '{item.get('status', '?')}' with no assignee for {item.get('age_min', 0)} minutes.",
+                    "recommended_action": "auto-route to available worker",
+                    "priority": item.get("priority", "normal"),
+                })
+
+            # ── 2. Stalled assigned items ──
+            stall_min = pi_cfg.get("assigned_stall_minutes", 120)
+            stalled = await self._pi_find_stalled_assigned(stall_min)
+            for item in stalled:
+                iid = item.get("id", "")
+                if iid in recent_ids or len(suggestions) >= max_suggestions:
+                    continue
+                suggestions.append({
+                    "type": "stalled_assignment",
+                    "item_id": iid,
+                    "title": f"No progress in {item.get('age_min', 0)}m: {item.get('title', '')[:50]}",
+                    "detail": f"Assigned to '{item.get('assignee', '?')}' but no status update.",
+                    "recommended_action": "check agent status or reassign",
+                    "priority": "high",
+                })
+
+            # ── 3. Pattern detection ──
+            min_count = pi_cfg.get("pattern_detection_min_count", 3)
+            patterns = self._pi_detect_patterns(pro_state, min_count)
+            for pat in patterns:
+                pid = f"pattern:{pat.get('category', '')}"
+                if pid in recent_ids or len(suggestions) >= max_suggestions:
+                    continue
+                suggestions.append({
+                    "type": "automation_opportunity",
+                    "item_id": pid,
+                    "title": f"Repeating pattern: {pat.get('category', '?')} ({pat.get('count', 0)} times)",
+                    "detail": pat.get("detail", ""),
+                    "recommended_action": "consider scheduling or auto-routing this category",
+                    "priority": "low",
+                })
+
+            # ── 4. Idle NFS workers with pending work ──
+            idle_min = pi_cfg.get("idle_worker_minutes", 60)
+            idle_matches = self._pi_find_idle_workers_with_work(idle_min)
+            for match in idle_matches:
+                mid = f"idle-dispatch:{match.get('worker', '')}"
+                if mid in recent_ids or len(suggestions) >= max_suggestions:
+                    continue
+                suggestions.append({
+                    "type": "idle_worker_dispatch",
+                    "item_id": mid,
+                    "title": f"Idle NFS worker '{match.get('worker', '?')}' — {match.get('pending_count', 0)} tasks pending",
+                    "detail": f"Worker has been idle for {match.get('idle_min', 0)}m while {match.get('pending_count', 0)} items await dispatch.",
+                    "recommended_action": "dispatch pending work to this worker",
+                    "priority": "normal",
+                })
+
+        except Exception as e:
+            logger.warning("Proactive intelligence error: %s", e)
+            return
+
+        if not suggestions:
+            return
+
+        # Record suggestions
+        for sug in suggestions:
+            sug["suggested_at"] = now.isoformat()
+            sug["acknowledged"] = False
+
+        pro_state.setdefault("recent_suggestions", [])
+        pro_state["recent_suggestions"] = (
+            suggestions + pro_state["recent_suggestions"]
+        )[:200]  # Keep last 200
+        pro_state["last_check"] = now.isoformat()
+        pro_state["total_suggestions"] = pro_state.get("total_suggestions", 0) + len(suggestions)
+        self._save_proactive_state(pro_state)
+
+        # PI suggestions are stored in proactive_state.json and audit log only.
+        # Previously logged to Team Hub as items, but this created noise — disabled.
+
+        logger.info(
+            "Proactive intelligence: %d suggestions (cycle %d)",
+            len(suggestions), self._cycle_count,
+        )
+
+        log_audit(
+            tier="intelligence",
+            service="opai-engine",
+            event="proactive:suggestions",
+            summary=f"Proactive intelligence generated {len(suggestions)} suggestions",
+            details={"suggestions": [s.get("title", "") for s in suggestions]},
+        )
+
+    # ── PI: Team Hub Queries ──
+
+    async def _pi_find_overdue_items(self, threshold_min: int) -> list[dict]:
+        """Find Team Hub items in open/awaiting-human status with no assignee past threshold."""
+        results = []
+        now = datetime.now(timezone.utc)
+
+        for status in ("open", "awaiting-human"):
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    r = await client.get(
+                        f"{config.TEAMHUB_INTERNAL}/list-items",
+                        params={
+                            "workspace_id": config.WORKERS_WORKSPACE_ID,
+                            "status": status,
+                            "limit": "20",
+                        },
+                    )
+                    if r.status_code >= 400:
+                        continue
+                    data = r.json()
+                    items = data.get("items", []) if isinstance(data, dict) else data
+            except Exception:
+                continue
+
+            for item in items:
+                # Skip items that have assignees
+                assignments = item.get("assignments", [])
+                if assignments:
+                    continue
+
+                # Skip items created by PI itself (prevents recursive self-feeding)
+                title = item.get("title", "")
+                if title.startswith("[PI]"):
+                    continue
+
+                created = item.get("created_at", "")
+                if not created:
+                    continue
+                try:
+                    created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                    age_min = int((now - created_dt).total_seconds() / 60)
+                    if age_min >= threshold_min:
+                        results.append({
+                            "id": item.get("id", ""),
+                            "title": item.get("title", ""),
+                            "status": status,
+                            "priority": item.get("priority", "medium"),
+                            "age_min": age_min,
+                        })
+                except (ValueError, TypeError):
+                    pass
+
+        return results
+
+    async def _pi_find_stalled_assigned(self, threshold_min: int) -> list[dict]:
+        """Find Team Hub items in 'assigned' status that haven't progressed."""
+        results = []
+        now = datetime.now(timezone.utc)
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                r = await client.get(
+                    f"{config.TEAMHUB_INTERNAL}/list-items",
+                    params={
+                        "workspace_id": config.WORKERS_WORKSPACE_ID,
+                        "status": "assigned",
+                        "limit": "20",
+                    },
+                )
+                if r.status_code >= 400:
+                    return results
+                data = r.json()
+                items = data.get("items", []) if isinstance(data, dict) else data
+        except Exception:
+            return results
+
+        for item in items:
+            updated = item.get("updated_at", item.get("created_at", ""))
+            if not updated:
+                continue
+            try:
+                updated_dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+                age_min = int((now - updated_dt).total_seconds() / 60)
+                if age_min >= threshold_min:
+                    assignee = ""
+                    assignments = item.get("assignments", [])
+                    if assignments:
+                        assignee = assignments[0].get("assignee_id", "")
+                    results.append({
+                        "id": item.get("id", ""),
+                        "title": item.get("title", ""),
+                        "assignee": assignee,
+                        "age_min": age_min,
+                    })
+            except (ValueError, TypeError):
+                pass
+
+        return results
+
+    # ── PI: Pattern Detection ──
+
+    def _pi_detect_patterns(self, pro_state: dict, min_count: int) -> list[dict]:
+        """Detect repeating task patterns from fleet coordinator completions."""
+        patterns = []
+        try:
+            if not config.FLEET_STATE_FILE.is_file():
+                return patterns
+            fleet = json.loads(config.FLEET_STATE_FILE.read_text())
+            completions = fleet.get("recent_completions", [])
+
+            # Count completions by worker_id (category proxy)
+            from collections import Counter
+            worker_counts = Counter(c.get("worker_id", "") for c in completions if c.get("status") == "completed")
+
+            for worker_id, count in worker_counts.items():
+                if count >= min_count and worker_id:
+                    # Check if already suggested recently
+                    patterns.append({
+                        "category": worker_id,
+                        "count": count,
+                        "detail": f"Worker '{worker_id}' has completed {count} tasks recently. Consider scheduling regular runs.",
+                    })
+        except (json.JSONDecodeError, OSError):
+            pass
+        return patterns
+
+    # ── PI: NFS Worker Idle Detection ──
+
+    def _pi_find_idle_workers_with_work(self, idle_min: int) -> list[dict]:
+        """Find NFS workers that are idle while pending work exists."""
+        matches = []
+        try:
+            if not config.NFS_DISPATCHER_STATE_FILE.is_file():
+                return matches
+            nfs_state = json.loads(config.NFS_DISPATCHER_STATE_FILE.read_text())
+            worker_health = nfs_state.get("worker_health", {})
+            active_tasks = nfs_state.get("active_nfs_tasks", [])
+
+            # Workers with tasks assigned
+            busy_workers = {t.get("worker_slug") for t in active_tasks}
+
+            # Check for pending Team Hub items that could be dispatched
+            # (We approximate by checking if there are open items in the workspace)
+            pending_count = 0
+            try:
+                if config.REGISTRY_JSON.is_file():
+                    reg = json.loads(config.REGISTRY_JSON.read_text())
+                    pending_count = sum(
+                        1 for t in reg.get("tasks", {}).values()
+                        if t.get("status") in ("pending", "approved")
+                        and t.get("assignee") == "agent"
+                    )
+            except (json.JSONDecodeError, OSError):
+                pass
+
+            if pending_count == 0:
+                return matches
+
+            now = datetime.now(timezone.utc)
+            for slug, health in worker_health.items():
+                if slug in busy_workers:
+                    continue
+                if health.get("status") != "healthy":
+                    continue
+
+                # Check idle time from last_seen
+                last_seen = health.get("last_seen", "")
+                if not last_seen:
+                    continue
+                try:
+                    seen_dt = datetime.fromisoformat(last_seen.replace("Z", "+00:00"))
+                    idle = int((now - seen_dt).total_seconds() / 60)
+                    # "idle" here means the worker is healthy but hasn't been given work
+                    # For NFS workers, being healthy = available for dispatch
+                    matches.append({
+                        "worker": slug,
+                        "idle_min": idle,
+                        "pending_count": pending_count,
+                    })
+                except (ValueError, TypeError):
+                    pass
+
+        except (json.JSONDecodeError, OSError):
+            pass
+        return matches
+
+    # ── PI: Team Hub Logging ──
+
+    async def _pi_log_to_teamhub(self, suggestion: dict):
+        """Log a proactive suggestion to Team Hub as an 'idea' item."""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"{config.TEAMHUB_INTERNAL}/create-item",
+                    params={
+                        "workspace_id": config.WORKERS_WORKSPACE_ID,
+                        "user_id": config.SYSTEM_USER_ID,
+                        "type": "idea",
+                        "title": f"[PI] {suggestion.get('title', 'Proactive suggestion')[:80]}",
+                        "description": (
+                            f"**Type:** {suggestion.get('type', 'unknown')}\n\n"
+                            f"{suggestion.get('detail', '')}\n\n"
+                            f"**Recommended:** {suggestion.get('recommended_action', 'Review')}"
+                        ),
+                        "priority": suggestion.get("priority", "low"),
+                        "status": "open",
+                        "source": "proactive-intelligence",
+                    },
+                )
+        except Exception as e:
+            logger.debug("PI Team Hub log failed: %s", e)
+
+    # ── PI: State Persistence ──
+
+    def _load_proactive_state(self) -> dict:
+        try:
+            if config.PROACTIVE_STATE_FILE.is_file():
+                return json.loads(config.PROACTIVE_STATE_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+        return {"recent_suggestions": [], "last_check": None, "total_suggestions": 0}
+
+    def _save_proactive_state(self, state: dict):
+        try:
+            config.PROACTIVE_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            config.PROACTIVE_STATE_FILE.write_text(
+                json.dumps(state, indent=2, default=str)
+            )
+        except OSError as e:
+            logger.error("Failed to save proactive state: %s", e)
+
     # ── State Persistence ─────────────────────────────────────
 
     def _save_state(self):
@@ -481,6 +996,8 @@ class Heartbeat:
                 "daily_note_sent_date": self._daily_note_sent_date,
                 "consolidation_run_date": self._consolidation_run_date,
                 "consecutive_unhealthy": self._consecutive_unhealthy,
+                "first_unhealthy_at": self._first_unhealthy_at,
+                "alerted_unhealthy": list(self._alerted_unhealthy),
                 "last_snapshot": self._previous_snapshot,
                 "saved_at": datetime.now(timezone.utc).isoformat(),
             }
@@ -498,6 +1015,8 @@ class Heartbeat:
                 self._daily_note_sent_date = state.get("daily_note_sent_date")
                 self._consolidation_run_date = state.get("consolidation_run_date")
                 self._consecutive_unhealthy = state.get("consecutive_unhealthy", {})
+                self._first_unhealthy_at = state.get("first_unhealthy_at", {})
+                self._alerted_unhealthy = set(state.get("alerted_unhealthy", []))
                 self._previous_snapshot = state.get("last_snapshot")
                 logger.info(
                     "Heartbeat state restored: cycle %d", self._cycle_count

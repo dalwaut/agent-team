@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OPAI — Setup</title>
+    <link rel="icon" type="image/svg+xml" href="/static/opai-icon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
@@ -55,8 +57,13 @@
         }
 
         /* Step content */
-        .step { display: none; }
-        .step.active { display: block; }
+        .step {
+            display: none;
+        }
+
+        .step.active {
+            display: block;
+        }
 
         .step-title {
             font-size: 1.25rem;
@@ -91,8 +98,14 @@
             transition: opacity 0.2s;
         }
 
-        .btn-primary:hover { opacity: 0.9; }
-        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
 
         .btn-secondary {
             padding: 0.7rem 1.25rem;
@@ -271,15 +284,21 @@
         }
 
         @media (max-width: 480px) {
-            .option-grid { grid-template-columns: 1fr; }
-            .onboard-card { padding: 1.5rem; }
+            .option-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .onboard-card {
+                padding: 1.5rem;
+            }
         }
     </style>
 </head>
+
 <body class="onboard-body">
     <div class="onboard-container">
         <div style="text-align:center;margin-bottom:1.5rem;">
-            <div class="logo-3d" style="margin:0 auto;">OP</div>
+            <img src="/static/opai-icon.svg" alt="OPAI" style="width:64px;height:64px;margin:0 auto;display:block;">
         </div>
 
         <div class="onboard-card">
@@ -302,22 +321,42 @@
                 <div class="form-group">
                     <label for="password">New Password</label>
                     <div class="pw-wrapper">
-                        <input type="password" id="password" placeholder="At least 8 characters" autocomplete="new-password">
-                        <button type="button" class="pw-toggle" data-target="password" aria-label="Toggle password visibility">
-                            <svg class="eye-open" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                            <svg class="eye-closed" style="display:none" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        <input type="password" id="password" placeholder="At least 8 characters"
+                            autocomplete="new-password">
+                        <button type="button" class="pw-toggle" data-target="password"
+                            aria-label="Toggle password visibility">
+                            <svg class="eye-open" viewBox="0 0 24 24">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                            </svg>
+                            <svg class="eye-closed" style="display:none" viewBox="0 0 24 24">
+                                <path
+                                    d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                                <line x1="1" y1="1" x2="23" y2="23" />
+                            </svg>
                         </button>
                     </div>
-                    <div class="pw-strength"><div class="pw-strength-fill" id="pw-bar"></div></div>
+                    <div class="pw-strength">
+                        <div class="pw-strength-fill" id="pw-bar"></div>
+                    </div>
                 </div>
 
                 <div class="form-group">
                     <label for="password-confirm">Confirm Password</label>
                     <div class="pw-wrapper">
-                        <input type="password" id="password-confirm" placeholder="Type it again" autocomplete="new-password">
-                        <button type="button" class="pw-toggle" data-target="password-confirm" aria-label="Toggle password visibility">
-                            <svg class="eye-open" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                            <svg class="eye-closed" style="display:none" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        <input type="password" id="password-confirm" placeholder="Type it again"
+                            autocomplete="new-password">
+                        <button type="button" class="pw-toggle" data-target="password-confirm"
+                            aria-label="Toggle password visibility">
+                            <svg class="eye-open" viewBox="0 0 24 24">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                            </svg>
+                            <svg class="eye-closed" style="display:none" viewBox="0 0 24 24">
+                                <path
+                                    d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                                <line x1="1" y1="1" x2="23" y2="23" />
+                            </svg>
                         </button>
                     </div>
                 </div>
@@ -330,7 +369,8 @@
             <!-- Step 2: Storage Info -->
             <div class="step" id="step-1">
                 <h2 class="step-title">Your Storage</h2>
-                <p class="step-desc">You have a personal workspace backed by our NAS. Files are automatically synced and backed up.</p>
+                <p class="step-desc">You have a personal workspace backed by our NAS. Files are automatically synced and
+                    backed up.</p>
 
                 <div class="info-box">
                     <p>Your sandbox includes:</p>
@@ -356,7 +396,9 @@
                 <h2 class="step-title">Tell Us About You</h2>
                 <p class="step-desc">This helps us set up the right tools and agents for you.</p>
 
-                <label style="display:block;font-size:0.8rem;font-weight:500;color:var(--text-muted);margin-bottom:0.5rem;">Experience Level</label>
+                <label
+                    style="display:block;font-size:0.8rem;font-weight:500;color:var(--text-muted);margin-bottom:0.5rem;">Experience
+                    Level</label>
                 <div class="option-grid" id="expertise-grid">
                     <div class="option-card" data-value="beginner">
                         <div class="opt-label">Beginner</div>
@@ -372,7 +414,9 @@
                     </div>
                 </div>
 
-                <label style="display:block;font-size:0.8rem;font-weight:500;color:var(--text-muted);margin-bottom:0.5rem;margin-top:1rem;">Primary Use Case</label>
+                <label
+                    style="display:block;font-size:0.8rem;font-weight:500;color:var(--text-muted);margin-bottom:0.5rem;margin-top:1rem;">Primary
+                    Use Case</label>
                 <div class="option-grid" id="usecase-grid">
                     <div class="option-card" data-value="development">
                         <div class="opt-label">Development</div>
@@ -392,7 +436,9 @@
                     </div>
                 </div>
 
-                <label style="display:block;font-size:0.8rem;font-weight:500;color:var(--text-muted);margin-bottom:0.5rem;margin-top:1rem;">Tools You Use <span style="font-weight:400;">(select all that apply)</span></label>
+                <label
+                    style="display:block;font-size:0.8rem;font-weight:500;color:var(--text-muted);margin-bottom:0.5rem;margin-top:1rem;">Tools
+                    You Use <span style="font-weight:400;">(select all that apply)</span></label>
                 <div class="option-grid multi-select" id="tools-grid">
                     <div class="option-card" data-value="vscode">
                         <div class="opt-label">VS Code</div>
@@ -412,7 +458,9 @@
                     </div>
                 </div>
 
-                <label style="display:block;font-size:0.8rem;font-weight:500;color:var(--text-muted);margin-bottom:0.5rem;margin-top:1rem;">Focus Areas <span style="font-weight:400;">(select all that apply)</span></label>
+                <label
+                    style="display:block;font-size:0.8rem;font-weight:500;color:var(--text-muted);margin-bottom:0.5rem;margin-top:1rem;">Focus
+                    Areas <span style="font-weight:400;">(select all that apply)</span></label>
                 <div class="option-grid multi-select" id="focus-grid">
                     <div class="option-card" data-value="code-quality">
                         <div class="opt-label">Code Quality</div>
@@ -513,4 +561,5 @@
     </script>
     <script src="/static/js/onboard.js"></script>
 </body>
+
 </html>

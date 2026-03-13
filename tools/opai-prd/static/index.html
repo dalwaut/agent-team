@@ -37,6 +37,10 @@
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v12M2 8h12"/></svg>
                         Add Idea
                     </button>
+                    <button class="btn btn-move" onclick="openPrdModal()">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 2h12v12H2z"/><path d="M6 2v12M2 6h12"/></svg>
+                        Submit PRD
+                    </button>
                 </div>
             </div>
 
@@ -225,12 +229,93 @@
                         <span class="create-badge">📁 designs/</span>
                         <span class="create-badge">📄 README.md</span>
                         <span class="create-badge">📄 PRD.md</span>
+                        <span class="create-badge">📄 SPEC.md</span>
+                        <span class="create-badge">📄 DEV.md</span>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeModal('move-modal')">Cancel</button>
                 <button class="btn btn-move" onclick="submitMoveToProject()">🚀 Create Project</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Submit PRD Modal ── -->
+    <div id="prd-modal" class="modal-backdrop hidden" onclick="closeModalBg(event,'prd-modal')">
+        <div class="modal modal-wide">
+            <div class="modal-header">
+                <h2 id="prd-modal-title">Submit PRD / Spec</h2>
+                <button class="modal-close" onclick="closeModal('prd-modal')">✕</button>
+            </div>
+            <div class="modal-body" id="prd-modal-body">
+                <!-- Step 1: Content Entry -->
+                <div id="prd-step-entry">
+                    <p class="import-hint">Paste a full PRD, technical spec, or project brief. If it's incomplete, we'll help you build a complete PRD.</p>
+
+                    <label class="field-label">Project Title <span class="req">*</span></label>
+                    <input type="text" class="field-input" id="prd-title" placeholder="e.g. Kitchen Recipe Tracker">
+
+                    <div class="field-label-row">
+                        <label class="field-label">Content <span class="req">*</span></label>
+                        <button class="btn btn-ghost btn-sm" id="fp-toggle-btn" onclick="toggleFilePicker()">
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4h4l2-2h6v11H2z"/></svg>
+                            Browse Files
+                        </button>
+                    </div>
+
+                    <!-- Inline file picker panel -->
+                    <div id="fp-panel" class="fp-panel hidden">
+                        <div class="fp-breadcrumb" id="fp-breadcrumb"></div>
+                        <div class="fp-list" id="fp-list">
+                            <div class="fp-loading">Loading...</div>
+                        </div>
+                        <div id="fp-preview" class="fp-preview hidden">
+                            <div class="fp-preview-header">
+                                <span class="fp-preview-name" id="fp-preview-name"></span>
+                                <span class="fp-preview-size" id="fp-preview-size"></span>
+                            </div>
+                            <pre class="fp-preview-content" id="fp-preview-content"></pre>
+                        </div>
+                        <div class="fp-actions" id="fp-actions" style="display:none">
+                            <button class="btn btn-primary btn-sm" onclick="fpLoadFile()">Load into Editor</button>
+                        </div>
+                    </div>
+
+                    <textarea class="field-input field-textarea tall" id="prd-content" placeholder="Paste your PRD, technical spec, or describe your project idea in detail..."></textarea>
+
+                    <div id="prd-analysis-result" class="hidden" style="margin-top:14px">
+                        <div class="prd-completeness-bar">
+                            <span class="prd-completeness-label">Completeness: <strong id="prd-completeness-pct">—</strong>%</span>
+                            <div class="score-track" style="flex:1"><div class="score-fill" id="prd-completeness-fill" style="width:0%"></div></div>
+                        </div>
+                        <div id="prd-inferred" class="prd-inferred hidden"></div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Follow-up Questions (shown if content needs more) -->
+                <div id="prd-step-questions" class="hidden">
+                    <div class="prd-builder-header">
+                        <span class="badge badge-evaluated">PRD Builder</span>
+                        <span class="prd-builder-sub">Answer these questions to build a complete PRD</span>
+                    </div>
+                    <div id="prd-questions-list"></div>
+                </div>
+
+                <!-- Step 3: Generated PRD Preview -->
+                <div id="prd-step-preview" class="hidden">
+                    <div class="prd-builder-header">
+                        <span class="badge badge-approved">PRD Generated</span>
+                        <span class="prd-builder-sub">Review the generated PRD below, then submit to the pipeline</span>
+                    </div>
+                    <div class="prd-preview-content" id="prd-preview-content"></div>
+                </div>
+            </div>
+            <div class="modal-footer" id="prd-modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('prd-modal')">Cancel</button>
+                <button class="btn btn-primary" id="prd-analyze-btn" onclick="analyzePrd()">Analyze Content</button>
+                <button class="btn btn-run hidden" id="prd-generate-btn" onclick="generatePrd()">Generate PRD</button>
+                <button class="btn btn-move hidden" id="prd-submit-btn" onclick="submitPrdDirect()">Submit to Pipeline</button>
             </div>
         </div>
     </div>

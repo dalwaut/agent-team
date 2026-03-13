@@ -395,7 +395,7 @@ Standalone SPA at `/vault/my/` (3 files in `tools/opai-vault/static/`):
 | Audit trail | Every access logged with timestamp, caller, action |
 | Key isolation | age private key in `~/.opai-vault/` (chmod 0600), not in repo |
 | tmpfs injection | Decrypted .env written to `$XDG_RUNTIME_DIR/opai-vault/` (RAM), never persisted |
-| Git-safe | Encrypted file can be committed (keys visible, values encrypted) |
+| Git-safe | Encrypted file can be committed (keys visible, values encrypted). Migration script (`migrate_credentials.py`) gitignored — contains plaintext credentials |
 | Single source of truth | All credentials in one encrypted YAML, no more scatter |
 | Web UI PIN brute-force | 5 attempts/min, 60s lockout, all failures audited |
 | Web UI PIN storage | bcrypt cost 12 |
@@ -425,11 +425,13 @@ Total: 144 secrets (4 shared, 108 service-specific, 32 credentials) across 18 se
 ### Phase 3: Remove plaintext (when ready)
 Once confidence is high, delete plaintext `.env` files and convert `notes/Access/` to reference stubs. Migration notice placed at `notes/Access/VAULT-MIGRATION.md`.
 
-### Phase 4: Hardening (pending)
+### Phase 4: Hardening (in progress)
+- [x] **Security audit** (2026-03-05): `migrate_credentials.py` contained plaintext credentials — now gitignored via `.gitignore`. Security report: `notes/Improvements/security-dependency-report.md`
 - [ ] Pre-commit hook to block credential patterns
 - [ ] Credential rotation schedule
 - [ ] Rotate compromised Discord bot token (exposed 2026-02-09) — TeamHub task `9531ccd8`
 - [x] Age key backed up to `/workspace/local/vault-backup/` — also back up offsite (USB/password manager)
+- [ ] Address 7 Engine route modules flagged as missing auth (demos, bottleneck, fleet, action_items, assembly, notebooklm, consolidator) — see `notes/Improvements/security-dependency-report.md`
 
 ## Service Name Mapping
 
@@ -462,12 +464,14 @@ The OpenClaw Broker is notable because it's the only consumer that **dynamically
 - **Cache**: Secrets are cached in memory after first load. Use `/vault/api/reload` or restart service after editing the encrypted file via CLI. Services that were running when secrets changed need a restart or API reload call.
 - **Shared key dedup**: Import script stores shared keys (SUPABASE_*) only once. First service's values win.
 - **Backup the age key**: If `vault.key` is lost, ALL secrets are permanently unrecoverable. Backed up to `/workspace/local/vault-backup/` — also back up offsite (USB/password manager).
+- **`migrate_credentials.py` is gitignored**: This file contains plaintext credentials and MUST NOT be committed. It was flagged as a CRITICAL security finding during the 2026-03-05 security audit and added to `.gitignore`.
 - **Adding new secrets**: Use `vault-cli.sh set <name> <value>`, `vault-cli.sh edit` (interactive SOPS editor), or the Web UI "Add Secret" button. Do NOT add secrets to `.env` files or `notes/Access/` anymore.
 - **New services**: When creating a new OPAI tool, add its secrets to the vault via `vault-cli.sh set <KEY> <VALUE> --service <name>`, then add the `ExecStartPre` and `EnvironmentFile` lines to its systemd template (see systemd Integration above).
 - **Web UI `FULL_HEIGHT_TOOLS`**: Vault is in the navbar `FULL_HEIGHT_TOOLS` array. If removed, the flex layout breaks and scrolling stops working.
 - **Web UI `webauthn` package**: The correct pip package is `webauthn` (v2.7.1), NOT `py_webauthn` (which installs an ancient v0.0.4). Uses `AuthenticatorSelectionCriteria` wrapper for registration options.
 - **Web UI auth.json**: Created on first PIN setup. Contains bcrypt hash, WebAuthn credentials, session HMAC secret. If deleted, all sessions invalidate and PIN must be re-set (secrets are unaffected — they're in `secrets.enc.yaml`).
 - **User vault vs admin vault cookies**: Admin vault uses `vault_session`, user vault uses `user_vault_session`. Both scoped to `Path=/vault/` but have different JWT payloads (admin has no `scope`, user has `scope: "user_vault"`). They do not interfere.
+- **Portal dashboard tiles**: Admin dashboard has a "Vault" tile linking to `/vault/`. User dashboard has a "My Vault" tile (APP_CARDS key `vault`) linking to `/vault/my/`. The key must be `vault` (not `my-vault`) to match the `allowed_apps` entry.
 - **User vault PIN lockout**: Managed in Supabase `user_vault_pins` table (server-side), not client-side. 5 failed attempts → 60s lockout. Reset on successful verify.
 - **User vault requires `SUPABASE_ANON_KEY`**: The user vault SPA needs the anon key to initialize the Supabase JS client. Set via env var or vault-env.sh injection.
 - **User vault Caddy routing**: `/vault/my/` is served by the same port 8105 service — no additional Caddy config needed. The existing `/vault/*` rule covers it.

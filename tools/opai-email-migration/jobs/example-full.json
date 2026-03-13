@@ -1,0 +1,33 @@
+{
+  "job_id": "migrate-example-full-001",
+  "source": {
+    "provider": "m365",
+    "host": "outlook.office365.com",
+    "port": 993,
+    "auth": "app_password",
+    "accounts": [
+      {
+        "email": "user@domain.com",
+        "password_env": "SOURCE_PASS_USER"
+      }
+    ]
+  },
+  "target": {
+    "provider": "hostinger",
+    "host": "imap.hostinger.com",
+    "port": 993,
+    "accounts": [
+      {
+        "email": "user@domain.com",
+        "password_env": "TARGET_PASS_USER"
+      }
+    ]
+  },
+  "options": {
+    "mode": "full",
+    "folder_mapping": "provider",
+    "batch_size": 50,
+    "skip_folders": ["Junk Email", "Deleted Items"],
+    "verify_after": true
+  }
+}

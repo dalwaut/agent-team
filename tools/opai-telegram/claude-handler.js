@@ -152,6 +152,14 @@ function buildPrompt(username, conversationContext, userMessage, opts = {}) {
 
   const inWorkspace = !!opts.workspaceName;
 
+  // Document access instructions (admin only)
+  const docAccessBlock = [
+    ``,
+    `DOCUMENT ACCESS: When the user explicitly asks you to send, provide, share, or deliver a file (not just reference it), include the marker <<SEND_FILE:/absolute/path>> in your response.`,
+    `The file will be delivered as a Telegram document attachment. By default, just reference files by path — only use this marker when the user clearly wants the actual file.`,
+    `Only use this for files that exist on disk under ${OPAI_ROOT}. Do NOT use this for .env, credential, secret, or key files.`,
+  ];
+
   if (opts.isAdmin && inWorkspace) {
     // Option B: Admin in a workspace-bound topic — Team Hub is primary context, admin is secondary
     lines.push(
@@ -165,6 +173,7 @@ function buildPrompt(username, conversationContext, userMessage, opts = {}) {
       `Only use filesystem tools or system commands when the user specifically asks for system-level operations.`,
       `Do NOT use tools unless the user explicitly asks you to perform an action.`,
       `For simple greetings or questions, just respond directly.`,
+      ...docAccessBlock,
     );
   } else if (opts.isAdmin) {
     // Pure admin context (DM, general topic, unbound topic)
@@ -175,6 +184,7 @@ function buildPrompt(username, conversationContext, userMessage, opts = {}) {
       `Key paths: tools/ (platform services), config/ (configs), scripts/ (control scripts), Library/opai-wiki/ (docs).`,
       `Do NOT use tools unless the user explicitly asks you to perform an action.`,
       `For simple greetings or questions, just respond directly.`,
+      ...docAccessBlock,
     );
   } else if (inWorkspace) {
     // Member in a workspace topic — Team Hub only

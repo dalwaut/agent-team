@@ -31,6 +31,7 @@ async def generate_daily_note(heartbeat) -> str | None:
     # Gather data
     audit_entries = _get_todays_audit(date_str)
     task_changes = _get_task_changes(date_str)
+    git_activity = _get_git_activity(date_str)
     snapshot = heartbeat.get_latest()
     summary_data = snapshot.get("summary", {})
 
@@ -71,6 +72,7 @@ async def generate_daily_note(heartbeat) -> str | None:
             restarts=restarts,
             task_changes=task_changes,
             summary_data=summary_data,
+            git_activity=git_activity,
         )
 
     if ai_summary:
@@ -103,7 +105,34 @@ async def generate_daily_note(heartbeat) -> str | None:
         lines.append("")
 
     if not completed and not failed and not task_changes:
-        lines.append("_No work items recorded today._")
+        lines.append("_No audit work items recorded today._")
+        lines.append("")
+
+    # Git Activity (actual file changes — the real record of work done)
+    if git_activity.get("commits"):
+        lines.append("## Git Activity")
+        lines.append(git_activity.get("summary", ""))
+        lines.append("")
+        for c in git_activity["commits"][:15]:
+            lines.append(f"- `{c['hash']}` {c['message']}")
+        lines.append("")
+
+        files = git_activity.get("files_changed", [])
+        wiki_files = [f for f in files if "opai-wiki" in f]
+        tool_files = [f for f in files if f.startswith("tools/")]
+        if wiki_files:
+            lines.append(f"### Wiki Updates ({len(wiki_files)} files)")
+            for f in wiki_files[:10]:
+                lines.append(f"- {f}")
+            lines.append("")
+        if tool_files:
+            lines.append(f"### Tool Changes ({len(tool_files)} files)")
+            for f in tool_files[:10]:
+                lines.append(f"- {f}")
+            lines.append("")
+    else:
+        lines.append("## Git Activity")
+        lines.append("_No commits found for today._")
         lines.append("")
 
     # Service Health
@@ -158,10 +187,14 @@ async def generate_daily_note(heartbeat) -> str | None:
     if ai_summary:
         tg_lines.append(ai_summary)
         tg_lines.append("")
-    tg_lines.append(
-        f"Completed: {len(completed)} | Failed: {len(failed)} | "
-        f"Restarts: {restart_count}"
-    )
+    stats_parts = [f"Completed: {len(completed)}"]
+    if task_changes:
+        stats_parts.append(f"Task updates: {len(task_changes)}")
+    if failed:
+        stats_parts.append(f"Failed: {len(failed)}")
+    if restart_count:
+        stats_parts.append(f"Restarts: {restart_count}")
+    tg_lines.append(" | ".join(stats_parts))
     tg_lines.append(
         f"Heartbeat cycles: {cycle_count} | "
         f"CPU {summary_data.get('cpu', 0):.0f}% | Mem {summary_data.get('memory', 0):.0f}%"
@@ -209,12 +242,86 @@ def _get_task_changes(date_str: str) -> list[dict]:
     return changes
 
 
+def _get_git_activity(date_str: str) -> dict:
+    """Collect git commits and changed files for the given date."""
+    import subprocess
+
+    result = {"commits": [], "files_changed": [], "summary": ""}
+
+    try:
+        log_output = subprocess.run(
+            [
+                "git", "log",
+                f"--since={date_str} 00:00",
+                f"--until={date_str} 23:59",
+                "--format=%H|%s|%an|%ai",
+                "--no-merges",
+            ],
+            capture_output=True, text=True, timeout=10,
+            cwd=str(config.OPAI_ROOT),
+        )
+
+        if log_output.returncode == 0 and log_output.stdout.strip():
+            for line in log_output.stdout.strip().split("\n")[:30]:
+                parts = line.split("|", 3)
+                if len(parts) >= 2:
+                    result["commits"].append({
+                        "hash": parts[0][:8],
+                        "message": parts[1],
+                        "author": parts[2] if len(parts) > 2 else "",
+                        "date": parts[3] if len(parts) > 3 else "",
+                    })
+
+        diff_output = subprocess.run(
+            [
+                "git", "log",
+                f"--since={date_str} 00:00",
+                f"--until={date_str} 23:59",
+                "--no-merges",
+                "--stat", "--stat-width=120",
+                "--format=",
+            ],
+            capture_output=True, text=True, timeout=10,
+            cwd=str(config.OPAI_ROOT),
+        )
+
+        if diff_output.returncode == 0 and diff_output.stdout.strip():
+            seen = set()
+            for line in diff_output.stdout.strip().split("\n"):
+                line = line.strip()
+                if "|" in line and not line.startswith(" "):
+                    fname = line.split("|")[0].strip()
+                    if fname and fname not in seen:
+                        seen.add(fname)
+                        result["files_changed"].append(fname)
+
+        n_commits = len(result["commits"])
+        n_files = len(result["files_changed"])
+        if n_commits:
+            dirs = {}
+            for f in result["files_changed"]:
+                top = f.split("/")[0] if "/" in f else f
+                dirs[top] = dirs.get(top, 0) + 1
+            dir_summary = ", ".join(
+                f"{d} ({c})" for d, c in sorted(dirs.items(), key=lambda x: -x[1])[:8]
+            )
+            result["summary"] = f"{n_commits} commits, {n_files} files changed. Areas: {dir_summary}"
+        else:
+            result["summary"] = "No commits found for this date."
+
+    except (subprocess.TimeoutExpired, OSError) as e:
+        logger.warning("Git activity collection failed: %s", e)
+
+    return result
+
+
 async def _ai_summary(
     completed: list,
     failed: list,
     restarts: list,
     task_changes: list,
     summary_data: dict,
+    git_activity: dict | None = None,
 ) -> str | None:
     """Generate a 2-3 sentence AI summary. Graceful fallback if unavailable."""
     try:
@@ -230,6 +337,16 @@ async def _ai_summary(
         prompt_parts.append(f"- {len(task_changes)} task registry updates")
         prompt_parts.append(f"- CPU: {summary_data.get('cpu', 0):.0f}%, Memory: {summary_data.get('memory', 0):.0f}%")
 
+        if git_activity and git_activity.get("commits"):
+            prompt_parts.append(f"\nGit activity: {git_activity.get('summary', '')}")
+            for c in git_activity["commits"][:8]:
+                prompt_parts.append(f"  - {c['message']}")
+
+        if task_changes:
+            prompt_parts.append(f"\nTask registry updates ({len(task_changes)}):")
+            for tc in task_changes[:10]:
+                prompt_parts.append(f"  - {tc.get('title', tc.get('id', '?'))} → {tc.get('status', '?')}")
+
         if completed:
             prompt_parts.append("\nCompleted items:")
             for e in completed[:5]:
@@ -244,7 +361,7 @@ async def _ai_summary(
 
         result = await call_claude(
             prompt,
-            system="You are OPAI's internal summarizer. Write a brief, factual 2-3 sentence summary of today's system activity. No greetings, no fluff. Start with the most important outcome.",
+            system="You are OPAI's internal summarizer. Write a brief, factual 2-3 sentence summary of today's system activity. Consider ALL signals: git commits, task registry updates, completed jobs, and system health. Task registry updates reflect real work (planning, status changes, coordination) even without commits. On quiet days, say what DID happen rather than leading with what didn't. No greetings, no fluff.",
             model="haiku",
             max_tokens=200,
             timeout=30,

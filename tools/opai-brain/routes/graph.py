@@ -50,12 +50,20 @@ async def _sb_patch(path: str, params: str, body: dict) -> dict:
 
 
 def _derive_group(meta: dict, node_type: str) -> str:
-    """Derive a group name from metadata or node type."""
+    """Derive a group name from metadata or node type.
+
+    Uses the full sync_dir path for granular grouping:
+    - "notes/plans" stays as "notes/plans" (not collapsed to "notes")
+    - "Library/helm-playbooks" stays as "helm-playbooks"
+    - "Research" stays as "Research"
+    """
     sync_dir = meta.get("sync_dir", "")
     if sync_dir:
-        # Use the top-level directory as the group name
-        parts = sync_dir.strip("/").split("/")
-        return parts[0] if parts else f"manual:{node_type}"
+        clean = sync_dir.strip("/")
+        # For Library/ prefix, drop the "Library/" to keep labels concise
+        if clean.startswith("Library/"):
+            clean = clean[len("Library/"):]
+        return clean or f"manual:{node_type}"
     return f"manual:{node_type}"
 
 

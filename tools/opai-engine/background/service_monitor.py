@@ -30,7 +30,15 @@ async def check_service(service_name: str) -> bool:
 
 
 async def restart_service(service_name: str) -> bool:
-    """Restart a systemd user service."""
+    """Restart a systemd user service (sweeps stale processes first)."""
+    # Sweep stale processes before restart — clears port-blocking orphans
+    try:
+        from background.process_sweeper import sweep_stale_processes
+        result = await sweep_stale_processes()
+        if result.get("killed", 0) > 0:
+            logger.info("Pre-restart sweep killed %d stale processes", result["killed"])
+    except Exception as e:
+        logger.warning("Pre-restart sweep failed: %s", e)
     try:
         proc = await asyncio.create_subprocess_exec(
             "systemctl", "--user", "restart", f"opai-{service_name}",

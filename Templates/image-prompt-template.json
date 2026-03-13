@@ -1,0 +1,59 @@
+{
+    "_meta": {
+        "format": "structured-image-prompt-v1",
+        "description": "Structured image prompt format for Nano Banana 2 / Gemini Flash Image via Antigravity.",
+        "usage": "Fill in the fields below and pass to Antigravity chat or your image generation workflow."
+    },
+    "subject": {
+        "description": "Primary subject of the image",
+        "details": "Specific attributes, clothing, expression, pose, material, etc.",
+        "count": 1
+    },
+    "angle": {
+        "type": "eye-level | low-angle | high-angle | birds-eye | worms-eye | dutch-angle | over-the-shoulder | close-up | extreme-close-up | wide-shot | medium-shot",
+        "description": "Camera perspective and spatial relationship to the subject"
+    },
+    "focus": {
+        "type": "tack-sharp | shallow-dof | deep-dof | soft | selective | rack-focus",
+        "focal_point": "The primary element that should be sharpest",
+        "blur_intensity": "none | subtle | moderate | heavy"
+    },
+    "background": {
+        "setting": "Describe the environment or location",
+        "elements": [
+            "specific objects, props, or features in the background"
+        ],
+        "depth": "flat | shallow | medium | deep | infinite",
+        "atmosphere": "Clear, overcast, foggy, hazy, rainy, smoky, etc."
+    },
+    "lighting": {
+        "type": "natural | studio | dramatic | cinematic | neon | golden-hour | blue-hour | backlit | rim-light | flat | high-key | low-key",
+        "direction": "front | side | back | top | bottom | ambient | three-point",
+        "intensity": "soft | medium | hard | harsh",
+        "color_temperature": "warm | neutral | cool | mixed"
+    },
+    "style": {
+        "medium": "photograph | digital-art | 3d-render | illustration | oil-painting | watercolor | pencil-sketch | vector | cinematic-still",
+        "aesthetic": "photorealistic | hyperrealistic | cinematic | editorial | minimalist | vibrant | moody | corporate | retro | futuristic | raw",
+        "color_palette": "Dominant color mood or hex palette description"
+    },
+    "composition": {
+        "rule": "rule-of-thirds | centered | symmetrical | leading-lines | frame-within-frame | golden-ratio | diagonal | negative-space",
+        "aspect_ratio": "1:1 | 4:3 | 3:2 | 16:9 | 9:16 | 21:9",
+        "camera_lens": "wide-angle | standard-50mm | portrait-85mm | telephoto | macro | fisheye"
+    },
+    "text_overlay": {
+        "enabled": false,
+        "content": "",
+        "font_style": "bold-sans | serif | script | monospace | handwritten",
+        "position": "top-left | top-center | top-right | center | bottom-left | bottom-center | bottom-right",
+        "color": ""
+    },
+    "mood": "Overall emotional tone or feeling the image should evoke",
+    "quality_modifiers": [
+        "ultra-detailed",
+        "8k resolution",
+        "award-winning photography"
+    ],
+    "negative_prompt": "Elements, styles, or qualities to explicitly exclude from the image"
+}

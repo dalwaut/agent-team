@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI Studio</title>
+    <link rel="stylesheet" href="/studio/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/auth/static/js/navbar.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+</head>
+<body>
+    <!-- Loading screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loader-content">
+            <div class="spinner"></div>
+            <h2>OPAI Studio</h2>
+            <p>Initializing...</p>
+        </div>
+    </div>
+
+    <!-- Project browser view -->
+    <div id="projects-view" class="screen" style="display:none">
+        <header class="top-bar">
+            <div class="top-bar-left">
+                <h1 class="logo">OPAI Studio</h1>
+            </div>
+            <div class="top-bar-right">
+                <span id="user-email" class="user-email"></span>
+                <button class="btn btn-sm" onclick="App.logout()">Sign Out</button>
+            </div>
+        </header>
+        <div class="projects-container">
+            <div class="projects-header">
+                <h2>Projects</h2>
+                <button class="btn btn-primary" onclick="App.createProject()">+ New Project</button>
+            </div>
+            <div id="projects-grid" class="projects-grid"></div>
+        </div>
+    </div>
+
+    <!-- Editor view -->
+    <div id="editor-view" class="screen" style="display:none">
+        <!-- Top toolbar -->
+        <header class="editor-toolbar">
+            <div class="toolbar-left">
+                <button class="btn btn-icon" onclick="App.goToProjects()" title="Back to projects">&#8592;</button>
+                <span id="editor-project-name" class="editor-title"></span>
+                <button class="btn btn-sm toolbar-canvas-btn" onclick="App.showCanvasSettings()" title="Canvas Settings">Canvas</button>
+                <span class="sep">|</span>
+                <span id="editor-image-name" class="editor-subtitle" contenteditable="true"></span>
+            </div>
+            <div class="toolbar-center">
+                <button class="btn btn-icon tool-btn active" data-tool="select" onclick="CanvasMgr.setTool('select')" title="Select (V)">&#8598;</button>
+                <button class="btn btn-icon tool-btn" data-tool="hand" onclick="CanvasMgr.setTool('hand')" title="Hand/Pan (H)">&#9995;</button>
+
+                <!-- Shapes flyout group -->
+                <div class="tool-group" data-flyout="shapes">
+                    <button class="btn btn-icon tool-group-btn" data-tool="rect"
+                            onclick="CanvasMgr.addRect()" title="Shapes">
+                        <span class="tool-group-label">&#9645;</span>
+                    </button>
+                    <button class="btn btn-icon tool-group-caret"
+                            onclick="event.stopPropagation(); Tools.toggleFlyout('shapes')" title="More shapes">
+                        &#9662;
+                    </button>
+                    <div class="tool-flyout" id="flyout-shapes">
+                        <div class="flyout-item" onclick="Tools.selectFromFlyout('shapes','rect','&#9645;','R'); CanvasMgr.addRect()">
+                            <span class="flyout-icon">&#9645;</span>
+                            <span class="flyout-label">Rectangle</span>
+                            <span class="flyout-key">R</span>
+                        </div>
+                        <div class="flyout-item" onclick="Tools.selectFromFlyout('shapes','circle','&#9675;','C'); CanvasMgr.addCircle()">
+                            <span class="flyout-icon">&#9675;</span>
+                            <span class="flyout-label">Circle</span>
+                            <span class="flyout-key">C</span>
+                        </div>
+                        <div class="flyout-item" onclick="Tools.selectFromFlyout('shapes','line','&#9585;','L'); CanvasMgr.setTool('line')">
+                            <span class="flyout-icon">&#9585;</span>
+                            <span class="flyout-label">Line</span>
+                            <span class="flyout-key">L</span>
+                        </div>
+                        <div class="flyout-item" onclick="Tools.selectFromFlyout('shapes','arrow','&#8594;','A'); CanvasMgr.setTool('arrow')">
+                            <span class="flyout-icon">&#8594;</span>
+                            <span class="flyout-label">Arrow</span>
+                            <span class="flyout-key">A</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Draw flyout group -->
+                <div class="tool-group" data-flyout="draw">
+                    <button class="btn btn-icon tool-group-btn" data-tool="pen"
+                            onclick="CanvasMgr.setTool('pen')" title="Draw tools">
+                        <span class="tool-group-label">&#9998;</span>
+                    </button>
+                    <button class="btn btn-icon tool-group-caret"
+                            onclick="event.stopPropagation(); Tools.toggleFlyout('draw')" title="More draw tools">
+                        &#9662;
+                    </button>
+                    <div class="tool-flyout" id="flyout-draw">
+                        <div class="flyout-item" onclick="Tools.selectFromFlyout('draw','pen','&#9998;','B'); CanvasMgr.setTool('pen')">
+                            <span class="flyout-icon">&#9998;</span>
+                            <span class="flyout-label">Pen / Brush</span>
+                            <span class="flyout-key">B</span>
+                        </div>
+                        <div class="flyout-item" onclick="Tools.selectFromFlyout('draw','eraser','&#9003;','E'); CanvasMgr.setTool('eraser')">
+                            <span class="flyout-icon">&#9003;</span>
+                            <span class="flyout-label">Eraser</span>
+                            <span class="flyout-key">E</span>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn btn-icon tool-btn" data-tool="text" onclick="CanvasMgr.addText()" title="Text (T)">T</button>
+                <button class="btn btn-icon tool-btn" onclick="CanvasMgr.importFromFile()" title="Import Image (I)">&#128247;</button>
+                <button class="btn btn-icon tool-btn" data-tool="eyedropper" onclick="CanvasMgr.setTool('eyedropper')" title="Eyedropper (P)">&#128391;</button>
+                <button class="btn btn-icon tool-btn" data-tool="crop" onclick="CanvasMgr.setTool('crop')" title="Crop (K)">&#9986;</button>
+
+                <span class="toolbar-divider"></span>
+                <button class="btn btn-icon tool-btn" onclick="CanvasMgr.undo()" title="Undo (Ctrl+Z)">&#8630;</button>
+                <button class="btn btn-icon tool-btn" onclick="CanvasMgr.redo()" title="Redo (Ctrl+Y)">&#8631;</button>
+
+                <span class="toolbar-divider"></span>
+                <button class="btn btn-icon tool-btn toolbar-toggle" id="tb-grid" onclick="Grid.toggleGrid()" title="Toggle Grid (G)">&#9638;</button>
+                <button class="btn btn-icon tool-btn toolbar-toggle" id="tb-snap" onclick="Grid.toggleSnap()" title="Toggle Snap (Ctrl+;)">&#9633;</button>
+                <button class="btn btn-icon tool-btn toolbar-toggle" id="tb-rulers" onclick="Grid.toggleRulers()" title="Toggle Rulers (Ctrl+')">&#9547;</button>
+            </div>
+            <div class="toolbar-right">
+                <!-- Keyboard shortcuts help -->
+                <div class="hotkey-help-wrap">
+                    <button class="btn btn-icon btn-sm hotkey-help-btn" title="Keyboard Shortcuts">?</button>
+                    <div class="hotkey-help-popup">
+                        <div class="hotkey-help-title">Keyboard Shortcuts</div>
+                        <div class="hotkey-help-cols">
+                            <div class="hotkey-help-col">
+                                <div class="hotkey-help-group">Tools</div>
+                                <div class="hk"><kbd>V</kbd> Select</div>
+                                <div class="hk"><kbd>H</kbd> Hand / Pan</div>
+                                <div class="hk"><kbd>T</kbd> Text</div>
+                                <div class="hk"><kbd>R</kbd> Rectangle</div>
+                                <div class="hk"><kbd>C</kbd> Circle</div>
+                                <div class="hk"><kbd>L</kbd> Line</div>
+                                <div class="hk"><kbd>A</kbd> Arrow</div>
+                                <div class="hk"><kbd>B</kbd> Pen / Brush</div>
+                                <div class="hk"><kbd>E</kbd> Eraser</div>
+                                <div class="hk"><kbd>I</kbd> Import Image</div>
+                                <div class="hk"><kbd>P</kbd> Eyedropper</div>
+                                <div class="hk"><kbd>K</kbd> Crop</div>
+                                <div class="hotkey-help-group">Brush</div>
+                                <div class="hk"><kbd>[</kbd> Smaller brush</div>
+                                <div class="hk"><kbd>]</kbd> Larger brush</div>
+                            </div>
+                            <div class="hotkey-help-col">
+                                <div class="hotkey-help-group">Edit</div>
+                                <div class="hk"><kbd>Ctrl+C</kbd> Copy</div>
+                                <div class="hk"><kbd>Ctrl+X</kbd> Cut</div>
+                                <div class="hk"><kbd>Ctrl+V</kbd> Paste</div>
+                                <div class="hk"><kbd>Ctrl+D</kbd> Duplicate</div>
+                                <div class="hk"><kbd>Ctrl+G</kbd> Group</div>
+                                <div class="hk"><kbd>Ctrl+Shift+G</kbd> Ungroup</div>
+                                <div class="hk"><kbd>Ctrl+L</kbd> Lock / Unlock</div>
+                                <div class="hk"><kbd>Ctrl+Z</kbd> Undo</div>
+                                <div class="hk"><kbd>Ctrl+Y</kbd> Redo</div>
+                                <div class="hk"><kbd>Ctrl+S</kbd> Save</div>
+                                <div class="hk"><kbd>Del</kbd> Delete</div>
+                                <div class="hk"><kbd>Esc</kbd> Cancel / Select</div>
+                                <div class="hotkey-help-group">View</div>
+                                <div class="hk"><kbd>G</kbd> Toggle Grid</div>
+                                <div class="hk"><kbd>Ctrl+;</kbd> Toggle Snap</div>
+                                <div class="hk"><kbd>Ctrl+'</kbd> Toggle Rulers</div>
+                                <div class="hk"><kbd>Ctrl+0</kbd> Zoom Reset</div>
+                                <div class="hk"><kbd>Ctrl++</kbd> Zoom In</div>
+                                <div class="hk"><kbd>Ctrl+-</kbd> Zoom Out</div>
+                                <div class="hotkey-help-group">AI</div>
+                                <div class="hk"><kbd>Shift+S</kbd> Select Region</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-sm" onclick="CanvasMgr.save()">Save</button>
+                <button class="btn btn-sm btn-primary" onclick="App.showExport()">Export</button>
+            </div>
+        </header>
+
+        <!-- Pen/Brush options bar (hidden by default) -->
+        <div id="pen-options-bar" class="pen-options-bar" style="display:none">
+            <label>Color</label>
+            <input type="color" id="pen-color-picker" value="#000000"
+                   onchange="Tools.setBrushColor(this.value)" />
+            <label>Size</label>
+            <input type="range" id="pen-size-slider" min="1" max="50" value="5"
+                   oninput="Tools.setBrushSize(+this.value)" />
+            <span id="pen-size-value">5px</span>
+            <label>Opacity</label>
+            <input type="range" id="pen-opacity-slider" min="0" max="100" value="100"
+                   oninput="Tools.setBrushOpacity(this.value / 100)" />
+        </div>
+
+        <!-- Three-column layout -->
+        <div class="editor-body">
+            <!-- Left panel -->
+            <aside class="panel panel-left">
+                <div class="panel-tabs">
+                    <button class="panel-tab active" data-panel="layers" onclick="App.switchLeftTab('layers')">Layers</button>
+                    <button class="panel-tab" data-panel="images" onclick="App.switchLeftTab('images')">Images</button>
+                </div>
+                <div class="panel-content" id="left-panel-content">
+                    <!-- Layers list -->
+                    <div id="layers-panel" class="tab-panel active">
+                        <button class="btn btn-sm btn-block" onclick="CanvasMgr.addEmptyLayer()">+ New Layer</button>
+                        <div id="layers-list" class="layers-list"></div>
+                    </div>
+                    <!-- Images in project -->
+                    <div id="images-panel" class="tab-panel" style="display:none">
+                        <button class="btn btn-sm btn-block" onclick="App.createImage()">+ New Image</button>
+                        <div id="images-list" class="images-list"></div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Canvas center -->
+            <main class="canvas-area">
+                <!-- Rulers -->
+                <div id="ruler-h" class="ruler-h" style="display:none"></div>
+                <div id="ruler-v" class="ruler-v" style="display:none"></div>
+
+                <div class="canvas-wrapper" id="canvas-wrapper">
+                    <canvas id="studio-canvas"></canvas>
+                </div>
+                <div class="canvas-status">
+                    <span id="canvas-size">1024 &times; 1024</span>
+                    <span class="sep">|</span>
+                    <span id="canvas-zoom">100%</span>
+                    <span class="sep">|</span>
+                    <span id="canvas-cursor">0, 0</span>
+                    <span class="sep">|</span>
+                    <button class="status-toggle" id="status-grid" onclick="Grid.toggleGrid()" title="Toggle Grid (G)">Grid</button>
+                    <button class="status-toggle" id="status-snap" onclick="Grid.toggleSnap()" title="Toggle Snap (Ctrl+;)">Snap</button>
+                    <button class="status-toggle" id="status-rulers" onclick="Grid.toggleRulers()" title="Toggle Rulers (Ctrl+')">Rulers</button>
+                </div>
+            </main>
+
+            <!-- Right panel -->
+            <aside class="panel panel-right">
+                <div class="panel-tabs">
+                    <button class="panel-tab active" data-panel="generate" onclick="App.switchRightTab('generate')">Generate</button>
+                    <button class="panel-tab" data-panel="ai-edit" onclick="App.switchRightTab('ai-edit')">AI Edit</button>
+                    <button class="panel-tab" data-panel="properties" onclick="App.switchRightTab('properties')">Props</button>
+                </div>
+                <div class="panel-content" id="right-panel-content">
+                    <!-- AI Generation panel -->
+                    <div id="generate-panel" class="tab-panel active">
+                        <div id="generate-content"></div>
+                    </div>
+                    <!-- AI Edit panel -->
+                    <div id="ai-edit-panel" class="tab-panel" style="display:none">
+                        <div id="ai-edit-content"></div>
+                    </div>
+                    <!-- Properties panel -->
+                    <div id="properties-panel" class="tab-panel" style="display:none">
+                        <div id="props-content">
+                            <p class="muted">Select an object to see properties</p>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- Export modal -->
+    <div id="export-modal" class="modal" style="display:none">
+        <div class="modal-overlay" onclick="App.closeExport()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Export Image</h3>
+                <button class="btn btn-icon" onclick="App.closeExport()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Format</label>
+                    <select id="export-format">
+                        <option value="png">PNG</option>
+                        <option value="jpeg">JPEG</option>
+                        <option value="webp">WebP</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Quality</label>
+                    <input type="range" id="export-quality" min="1" max="100" value="95"
+                           oninput="document.getElementById('export-quality-val').textContent=this.value">
+                    <span id="export-quality-val">95</span>
+                </div>
+                <div class="form-group">
+                    <label>Scale</label>
+                    <select id="export-scale">
+                        <option value="1">1x</option>
+                        <option value="2">2x</option>
+                        <option value="3">3x</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary btn-block" onclick="App.doExport()">Download</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Canvas settings modal -->
+    <div id="canvas-settings-modal" class="modal" style="display:none">
+        <div class="modal-overlay" onclick="App.closeCanvasSettings()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Canvas Settings</h3>
+                <button class="btn btn-icon" onclick="App.closeCanvasSettings()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Width (px)</label>
+                    <input type="number" id="canvas-width-input" min="100" max="8192" value="1024" />
+                </div>
+                <div class="form-group">
+                    <label>Height (px)</label>
+                    <input type="number" id="canvas-height-input" min="100" max="8192" value="1024" />
+                </div>
+                <div class="form-group">
+                    <label>Presets</label>
+                    <div class="canvas-presets">
+                        <button class="btn btn-sm" onclick="App.setCanvasPreset(1024,1024)">1024&times;1024</button>
+                        <button class="btn btn-sm" onclick="App.setCanvasPreset(1920,1080)">1920&times;1080</button>
+                        <button class="btn btn-sm" onclick="App.setCanvasPreset(1080,1920)">1080&times;1920</button>
+                        <button class="btn btn-sm" onclick="App.setCanvasPreset(1080,1080)">1080&times;1080</button>
+                        <button class="btn btn-sm" onclick="App.setCanvasPreset(2048,2048)">2048&times;2048</button>
+                        <button class="btn btn-sm" onclick="App.setCanvasPreset(800,600)">800&times;600</button>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-block" onclick="App.applyCanvasSettings()">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/studio/static/js/app.js"></script>
+    <script src="/studio/static/js/clipboard.js"></script>
+    <script src="/studio/static/js/tools.js"></script>
+    <script src="/studio/static/js/grid.js"></script>
+    <script src="/studio/static/js/ai-edit.js"></script>
+    <script src="/studio/static/js/canvas.js"></script>
+    <script src="/studio/static/js/generate.js"></script>
+</body>
+</html>

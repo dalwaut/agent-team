@@ -1,0 +1,20 @@
+{
+  "default_project": "opai",
+  "projects": {
+    "opai": {
+      "project_ref": "idorgloobxkmlnwnxbej",
+      "display_name": "OPAI Main",
+      "vault_pat_key": "supabasemaster/PAT"
+    },
+    "bb2": {
+      "project_ref": "aggxspqzerfimqzkjgct",
+      "display_name": "BoutaByte 2.0",
+      "vault_pat_key": "supabase-wautersedge/PAT"
+    },
+    "apps-internal": {
+      "project_ref": "ehrzhdzmbbuizsobmddq",
+      "display_name": "Apps Internal",
+      "vault_pat_key": "supabase-wautersedge/PAT"
+    }
+  }
+}

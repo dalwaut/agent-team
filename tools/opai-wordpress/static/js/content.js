@@ -78,7 +78,7 @@ WP.Content = {
                 '<td>' + WP.Content._statusBadge(p.status) + '</td>' +
                 '<td>' + WP.formatDate(p.date) + '</td>' +
                 '<td style="white-space:nowrap">' +
-                '<a class="btn-sm" href="' + (WP.currentSite.url || '').replace(/\/$/, '') + '/wp-admin/post.php?post=' + p.id + '&action=edit" target="_blank" style="color:var(--blue);text-decoration:none;border-color:var(--blue)" title="Edit in WP Admin">WP</a> ' +
+                '<button class="btn-sm" style="color:var(--blue);border-color:var(--blue)" onclick="WP.wpAdminOpen(\'/wp-admin/post.php?post=' + p.id + '&action=edit\')" title="Edit in WP Admin">WP</button> ' +
                 '<button class="btn-sm" onclick="WP.Content.viewPost(' + p.id + ')" title="View">&#128065;</button> ' +
                 '<button class="btn-sm" onclick="WP.Content.showPostEditor(' + p.id + ')" title="Edit">&#9998;</button> ' +
                 '<button class="btn-sm" style="color:var(--red)" onclick="WP.Content.deletePost(' + p.id + ')" title="Trash">&#128465;</button>' +
@@ -258,7 +258,7 @@ WP.Content = {
                 '<td style="font-size:12px;color:var(--text-muted)">' + (p.template || 'default') + '</td>' +
                 '<td>' + WP.formatDate(p.date) + '</td>' +
                 '<td style="white-space:nowrap">' +
-                '<a class="btn-sm" href="' + (WP.currentSite.url || '').replace(/\/$/, '') + '/wp-admin/post.php?post=' + p.id + '&action=edit" target="_blank" style="color:var(--blue);text-decoration:none;border-color:var(--blue)" title="Edit in WP Admin">WP</a> ' +
+                '<button class="btn-sm" style="color:var(--blue);border-color:var(--blue)" onclick="WP.wpAdminOpen(\'/wp-admin/post.php?post=' + p.id + '&action=edit\')" title="Edit in WP Admin">WP</button> ' +
                 '<button class="btn-sm" onclick="WP.Content.viewPage(' + p.id + ')" title="View">&#128065;</button> ' +
                 '<button class="btn-sm" onclick="WP.Content.showPageEditor(' + p.id + ')" title="Edit">&#9998;</button> ' +
                 '<button class="btn-sm" style="color:var(--red)" onclick="WP.Content.deletePage(' + p.id + ')" title="Trash">&#128465;</button>' +

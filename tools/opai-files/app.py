@@ -1,6 +1,7 @@
 """OPAI Files — Sandboxed file manager for user workspaces."""
 
 import asyncio
+import contextvars
 import json
 import mimetypes
 import os
@@ -10,6 +11,9 @@ import sys
 import time
 import uuid
 from pathlib import Path
+
+# Context var for admin root context switching (set per-request via middleware)
+_files_context: contextvars.ContextVar[str] = contextvars.ContextVar("files_context", default="")
 
 _start_time = time.time()
 
@@ -25,7 +29,7 @@ import links
 from auth import get_current_user, require_admin, AuthUser
 
 import aiofiles
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Query
+from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, Query
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -43,9 +47,15 @@ app = FastAPI(
 def _get_user_root(user: AuthUser) -> Path:
     """Get the filesystem root for a user.
 
-    Admins get /workspace/synced/opai. Regular users get their sandbox_path.
+    Admins get /workspace/synced/opai by default. With X-Files-Context: personal
+    header, admins get their NAS personal folder instead. Regular users get sandbox_path.
     """
     if user.is_admin:
+        ctx = _files_context.get("")
+        if ctx == "personal" and user.sandbox_path:
+            root = Path(user.sandbox_path)
+            if root.exists() and root.is_dir():
+                return root
         return config.ADMIN_WORKSPACE_ROOT
 
     if not user.sandbox_path:
@@ -54,12 +64,27 @@ def _get_user_root(user: AuthUser) -> Path:
             detail="No sandbox configured for your account",
         )
     root = Path(user.sandbox_path)
-    if not root.is_dir():
+    if not root.exists():
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Sandbox directory could not be created: {exc}",
+            )
+    elif not root.is_dir():
         raise HTTPException(
             status_code=503,
-            detail="Sandbox directory not available",
+            detail="Sandbox path exists but is not a directory",
         )
     return root
+
+
+@app.middleware("http")
+async def inject_context(request: Request, call_next):
+    """Set per-request context for admin root switching."""
+    _files_context.set(request.headers.get("X-Files-Context", ""))
+    return await call_next(request)
 
 
 def _resolve_safe_path(user_root: Path, relative_path: str) -> Path:
@@ -120,6 +145,24 @@ def health():
         "uptime_seconds": int(time.time() - _start_time),
         "memory_mb": round(mem / 1024, 1),
     }
+
+
+# ── Context API (admin root switching) ─────────────────────────
+
+
+@app.get("/api/files/contexts")
+async def list_contexts(user: AuthUser = Depends(get_current_user)):
+    """Return available file contexts for the current user."""
+    contexts = [{"id": "default", "label": "Server Workspace", "active": True}]
+    if user.is_admin and user.sandbox_path:
+        personal_exists = Path(user.sandbox_path).is_dir()
+        contexts.append({
+            "id": "personal",
+            "label": "My Files",
+            "path": user.sandbox_path,
+            "available": personal_exists,
+        })
+    return {"contexts": contexts, "is_admin": user.is_admin}
 
 
 # ── File API ───────────────────────────────────────────────────

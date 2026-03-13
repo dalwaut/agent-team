@@ -32,6 +32,14 @@ _running_jobs: dict = {}  # task_id → {agent_id, agent_type, started_at, threa
 _last_cycle_time: str | None = None
 _cycle_squad_count: int = 0
 
+# Default trusted senders (fallback when orchestrator.json has none configured)
+_DEFAULT_TRUSTED_SENDERS = {
+    "dallas@paradisewebfl.com",
+    "denise@paradisewebfl.com",
+    "caitlin@paradisewebfl.com",
+    "dalwaut@gmail.com",
+}
+
 # ── Command Gate (v3.2) ───────────────────────────────────
 
 from services.command_gate import build_intent, evaluate, enrich_audit as _enrich_intent
@@ -775,6 +783,59 @@ def get_summary(registry: dict) -> dict:
     }
 
 
+# ── Team Hub HITL Bridge (v3.5) ───────────────────────────
+
+def create_teamhub_hitl_item(task_data: dict) -> dict | None:
+    """Create a Team Hub item for HITL review instead of (in addition to) an .md file.
+
+    Returns the created Team Hub item dict, or None on failure.
+    Falls back gracefully — .md file remains the backup path.
+    """
+    try:
+        import httpx
+
+        title = task_data.get("title", "Untitled")
+        description = task_data.get("description", "")
+        priority = task_data.get("priority", "medium")
+        source = task_data.get("source", "system")
+        task_id = task_data.get("id", "")
+
+        # Build description with task context
+        desc_parts = [description]
+        if task_id:
+            desc_parts.append(f"\n---\nRegistry Task ID: `{task_id}`")
+        if task_data.get("routing"):
+            routing = task_data["routing"]
+            desc_parts.append(f"Routing: type={routing.get('type', '?')}, mode={routing.get('mode', '?')}")
+
+        params = {
+            "workspace_id": config.WORKERS_WORKSPACE_ID,
+            "user_id": config.SYSTEM_USER_ID,
+            "type": "decision",
+            "title": f"[HITL] {title}",
+            "description": "\n".join(desc_parts),
+            "priority": priority,
+            "status": "awaiting-human",
+            "list_id": config.HITL_QUEUE_LIST_ID,
+            "source": source,
+        }
+
+        resp = httpx.post(
+            f"{config.TEAMHUB_INTERNAL}/create-item",
+            params=params,
+            timeout=8.0,
+        )
+        if resp.status_code < 400:
+            item = resp.json()
+            log.info("Created Team Hub HITL item: %s for task %s", item.get("id", "?"), task_id)
+            return item
+        else:
+            log.warning("Team Hub HITL create failed: %d %s", resp.status_code, resp.text[:200])
+    except Exception as e:
+        log.warning("Team Hub HITL bridge error: %s", e)
+    return None
+
+
 # ── HITL Briefings ────────────────────────────────────────
 
 def list_hitl() -> list[dict]:
@@ -1319,6 +1380,19 @@ def run_agent_task(task_id: str, agent_id: str, agent_type: str = "agent",
 
     # Log audit record
     append_audit_record(_make_audit_record("completed", parsed=parsed, report_file=str(report_path)))
+
+    # Check personal notification watches
+    try:
+        from background.notifier import check_and_fire_personal_notifications
+        check_and_fire_personal_notifications(
+            task_id=task_id,
+            status="completed",
+            title=task.get("title", ""),
+            worker=agent_id,
+            summary=report_content[:300] if report_content else "",
+        )
+    except Exception:
+        pass  # Non-critical
 
     # Close feedback loop: mark feedback as IMPLEMENTED when task completes
     if task.get("source") == "feedback":

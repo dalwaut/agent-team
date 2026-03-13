@@ -1,0 +1,35 @@
+# Template: Weekly Project Status Update
+# Voice: client-update
+# Trigger: Weekly status email to client — typically sent Monday or Friday
+
+## Subject Line Options
+- {{project_name}} — Weekly Update ({{date_range}})
+- Status Update: {{project_name}} — Week of {{week_start_date}}
+- {{project_name}} Progress Update — {{current_date}}
+
+## Body
+
+Hi {{client_name}},
+
+Here's your weekly update on {{project_name}}.
+
+This past week we wrapped up {{completed_item_1}}, {{completed_item_2}}, and {{completed_item_3}}. {{brief_context_on_most_significant_item}} — this was an important step because {{why_it_matters_to_client}}.
+
+Coming up next, our focus shifts to {{upcoming_item_1}} and {{upcoming_item_2}}. We expect to have {{next_milestone}} ready by {{next_milestone_date}}. {{optional_preview_or_link}}
+
+{{blocker_paragraph_if_applicable}}
+
+Overall we're {{on_track_status}} with the original timeline. {{next_check_in_sentence}} If anything comes up or you have questions in the meantime, just reply here.
+
+## Blocker Paragraph (use only if blockers exist)
+
+One thing I want to flag — we're waiting on {{blocker_description}} before we can move forward with {{blocked_item}}. If you could {{client_action_needed}} by {{needed_by_date}}, that would keep us on schedule. No stress if you need more time, just wanted to keep you in the loop.
+
+## Notes
+- Use the "client-update" voice profile for proper tone
+- Lead with accomplishments — clients want to see progress
+- Be specific about deliverables, not vague ("finished the homepage design" not "made good progress")
+- Only include the blocker paragraph if there are actual blockers — do not fabricate urgency
+- on_track_status should be one of: "on track", "slightly ahead of schedule", "about a day behind on X but catching up"
+- Include a link to staging/preview when available — clients love seeing their project live
+- Keep to 3-4 paragraphs max — detailed breakdowns go in project management tools, not email

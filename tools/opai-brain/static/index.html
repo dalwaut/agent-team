@@ -102,6 +102,14 @@
           <button class="btn-ai" onclick="aiAction('extract_tasks')" title="Extract action items as checklist">Extract Tasks</button>
           <button class="btn-ai" onclick="aiAction('find_related')" title="Find related notes in your library">Find Related</button>
           <span class="ai-toolbar-hint">Select text first to act on a selection</span>
+          <span class="ai-toolbar-sep" style="border-left:1px solid var(--border);height:18px;margin:0 6px;"></span>
+          <span class="ai-toolbar-label" style="font-size:11px;">NLM:</span>
+          <button class="btn-ai btn-nlm" data-type="audio" onclick="nlmGenerate('audio')" title="Generate podcast overview via NotebookLM">Podcast</button>
+          <button class="btn-ai btn-nlm" data-type="study_guide" onclick="nlmGenerate('study_guide')" title="Generate study guide">Guide</button>
+          <button class="btn-ai btn-nlm" data-type="quiz" onclick="nlmGenerate('quiz')" title="Generate quiz">Quiz</button>
+          <button class="btn-ai btn-nlm" data-type="flashcards" onclick="nlmGenerate('flashcards')" title="Generate flashcards">Cards</button>
+          <button class="btn-ai btn-nlm" data-type="slide_deck" onclick="nlmGenerate('slide_deck')" title="Generate slide deck">Slides</button>
+          <button class="btn-ai btn-nlm" onclick="nlmAsk()" title="Ask a question about this note via NotebookLM">Ask</button>
         </div>
 
         <!-- Empty state -->
@@ -302,15 +310,30 @@ Use [[Note Title]] for wikilinks." oninput="markDirty(); if(_previewMode) render
         </div>
         <!-- Graph side panel (double-click node preview) -->
         <div class="graph-side-panel" id="graph-side-panel">
+          <div class="graph-panel-resize-handle" id="graph-panel-resize-handle"></div>
           <div class="graph-side-panel-header">
-            <h3 id="graph-panel-title">Node</h3>
+            <h3 id="graph-panel-title" ondblclick="graphPanelEditTitle()">Node</h3>
             <button class="btn-icon" onclick="closeGraphPanel()">&#x2715;</button>
           </div>
           <div class="graph-side-panel-meta" id="graph-panel-meta"></div>
-          <div class="graph-side-panel-connections" id="graph-panel-connections"></div>
+          <div class="graph-panel-tags" id="graph-panel-tags"></div>
+          <div class="graph-panel-source-path hidden" id="graph-panel-source-path"></div>
+          <div class="graph-panel-view-toggle" id="graph-panel-view-toggle">
+            <button class="view-toggle-btn active" id="graph-btn-summary" onclick="graphPanelShowSummary()">Summary</button>
+            <button class="view-toggle-btn" id="graph-btn-original" onclick="graphPanelShowOriginal()">Original</button>
+            <button class="view-toggle-btn" id="graph-btn-edit" onclick="graphPanelStartEdit()">Edit</button>
+          </div>
           <div class="graph-side-panel-body" id="graph-panel-body">
             <div style="color:var(--text-muted);">Loading...</div>
           </div>
+          <div class="graph-panel-edit-area hidden" id="graph-panel-edit-area">
+            <textarea class="graph-panel-editor" id="graph-panel-editor" placeholder="Write markdown content..."></textarea>
+            <div class="graph-panel-edit-actions">
+              <button class="btn-primary graph-panel-edit-save" onclick="graphPanelSaveEdit()">Save</button>
+              <button class="btn-canvas-action" onclick="graphPanelCancelEdit()">Cancel</button>
+            </div>
+          </div>
+          <div class="graph-side-panel-connections" id="graph-panel-connections"></div>
           <div class="graph-side-panel-actions">
             <button class="btn-primary" onclick="graphPanelOpenInLibrary()" style="font-size:12px;">Open in Library</button>
             <button class="btn-canvas-action" onclick="closeGraphPanel()">Close</button>

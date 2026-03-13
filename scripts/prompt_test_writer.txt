@@ -4,6 +4,8 @@ Read .agent/project_context.md if it exists for project-specific file paths, tec
 
 Analyze the existing test coverage and design a comprehensive testing strategy adapted to the project's actual framework and language.
 
+OPAI CONTEXT: OPAI has 22 active tools — Python/Flask backends (tools/opai-engine, tools/opai-portal, tools/opai-team-hub, tools/opai-brain, tools/opai-wordpress, etc.) and Node.js services (tools/opai-telegram, tools/opai-email-agent, tools/discord-bridge, tools/email-checker). Currently minimal test coverage across all tools. Key test targets: Engine task processor (tools/opai-engine/services/task_processor.py), Engine guardrails (tools/opai-engine/services/guardrails.py), Team Hub API routes, Portal auth flows, Email Agent ARL engine (tools/opai-email-agent/arl-engine.js), shared auth library (tools/shared/auth.py). Test frameworks: pytest for Python, Jest/Vitest for Node.js. Tests should live in `tests/` subdirectories within each tool.
+
 1. CURRENT STATE
    - Inventory all existing tests (search for test directories, __tests__/, *.test.*, *.spec.*)
    - What is covered? What is completely untested?
@@ -40,6 +42,22 @@ Analyze the existing test coverage and design a comprehensive testing strategy a
    - Coverage thresholds and reporting setup
 
 Provide actual test code scaffolding (describe blocks with test stubs) for the top 5 most critical test files.
+
+OPAI-SPECIFIC TEST PRIORITIES (in order):
+1. **Engine guardrails** (tools/opai-engine/services/guardrails.py) — safety-critical, prevents unauthorized agent actions
+2. **Auth middleware** (tools/shared/auth.py) — Supabase JWT validation, used by every tool
+3. **Task processor** (tools/opai-engine/services/task_processor.py) — core task execution pipeline
+4. **ARL engine** (tools/opai-email-agent/arl-engine.js) — email action rule language interpreter
+5. **Team Hub API** (tools/opai-team-hub/routes_api.py) — task CRUD, the operational backbone
+6. **Portal auth flows** (tools/opai-portal/app.py) — login, signup, session management
+7. **WordPress deployer** (tools/opai-wordpress/services/deployer.py) — writes to production sites
+
+TESTING RULES FOR OPAI:
+- Use real Supabase test project (idorgloobxkmlnwnxbej) for integration tests, not mocks
+- Use pytest fixtures for Flask app contexts
+- Email tests should mock IMAP/SMTP but test the classification and routing logic for real
+- Never mock the auth middleware — test it with real JWT tokens from Supabase
+- Test files go in `tools/<tool-name>/tests/` directories
 
 Format your response as valid markdown.
 Do not ask for clarification.

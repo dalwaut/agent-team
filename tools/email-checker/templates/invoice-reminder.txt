@@ -1,0 +1,43 @@
+# Template: Invoice / Payment Reminder (3-Stage)
+# Voice: boutabyte-professional
+# Trigger: When an invoice is past due — escalates from polite to firm
+
+## Subject Line Options
+- Friendly reminder — Invoice #{{invoice_number}}
+- Invoice #{{invoice_number}} — Payment reminder
+- Past due — Invoice #{{invoice_number}} for {{project_name}}
+
+## Body — First Notice (1-3 days past due)
+
+Hi {{client_name}},
+
+Quick heads up — invoice #{{invoice_number}} for {{amount}} was due on {{due_date}} and it looks like payment hasn't come through yet. These things slip through the cracks sometimes, so just wanted to flag it.
+
+You can pay via {{payment_method}} — the invoice is attached to the original email from {{invoice_send_date}}, or I can resend it if that's easier. Let me know if you have any questions about the charges.
+
+## Body — Second Notice (7-10 days past due)
+
+Hi {{client_name}},
+
+Following up on invoice #{{invoice_number}} for {{amount}}, which was due {{due_date}}. This is now {{days_overdue}} days past the original due date.
+
+If there's an issue with the invoice or if payment is being processed on your end, just let me know so I can update our records. Otherwise, I'd appreciate getting this taken care of at your earliest convenience. {{payment_link_or_instructions}}
+
+## Body — Final Notice (14+ days past due)
+
+Hi {{client_name}},
+
+This is a final reminder regarding invoice #{{invoice_number}} for {{amount}}, originally due {{due_date}}. The balance is now {{days_overdue}} days overdue.
+
+Please arrange payment within the next {{final_deadline}} days. If there are circumstances affecting payment, I'd like to discuss options — feel free to call me directly at {{phone_number}} or reply here.
+
+Per our agreement, {{late_policy}} applies to outstanding balances past {{grace_period}} days.
+
+## Notes
+- First notice is warm and assumes honest oversight — no pressure
+- Second notice is direct but professional — states the facts clearly
+- Final notice introduces consequences without being aggressive
+- Always offer a way to discuss if they're having payment issues
+- Check with Dallas before sending Final Notice — some clients get more flexibility
+- Never threaten legal action in email — that escalation happens offline
+- Include payment link when available to reduce friction

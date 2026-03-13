@@ -1,17 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OPAI — Dashboard</title>
+    <link rel="icon" type="image/png" href="/static/opai-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css?v=20260225">
 </head>
+
 <body class="dashboard-body">
     <!-- Loading state -->
     <div id="loading" class="loading-screen">
-        <div class="logo-3d">OP</div>
+        <img src="/static/opai-icon.png" alt="OPAI" style="width:72px;height:72px;margin-bottom:0.5rem;">
         <p>Loading...</p>
     </div>
 
@@ -19,7 +22,7 @@
     <div id="user-dashboard" class="dashboard hidden">
         <header class="dash-header">
             <div class="header-left">
-                <div class="logo-3d small">OP</div>
+                <img src="/static/opai-icon.png" alt="OPAI" style="width:32px;height:32px;">
                 <h1>OPAI</h1>
             </div>
             <div class="header-right">
@@ -36,7 +39,7 @@
     <div id="admin-dashboard" class="dashboard hidden">
         <header class="dash-header">
             <div class="header-left">
-                <div class="logo-3d small">OP</div>
+                <img src="/static/opai-icon.png" alt="OPAI" style="width:32px;height:32px;">
                 <h1>OPAI <span class="admin-badge">Admin</span></h1>
             </div>
             <div class="header-right">
@@ -60,17 +63,23 @@
             <div class="qs-card">
                 <div class="qs-label">CPU</div>
                 <div class="qs-value" id="qs-cpu">--</div>
-                <div class="qs-bar"><div class="qs-fill" id="qs-cpu-bar" style="width:0%"></div></div>
+                <div class="qs-bar">
+                    <div class="qs-fill" id="qs-cpu-bar" style="width:0%"></div>
+                </div>
             </div>
             <div class="qs-card">
                 <div class="qs-label">Memory</div>
                 <div class="qs-value" id="qs-mem">--</div>
-                <div class="qs-bar"><div class="qs-fill" id="qs-mem-bar" style="width:0%"></div></div>
+                <div class="qs-bar">
+                    <div class="qs-fill" id="qs-mem-bar" style="width:0%"></div>
+                </div>
             </div>
             <div class="qs-card">
                 <div class="qs-label">Disk</div>
                 <div class="qs-value" id="qs-disk">--</div>
-                <div class="qs-bar"><div class="qs-fill" id="qs-disk-bar" style="width:0%"></div></div>
+                <div class="qs-bar">
+                    <div class="qs-fill" id="qs-disk-bar" style="width:0%"></div>
+                </div>
             </div>
             <div class="qs-card">
                 <div class="qs-label">Uptime</div>
@@ -81,7 +90,8 @@
         <!-- Dashboard toolbar -->
         <div class="dash-toolbar" id="admin-toolbar">
             <div class="toolbar-left">
-                <input type="search" class="toolbar-search" id="admin-search" placeholder="Search tools..." autocomplete="off">
+                <input type="search" class="toolbar-search" id="admin-search" placeholder="Search tools..."
+                    autocomplete="off">
                 <select class="toolbar-sort" id="admin-sort" onchange="setAdminSort(this.value)">
                     <option value="default">Custom order</option>
                     <option value="az">Name A→Z</option>
@@ -92,10 +102,19 @@
             <div class="toolbar-right">
                 <div class="view-toggle" role="group" aria-label="View mode">
                     <button class="view-btn active" id="view-grid-btn" onclick="setAdminView('grid')" title="Grid view">
-                        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor">
+                            <rect x="1" y="1" width="6" height="6" rx="1" />
+                            <rect x="9" y="1" width="6" height="6" rx="1" />
+                            <rect x="1" y="9" width="6" height="6" rx="1" />
+                            <rect x="9" y="9" width="6" height="6" rx="1" />
+                        </svg>
                     </button>
                     <button class="view-btn" id="view-list-btn" onclick="setAdminView('list')" title="List view">
-                        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="2.5" rx="1"/><rect x="1" y="7" width="14" height="2.5" rx="1"/><rect x="1" y="12" width="14" height="2.5" rx="1"/></svg>
+                        <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor">
+                            <rect x="1" y="2" width="14" height="2.5" rx="1" />
+                            <rect x="1" y="7" width="14" height="2.5" rx="1" />
+                            <rect x="1" y="12" width="14" height="2.5" rx="1" />
+                        </svg>
                     </button>
                 </div>
                 <button class="save-layout-btn" id="save-layout-btn" onclick="saveAdminLayout()">Save Layout</button>
@@ -146,34 +165,38 @@
         // v2 Active Services (2026-02-25)
         const ADMIN_CARDS = [
             // ── Core v2 Services ──────────────────────────────────────
-            { id: 'engine',       href: '/engine/',       icon: '🔧', title: 'Command Center',  desc: 'Tasks, workers, system health, logs, settings',        css: 'card-engine',       svcKey: 'engine' },
-            { id: 'files',        href: '/files/',        icon: '📁', title: 'OPAI Files',     desc: 'Browse, edit, and manage workspace files',             css: 'card-files',        svcKey: 'files' },
-            { id: 'team-hub',     href: '/team-hub/',     icon: '👥', title: 'Team Hub',       desc: 'Tasks, workspaces, and team collaboration',            css: 'card-team-hub',     svcKey: 'team-hub' },
-            { id: 'email-agent',  href: '/email-agent/',  icon: '📧', title: 'Email Agent',    desc: 'Autonomous email monitoring, drafting, and response',  css: 'card-email-agent',  svcKey: 'email-agent' },
-            { id: 'wordpress',    href: '/wordpress/',    icon: '🌐', title: 'OP WordPress',   desc: 'Multi-site WordPress management',                      css: 'card-wordpress',    svcKey: 'wordpress' },
-            { id: 'users',        href: '/users/',        icon: '🔑', title: 'User Controls',  desc: 'Manage users, access, preface prompts',                css: 'card-users',        svcKey: 'users' },
-            { id: 'openclaw',     href: '/engine/#openclaw', icon: '🦞', title: 'OpenClaw',       desc: 'Container instances, credential broker, Docker lifecycle', css: 'card-openclaw',     svcKey: 'oc-broker' },
+            { id: 'engine', href: '/engine/', icon: '🔧', title: 'Command Center', desc: 'Tasks, workers, system health, logs, settings', css: 'card-engine', svcKey: 'engine' },
+            { id: 'files', href: '/files/', icon: '📁', title: 'OPAI Files', desc: 'Browse, edit, and manage workspace files', css: 'card-files', svcKey: 'files' },
+            { id: 'team-hub', href: '/team-hub/', icon: '👥', title: 'Team Hub', desc: 'Tasks, workspaces, and team collaboration', css: 'card-team-hub', svcKey: 'team-hub' },
+            { id: 'email-agent', href: '/email-agent/', icon: '📧', title: 'Email Agent', desc: 'Autonomous email monitoring, drafting, and response', css: 'card-email-agent', svcKey: 'email-agent' },
+            { id: 'wordpress', href: '/wordpress/', icon: '🌐', title: 'OP WordPress', desc: 'Multi-site WordPress management', css: 'card-wordpress', svcKey: 'wordpress' },
+            { id: 'users', href: '/users/', icon: '🔑', title: 'User Controls', desc: 'Manage users, access, preface prompts', css: 'card-users', svcKey: 'users' },
+            { id: 'openclaw', href: '/engine/#openclaw', icon: '🦞', title: 'OpenClaw', desc: 'Container instances, credential broker, Docker lifecycle', css: 'card-openclaw', svcKey: 'oc-broker' },
             // ── Utilities ─────────────────────────────────────────────
-            { id: 'n8n',          href: 'https://n8n.boutabyte.com', icon: '⚙️', title: 'n8n Automations', desc: 'Workflow automation — triggers, actions, integrations', css: 'card-n8n', external: true },
-            { id: 'pages-manager',href: '/archive/',      icon: '🗃️', title: 'Pages Manager', desc: 'Manage, version, and deploy opai.boutabyte.com pages', css: 'card-pages-manager' },
-            { id: 'rustdesk',     href: '#',              icon: '🖨️', title: 'Remote Desktop', desc: 'RustDesk remote access',                               css: 'card-rustdesk',     svcKey: 'rustdesk', special: 'rustdesk' },
-            { id: 'brain',        href: '/brain/',        icon: '🧠', title: '2nd Brain',      desc: 'Cognitive layer — Library, Inbox, knowledge graph',    css: 'card-brain',        svcKey: 'brain' },
+            { id: 'n8n', href: 'https://n8n.boutabyte.com', icon: '⚙️', title: 'n8n Automations', desc: 'Workflow automation — triggers, actions, integrations', css: 'card-n8n', external: true },
+            { id: 'pages-manager', href: '/archive/', icon: '🗃️', title: 'Pages Manager', desc: 'Manage, version, and deploy opai.boutabyte.com pages', css: 'card-pages-manager' },
+            { id: 'rustdesk', href: '#', icon: '🖨️', title: 'Remote Desktop', desc: 'RustDesk remote access', css: 'card-rustdesk', svcKey: 'rustdesk', special: 'rustdesk' },
+            { id: 'vault', href: '/vault/', icon: '🔐', title: 'Vault', desc: 'Encrypted credential management', css: 'card-vault', svcKey: 'vault' },
+            { id: 'brain', href: '/brain/', icon: '🧠', title: '2nd Brain', desc: 'Cognitive layer — Library, Inbox, knowledge graph', css: 'card-brain', svcKey: 'brain' },
+            { id: 'studio', href: '/studio/', icon: '🎨', title: 'Studio', desc: 'AI image generation, editing, and media packaging', css: 'card-studio', svcKey: 'studio' },
+            { id: 'eliza-hub', href: '/eliza-hub/', icon: '🤖', title: 'Eliza Hub', desc: 'Autonomous agent management — ElizaOS runtime', css: 'card-eliza-hub', svcKey: 'eliza-hub' },
+            { id: 'docs', href: '/docs/', icon: '📖', title: 'Docs', desc: 'System documentation — wiki, search, browse', css: 'card-docs' },
             // ── v3 Deferred (services stopped, coming back later) ─────
-            { id: 'billing',      href: '/billing/',      icon: '💳', title: 'Billing',        desc: 'Subscriptions, usage, invoices',                       css: 'card-billing',      svcKey: 'billing',  deferred: true },
-            { id: 'helm',         href: '/helm/',         icon: '⚓', title: 'HELM',            desc: 'Autonomous business runner',                           css: 'card-helm',         svcKey: 'helm',     deferred: true },
-            { id: 'dam',          href: '/dam/',          icon: '🎯', title: 'DAM Bot',         desc: 'Do Anything Mode — meta-orchestrator',                 css: 'card-dam',          svcKey: 'dam',      deferred: true },
-            { id: 'bx4',          href: '/bx4/',          icon: '📈', title: 'Bx4',            desc: 'AI business intelligence',                             css: 'card-bx4',          svcKey: 'bx4',      deferred: true },
-            { id: 'marq',         href: '/marq/',         icon: '🎪', title: 'Marq',           desc: 'App store publisher agent',                            css: 'card-marq',         svcKey: 'marq',     deferred: true },
-            { id: 'prd',          href: '/prd/',          icon: '🧪', title: 'PRD Pipeline',  desc: 'Evaluate product ideas with PRDgent',                  css: 'card-prd',          svcKey: 'prd',      deferred: true },
+            { id: 'billing', href: '/billing/', icon: '💳', title: 'Billing', desc: 'Subscriptions, usage, invoices', css: 'card-billing', svcKey: 'billing', deferred: true },
+            { id: 'helm', href: '/helm/', icon: '⚓', title: 'HELM', desc: 'Autonomous business runner', css: 'card-helm', svcKey: 'helm', deferred: true },
+            { id: 'dam', href: '/dam/', icon: '🎯', title: 'DAM Bot', desc: 'Do Anything Mode — meta-orchestrator', css: 'card-dam', svcKey: 'dam', deferred: true },
+            { id: 'bx4', href: '/bx4/', icon: '📈', title: 'Bx4', desc: 'AI business intelligence', css: 'card-bx4', svcKey: 'bx4', deferred: true },
+            { id: 'marq', href: '/marq/', icon: '🎪', title: 'Marq', desc: 'App store publisher agent', css: 'card-marq', svcKey: 'marq', deferred: true },
+            { id: 'prd', href: '/prd/', icon: '🧪', title: 'PRD Pipeline', desc: 'Idea-to-Build pipeline with PRDgent', css: 'card-prd', svcKey: 'prd' },
         ];
 
         // ── Admin Dashboard Layout State ─────────────────────────────────────
         const DASH_KEY = 'opai_dashboard_layout';
-        let _adminSvcs    = {};
-        let _adminOrder   = ADMIN_CARDS.map(c => c.id);
-        let _adminView    = 'grid';
-        let _adminSearch  = '';
-        let _adminSort    = 'default';
+        let _adminSvcs = {};
+        let _adminOrder = ADMIN_CARDS.map(c => c.id);
+        let _adminView = 'grid';
+        let _adminSearch = '';
+        let _adminSort = 'default';
         let _adminUnsaved = false;
         let _rustdeskData = null;
 
@@ -219,7 +242,7 @@
 
         // ── Render ───────────────────────────────────────────────────────────
         function escHtml(str) {
-            return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
         function highlightMatch(text, query) {
@@ -274,29 +297,29 @@
             }
 
             grid.innerHTML = cards.map(c => {
-                const dotHtml  = c.svcKey ? '<span class="health-dot dot-gray" id="health-admin-' + c.id + '" title="Checking..."></span>' : '';
+                const dotHtml = c.svcKey ? '<span class="health-dot dot-gray" id="health-admin-' + c.id + '" title="Checking..."></span>' : '';
                 const metaHtml = c.svcKey ? '<div class="card-meta" id="meta-admin-' + c.id + '"></div>' : '';
                 const gripHtml = isDraggable ? '<span class="card-drag-grip" title="Drag to reorder">⠿</span>' : '';
                 const draggableAttr = isDraggable ? ' draggable="true"' : '';
                 const target = c.external ? ' target="_blank" rel="noopener"' : '';
                 const onclickAttr = c.special === 'rustdesk' ? ' onclick="openRustDesk(event)"' : '';
                 const titleHl = highlightMatch(c.title, q);
-                const descHl  = highlightMatch(c.desc, q);
+                const descHl = highlightMatch(c.desc, q);
 
                 const deferredCls = c.deferred ? ' card-deferred' : '';
                 const deferredBadge = c.deferred ? '<span class="deferred-badge">v3</span>' : '';
 
                 return '<a href="' + c.href + '"' + target + onclickAttr + ' class="dash-card ' + c.css + deferredCls + '" data-card-id="' + c.id + '"' + draggableAttr + '>' +
                     '<div class="card-header-row">' +
-                        '<div class="card-icon">' + c.icon + '</div>' +
-                        '<div class="card-header-right">' + deferredBadge + gripHtml + dotHtml + '</div>' +
+                    '<div class="card-icon">' + c.icon + '</div>' +
+                    '<div class="card-header-right">' + deferredBadge + gripHtml + dotHtml + '</div>' +
                     '</div>' +
                     '<div class="card-body">' +
-                        '<h2>' + titleHl + '</h2>' +
-                        '<p>' + descHl + '</p>' +
+                    '<h2>' + titleHl + '</h2>' +
+                    '<p>' + descHl + '</p>' +
                     '</div>' +
                     metaHtml +
-                '</a>';
+                    '</a>';
             }).join('');
 
             // Re-apply health data to newly rendered dots
@@ -311,7 +334,7 @@
             let dragSrc = null;
 
             grid.querySelectorAll('.dash-card[draggable="true"]').forEach(card => {
-                card.addEventListener('dragstart', function(e) {
+                card.addEventListener('dragstart', function (e) {
                     dragSrc = this;
                     e.dataTransfer.effectAllowed = 'move';
                     e.dataTransfer.setData('text/plain', this.dataset.cardId);
@@ -319,7 +342,7 @@
                     requestAnimationFrame(() => this.classList.add('drag-source'));
                 });
 
-                card.addEventListener('dragend', function() {
+                card.addEventListener('dragend', function () {
                     this.classList.remove('drag-source');
                     grid.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
                     // Capture new order from DOM
@@ -330,7 +353,7 @@
                     dragSrc = null;
                 });
 
-                card.addEventListener('dragover', function(e) {
+                card.addEventListener('dragover', function (e) {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'move';
                     if (!dragSrc || this === dragSrc) return;
@@ -338,11 +361,11 @@
                     this.classList.add('drag-over');
                 });
 
-                card.addEventListener('dragleave', function() {
+                card.addEventListener('dragleave', function () {
                     this.classList.remove('drag-over');
                 });
 
-                card.addEventListener('drop', function(e) {
+                card.addEventListener('drop', function (e) {
                     e.preventDefault();
                     if (!dragSrc || this === dragSrc) return;
                     this.classList.remove('drag-over');
@@ -379,7 +402,7 @@
             ADMIN_CARDS.forEach(c => {
                 if (!c.svcKey) return;
                 const svc = _adminSvcs[c.svcKey];
-                const dotId  = 'health-admin-' + c.id;
+                const dotId = 'health-admin-' + c.id;
                 const metaId = 'meta-admin-' + c.id;
                 if (svc) {
                     setDot(dotId, svc.status === 'healthy');
@@ -457,14 +480,14 @@
                 if (!resp.ok) return;
                 const data = await resp.json();
 
-                const cpuPct  = data.cpu_percent || 0;
-                const memPct  = data.memory?.percent || 0;
+                const cpuPct = data.cpu_percent || 0;
+                const memPct = data.memory?.percent || 0;
                 const diskPct = data.disk?.percent || 0;
 
-                document.getElementById('qs-cpu').textContent  = cpuPct.toFixed(0) + '%';
-                document.getElementById('qs-cpu-bar').style.width  = cpuPct + '%';
-                document.getElementById('qs-mem').textContent  = memPct.toFixed(0) + '%';
-                document.getElementById('qs-mem-bar').style.width  = memPct + '%';
+                document.getElementById('qs-cpu').textContent = cpuPct.toFixed(0) + '%';
+                document.getElementById('qs-cpu-bar').style.width = cpuPct + '%';
+                document.getElementById('qs-mem').textContent = memPct.toFixed(0) + '%';
+                document.getElementById('qs-mem-bar').style.width = memPct + '%';
                 document.getElementById('qs-disk').textContent = diskPct.toFixed(0) + '%';
                 document.getElementById('qs-disk-bar').style.width = diskPct + '%';
                 if (data.uptime_seconds) {
@@ -476,13 +499,15 @@
         // ── User Cards (unchanged) ────────────────────────────────────────────
         // v2 User-visible apps (admin assigns via allowed_apps)
         const APP_CARDS = {
-            files:     { href: '/files/',     icon: '📁', title: 'My Files',    desc: 'Browse, edit, and manage your workspace files',              css: 'card-files' },
+            files: { href: '/files/', icon: '📁', title: 'My Files', desc: 'Browse, edit, and manage your workspace files', css: 'card-files' },
             'team-hub': { href: '/team-hub/', icon: '👥', title: 'Team Hub', desc: 'Tasks, workspaces, and team collaboration', css: 'card-team-hub' },
-            'my-vault': { href: '/vault/my/', icon: '🔐', title: 'My Vault', desc: 'Personal encrypted vault', css: 'card-vault' },
+            vault: { href: '/vault/my/', icon: '🔐', title: 'My Vault', desc: 'Personal encrypted vault', css: 'card-vault' },
+            studio: { href: '/studio/', icon: '🎨', title: 'Studio', desc: 'AI image generation, editing, and media tools', css: 'card-studio' },
             'email-agent': { href: '/email-agent/', icon: '📧', title: 'Email Agent', desc: 'Autonomous email monitoring, drafting, and response', css: 'card-email-agent' },
-            wordpress:  { href: '/wordpress/', icon: '🌐', title: 'OP WordPress', desc: 'Multi-site WordPress management', css: 'card-wordpress' },
-            users:     { href: '/users/',     icon: '🔑', title: 'User Controls',desc: 'Manage users, access, preface prompts',                    css: 'card-users' },
-            engine:    { href: '/engine/',    icon: '🔧', title: 'Command Center', desc: 'Tasks, workers, system health, logs',                    css: 'card-engine' },
+            wordpress: { href: '/wordpress/', icon: '🌐', title: 'OP WordPress', desc: 'Multi-site WordPress management', css: 'card-wordpress' },
+            users: { href: '/users/', icon: '🔑', title: 'User Controls', desc: 'Manage users, access, preface prompts', css: 'card-users' },
+            engine: { href: '/engine/', icon: '🔧', title: 'Command Center', desc: 'Tasks, workers, system health, logs', css: 'card-engine' },
+            docs: { href: '/docs/', icon: '📖', title: 'Docs', desc: 'Documentation and guides', css: 'card-docs' },
         };
 
         const _cb = '?_=' + Date.now();
@@ -501,12 +526,12 @@
                     const target = c.external ? ' target="_blank" rel="noopener"' : '';
                     return '<a href="' + href + '"' + target + ' class="dash-card ' + c.css + '">' +
                         '<div class="card-header-row">' +
-                            '<div class="card-icon">' + c.icon + '</div>' +
-                            '<span class="health-dot dot-gray" id="health-user-' + id + '" title="Checking..."></span>' +
+                        '<div class="card-icon">' + c.icon + '</div>' +
+                        '<span class="health-dot dot-gray" id="health-user-' + id + '" title="Checking..."></span>' +
                         '</div>' +
                         '<h2>' + c.title + '</h2>' +
                         '<p>' + c.desc + '</p>' +
-                    '</a>';
+                        '</a>';
                 }).join('');
         }
 
@@ -514,6 +539,28 @@
         (async () => {
             const resp = await fetch('/auth/config');
             const cfg = await resp.json();
+
+            // Local access bypass: skip Supabase auth, render as admin
+            if (cfg.auth_disabled) {
+                window._opaiUserId = 'local';
+                window._opaiUserEmail = 'admin@localhost';
+                window._opaiToken = null;
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('admin-name').textContent = 'Admin (local)';
+                document.getElementById('admin-dashboard').classList.remove('hidden');
+                loadAdminLayout();
+                setAdminView(_adminView);
+                renderAdminCards();
+                initAdminSearch();
+                fetchHealth(true);
+                fetchStats();
+                fetchRustDesk();
+                setInterval(() => fetchHealth(true), 30000);
+                setInterval(fetchStats, 10000);
+                setInterval(fetchRustDesk, 60000);
+                window.opaiAuth = { signOut: () => { window.location.href = '/auth/login'; } };
+                return;
+            }
 
             if (!cfg.supabase_url || !cfg.supabase_anon_key) {
                 document.getElementById('loading').innerHTML = '<p>Auth not configured</p>';
@@ -547,9 +594,9 @@
                 } catch (e) { /* proceed */ }
             }
 
-            window._opaiUserId    = user.id;
+            window._opaiUserId = user.id;
             window._opaiUserEmail = user.email;
-            window._opaiToken     = session.access_token;
+            window._opaiToken = session.access_token;
             sb.auth.onAuthStateChange((_event, sess) => {
                 if (sess) window._opaiToken = sess.access_token;
             });
@@ -578,7 +625,7 @@
                 document.getElementById('user-name').textContent = displayName;
                 document.getElementById('user-welcome').textContent = 'Welcome, ' + displayName;
 
-                let allowedApps = ['files', 'team-hub'];
+                let allowedApps = ['files', 'team-hub', 'docs'];
                 try {
                     const appsResp = await fetch('/api/me/apps', {
                         headers: { 'Authorization': 'Bearer ' + session.access_token },
@@ -620,7 +667,8 @@
                 <!-- Feedback panel -->
                 <div class="fb-panel active" id="fb-panel-feedback">
                     <label class="fb-label">What's on your mind?</label>
-                    <textarea class="fb-textarea" id="fb-text" placeholder="Bug report, suggestion, or general feedback..."></textarea>
+                    <textarea class="fb-textarea" id="fb-text"
+                        placeholder="Bug report, suggestion, or general feedback..."></textarea>
                     <p class="fb-hint">Your feedback is reviewed by the team and AI agents to improve the platform.</p>
                     <button class="fb-submit" id="fb-submit" onclick="submitFeedback()">Send Feedback</button>
                     <div class="fb-status" id="fb-status"></div>
@@ -635,8 +683,10 @@
                         <option value="feature">Feature Enhancement</option>
                     </select>
                     <label class="fb-label">Describe your request</label>
-                    <textarea class="fb-textarea" id="req-text" placeholder="What would you like to see built or added? Be as specific as you can..."></textarea>
-                    <p class="fb-hint">Requests are submitted as system tasks, reviewed by AI agents, and triaged for the team.</p>
+                    <textarea class="fb-textarea" id="req-text"
+                        placeholder="What would you like to see built or added? Be as specific as you can..."></textarea>
+                    <p class="fb-hint">Requests are submitted as system tasks, reviewed by AI agents, and triaged for
+                        the team.</p>
                     <button class="fb-submit" id="req-submit" onclick="submitRequest()">Submit Request</button>
                     <div class="fb-status" id="req-status"></div>
                 </div>
@@ -645,100 +695,101 @@
     </div>
 
     <script>
-    function openFeedbackModal() {
-        document.getElementById('fb-overlay').classList.add('open');
-    }
-    function closeFeedbackModal() {
-        document.getElementById('fb-overlay').classList.remove('open');
-        document.getElementById('fb-status').textContent = '';
-        document.getElementById('fb-status').className = 'fb-status';
-        document.getElementById('req-status').textContent = '';
-        document.getElementById('req-status').className = 'fb-status';
-    }
-    function switchFbTab(tab) {
-        document.querySelectorAll('.fb-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-        document.querySelectorAll('.fb-panel').forEach(p => p.classList.toggle('active', p.id === 'fb-panel-' + tab));
-    }
+        function openFeedbackModal() {
+            document.getElementById('fb-overlay').classList.add('open');
+        }
+        function closeFeedbackModal() {
+            document.getElementById('fb-overlay').classList.remove('open');
+            document.getElementById('fb-status').textContent = '';
+            document.getElementById('fb-status').className = 'fb-status';
+            document.getElementById('req-status').textContent = '';
+            document.getElementById('req-status').className = 'fb-status';
+        }
+        function switchFbTab(tab) {
+            document.querySelectorAll('.fb-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+            document.querySelectorAll('.fb-panel').forEach(p => p.classList.toggle('active', p.id === 'fb-panel-' + tab));
+        }
 
-    async function submitFeedback() {
-        const text = document.getElementById('fb-text').value.trim();
-        const status = document.getElementById('fb-status');
-        const btn = document.getElementById('fb-submit');
-        if (!text) { status.textContent = 'Please enter your feedback.'; status.className = 'fb-status error'; return; }
+        async function submitFeedback() {
+            const text = document.getElementById('fb-text').value.trim();
+            const status = document.getElementById('fb-status');
+            const btn = document.getElementById('fb-submit');
+            if (!text) { status.textContent = 'Please enter your feedback.'; status.className = 'fb-status error'; return; }
 
-        btn.disabled = true;
-        btn.textContent = 'Sending...';
-        status.textContent = '';
-        try {
-            const resp = await fetch('/api/feedback', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_text: text,
-                    tool: 'portal',
-                    page_path: '/dashboard',
-                    user_id: window._opaiUserId || null,
-                    user_email: window._opaiUserEmail || null,
-                }),
-            });
-            const data = await resp.json();
-            if (data.ok) {
-                status.textContent = 'Thank you! Your feedback has been submitted.';
-                status.className = 'fb-status success';
-                document.getElementById('fb-text').value = '';
-                setTimeout(closeFeedbackModal, 2000);
-            } else {
-                status.textContent = data.error || 'Something went wrong.';
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+            status.textContent = '';
+            try {
+                const resp = await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_text: text,
+                        tool: 'portal',
+                        page_path: '/dashboard',
+                        user_id: window._opaiUserId || null,
+                        user_email: window._opaiUserEmail || null,
+                    }),
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    status.textContent = 'Thank you! Your feedback has been submitted.';
+                    status.className = 'fb-status success';
+                    document.getElementById('fb-text').value = '';
+                    setTimeout(closeFeedbackModal, 2000);
+                } else {
+                    status.textContent = data.error || 'Something went wrong.';
+                    status.className = 'fb-status error';
+                }
+            } catch (e) {
+                status.textContent = 'Network error. Please try again.';
                 status.className = 'fb-status error';
             }
-        } catch (e) {
-            status.textContent = 'Network error. Please try again.';
-            status.className = 'fb-status error';
+            btn.disabled = false;
+            btn.textContent = 'Send Feedback';
         }
-        btn.disabled = false;
-        btn.textContent = 'Send Feedback';
-    }
 
-    async function submitRequest() {
-        const type = document.getElementById('req-type').value;
-        const text = document.getElementById('req-text').value.trim();
-        const status = document.getElementById('req-status');
-        const btn = document.getElementById('req-submit');
-        if (!text) { status.textContent = 'Please describe your request.'; status.className = 'fb-status error'; return; }
+        async function submitRequest() {
+            const type = document.getElementById('req-type').value;
+            const text = document.getElementById('req-text').value.trim();
+            const status = document.getElementById('req-status');
+            const btn = document.getElementById('req-submit');
+            if (!text) { status.textContent = 'Please describe your request.'; status.className = 'fb-status error'; return; }
 
-        btn.disabled = true;
-        btn.textContent = 'Submitting...';
-        status.textContent = '';
-        try {
-            const resp = await fetch('/api/request', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    request_type: type,
-                    description: text,
-                    user_id: window._opaiUserId || null,
-                    user_email: window._opaiUserEmail || null,
-                }),
-            });
-            const data = await resp.json();
-            if (data.ok) {
-                status.textContent = 'Request submitted! Task ' + data.task_id + ' created.';
-                status.className = 'fb-status success';
-                document.getElementById('req-text').value = '';
-                setTimeout(closeFeedbackModal, 2500);
-            } else {
-                status.textContent = data.error || 'Something went wrong.';
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+            status.textContent = '';
+            try {
+                const resp = await fetch('/api/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        request_type: type,
+                        description: text,
+                        user_id: window._opaiUserId || null,
+                        user_email: window._opaiUserEmail || null,
+                    }),
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    status.textContent = 'Request submitted! Task ' + data.task_id + ' created.';
+                    status.className = 'fb-status success';
+                    document.getElementById('req-text').value = '';
+                    setTimeout(closeFeedbackModal, 2500);
+                } else {
+                    status.textContent = data.error || 'Something went wrong.';
+                    status.className = 'fb-status error';
+                }
+            } catch (e) {
+                status.textContent = 'Network error. Please try again.';
                 status.className = 'fb-status error';
             }
-        } catch (e) {
-            status.textContent = 'Network error. Please try again.';
-            status.className = 'fb-status error';
+            btn.disabled = false;
+            btn.textContent = 'Submit Request';
         }
-        btn.disabled = false;
-        btn.textContent = 'Submit Request';
-    }
     </script>
 
     <!-- v2: messenger + docs widgets removed (services archived) -->
 </body>
+
 </html>

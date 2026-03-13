@@ -1004,6 +1004,10 @@ WP.Management = {
                 WP.toast(result.message, 'error');
                 return;
             }
+            if (result.status === 'manual_required') {
+                WP.toast('Auto-install failed: ' + (result.message || 'Manual install required'), 'error');
+                return;
+            }
             WP.toast('OPAI Connector installed!');
             await WP.Sites.load();
             WP.currentSite = WP.sites.find(function(s) { return s.id === WP.currentSite.id; });

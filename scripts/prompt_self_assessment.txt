@@ -10,9 +10,9 @@ SCOPE — Read only these paths:
 - tasks/queue.json                 — deferred work queue
 - logs/orchestrator.log            — orchestrator runtime log (last 500 lines)
 - reports/latest/                  — most recent agent run reports (ALL .md files)
-- tools/opai-orchestrator/         — orchestrator source (index.js, package.json)
-- tools/opai-monitor/data/         — monitor state files
-- tools/opai-tasks/                — task control panel (routes, services, config)
+- tools/opai-engine/background/    — Engine background tasks (scheduler, heartbeat, fleet, etc.)
+- tools/opai-engine/data/          — Engine state files (engine-state.json, heartbeat-state.json, etc.)
+- tools/opai-engine/config.py      — Engine configuration constants
 - tools/opai-email-agent/data/     — email agent state and action log
 - tools/discord-bridge/data/       — bot logs and active sessions
 - scripts/                         — runner scripts only (run_squad.sh, run_auto.sh, post_squad_hook.py)
@@ -38,8 +38,8 @@ Provide a top-level dashboard (table format):
 | Discord Bridge | OK / WARN / ERROR | ... | ... |
 | Monitor | OK / WARN / ERROR | ... | ... |
 | Task Control Panel | OK / WARN / ERROR | ... | ... |
-| Evolve Loop | Enabled / Disabled | <next scheduled> | ... |
-| Self-Assessment | Enabled / Disabled | <last run> | ... |
+| Daily Evolve | Enabled / Disabled | <next scheduled> | 4-phase pipeline: auto_safe → apply → evolve → email |
+| Self-Assessment | OK / WARN | <last run> | Phase 3 of daily_evolve |
 
 Read logs/orchestrator.log and tools/opai-email-agent/data/action-log.json and tools/discord-bridge/data/bot.log to populate this table.
 
@@ -89,12 +89,15 @@ Output a table:
 ## 5. CONFIGURATION DRIFT
 
 Read config/orchestrator.json:
-- Are the self_assessment and evolution cron schedules correctly set?
-- Are the scheduled tasks enabled? (check each entry under "schedules")
-- Is the evolve.enabled flag true?
+- Is the `daily_evolve` cron schedule present and correctly set to `"0 2 * * *"`?
+- Are all scheduled tasks enabled? (check each entry under "schedules")
+- Is the `evolve.enabled` flag true?
+- Does the `evolve.daily_evolve.phases` array contain all 4 phases: auto_safe, apply_fixes, evolve, email?
 - Are there any misconfigured fields (empty strings, nulls where values expected)?
+- Confirm there are NO old `self_assessment` or `evolution` entries in the schedules block (these were consolidated into `daily_evolve`)
 
-Read tools/opai-tasks/config.py and tools/opai-orchestrator/index.js:
+Read tools/opai-engine/config.py and tools/opai-engine/background/scheduler.py:
+- Does the scheduler dispatch table include a `daily_evolve` handler?
 - Do the paths and ports match what's in orchestrator.json?
 - Are there hardcoded paths pointing to wrong locations?
 
@@ -167,3 +170,24 @@ FORMAT RULES:
 - Do NOT reference Projects/, Notes/, or Library/ paths
 - Do NOT ask for clarification
 - Total report length: aim for 600–1000 lines — thorough but focused
+
+## Feedback (End of Report)
+
+At the END of your report, include a feedback block for future runs.
+Wrap it in an HTML comment so it stays hidden from the visible report:
+
+<!-- FEEDBACK
+{
+  "hints": ["investigation strategies that proved useful"],
+  "missing": ["information you needed but couldn't find in the docs"],
+  "corrections": ["any outdated or wrong info you found in wiki/docs"]
+}
+-->
+
+Rules:
+- Only include items you're genuinely confident about
+- Empty arrays are fine — don't force feedback
+- Keep each item to 1-2 sentences
+- "hints" = what would help YOU next time you run this same task
+- "missing" = knowledge gaps that should be documented
+- "corrections" = specific factual errors (cite the file/doc)

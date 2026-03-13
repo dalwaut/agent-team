@@ -1,0 +1,31 @@
+# Template: Client Proposal
+# Voice: boutabyte-professional
+# Trigger: When sending a project proposal to a prospective or existing client
+
+## Subject Line Options
+- Proposal: {{project_name}} — {{company_name}}
+- {{project_name}} — Project Proposal for {{client_name}}
+- Your {{project_name}} Proposal from Boutabyte
+
+## Body
+
+Hi {{client_name}},
+
+Thanks for taking the time to discuss {{project_name}} with us. Based on our conversation, I've put together a proposal that outlines our approach, timeline, and investment.
+
+Here's a quick overview of what we'd be tackling. {{scope_summary}} — covering everything from {{scope_item_1}} through {{scope_item_2}} and {{scope_item_3}}. Our goal is to deliver something that {{project_goal}}.
+
+In terms of timeline, we're looking at roughly {{timeline_duration}} from kickoff to launch. We'd start with {{phase_1}} during the first {{phase_1_duration}}, move into {{phase_2}} for {{phase_2_duration}}, and wrap with {{phase_3}} in the final {{phase_3_duration}}. That puts us at an estimated completion around {{target_date}}.
+
+For this scope, the total investment comes to {{total_price}}. {{payment_terms}} — we typically structure it as {{deposit_amount}} to get started, with the remainder due {{remainder_schedule}}.
+
+If this looks good, the next step is straightforward — just reply to confirm and we'll send over the agreement to get things moving. If you have any questions or want to adjust the scope, I'm happy to hop on a quick call to work through it.
+
+Looking forward to working together on this one.
+
+## Notes
+- Replace all {{placeholders}} with actual project details
+- Scope summary should be 1-2 sentences max — keep it high-level
+- Payment terms vary by project size — check with Dallas for specifics
+- For larger projects (over $5k), consider attaching a separate PDF with detailed scope
+- Always send from the boutabyte or paradise-web account, not personal

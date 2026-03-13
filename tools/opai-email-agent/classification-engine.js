@@ -345,7 +345,7 @@ function rebuildUnderstandingsInPlace(cls) {
       const domain = addr.split('@')[1];
       if (domain) domainCounts[domain] = (domainCounts[domain] || 0) + 1;
     }
-    for (const t of (a.tags || [])) {
+    for (const t of (a.labels || a.tags || [])) {
       tagCounts[t] = (tagCounts[t] || 0) + 1;
     }
   }

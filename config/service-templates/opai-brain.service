@@ -9,6 +9,7 @@ ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-
 ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8101
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=10
 Environment=PYTHONUNBUFFERED=1
 Environment=PATH=/home/dallas/.nvm/versions/node/v20.19.5/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile=-/workspace/synced/opai/tools/opai-brain/.env

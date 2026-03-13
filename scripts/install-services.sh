@@ -86,15 +86,6 @@ if [ -d "$OPAI_ROOT/tools/email-checker" ]; then
     fi
 fi
 
-# Orchestrator
-if [ -d "$OPAI_ROOT/tools/opai-orchestrator" ]; then
-    cd "$OPAI_ROOT/tools/opai-orchestrator"
-    if [ -f "package.json" ]; then
-        npm install --production
-        log_success "Orchestrator dependencies installed"
-    fi
-fi
-
 cd "$OPAI_ROOT"
 
 # ──────────────────────────────────────────────────────────

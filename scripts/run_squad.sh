@@ -213,6 +213,28 @@ fi
 # --- Helper: build full prompt ---
 build_prompt() {
     local prompt_file="$1"
+    local agent_name="${2:-}"
+
+    # Inject learned hints from previous runs (if Engine is available)
+    if [[ -n "$agent_name" ]]; then
+        local hints=""
+        hints=$(curl -sf "http://localhost:8080/api/agent-feedback?role=${agent_name}&active=true&limit=10" 2>/dev/null || echo "")
+
+        if [[ -n "$hints" ]] && [[ "$hints" != '{"items":[]'* ]] && [[ "$hints" != *'"error"'* ]]; then
+            local hint_lines
+            hint_lines=$(echo "$hints" | jq -r '.items[]? | "- " + .content + " (confidence: " + (.confidence|tostring) + ")"' 2>/dev/null || echo "")
+            if [[ -n "$hint_lines" ]]; then
+                echo "## Previous Run Insights"
+                echo "(Learned from past runs — use as starting context, not gospel)"
+                echo ""
+                echo "$hint_lines"
+                echo ""
+                echo "---"
+                echo ""
+            fi
+        fi
+    fi
+
     cat "$prompt_file"
     cat <<'INSTRUCTIONS'
 
@@ -367,7 +389,7 @@ run_agent() {
 
     local temp_prompt
     temp_prompt=$(mktemp /tmp/claude_prompt_${name}.XXXXXX)
-    build_prompt "$prompt_file" > "$temp_prompt"
+    build_prompt "$prompt_file" "$name" > "$temp_prompt"
 
     unset CLAUDECODE  # prevent nested-spawn block when run inside a Claude Code session
     if agent_out=$(cd "$PROJECT_ROOT" && cat "$temp_prompt" | claude -p --output-format text 2>&1); then
@@ -400,7 +422,25 @@ echo "Output: $output_file"
 echo ""
 
 temp_prompt=\$(mktemp /tmp/claude_prompt_${name}.XXXXXX)
-cat "$prompt_file" > "\$temp_prompt"
+
+# Inject learned hints from previous runs
+hints=\$(curl -sf "http://localhost:8080/api/agent-feedback?role=${name}&active=true&limit=10" 2>/dev/null || echo "")
+if [[ -n "\$hints" ]] && [[ "\$hints" != '{"items":[]'* ]] && [[ "\$hints" != *'"error"'* ]]; then
+    hint_lines=\$(echo "\$hints" | jq -r '.items[]? | "- " + .content + " (confidence: " + (.confidence|tostring) + ")"' 2>/dev/null || echo "")
+    if [[ -n "\$hint_lines" ]]; then
+        {
+            echo "## Previous Run Insights"
+            echo "(Learned from past runs — use as starting context, not gospel)"
+            echo ""
+            echo "\$hint_lines"
+            echo ""
+            echo "---"
+            echo ""
+        } > "\$temp_prompt"
+    fi
+fi
+
+cat "$prompt_file" >> "\$temp_prompt"
 cat <<'INST' >> "\$temp_prompt"
 
 IMPORTANT INSTRUCTIONS:

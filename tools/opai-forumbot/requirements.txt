@@ -1,1 +1,1 @@
-croniter
+croniter>=1.4.0

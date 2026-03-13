@@ -30,7 +30,7 @@ Each playbook is a self-contained brief. HELM reads these to understand what a b
 | **Tools & Infrastructure** | What's needed to deliver — existing OPAI tools, new builds, third-party services |
 | **OPAI/HELM Integration** | What already exists, what needs building, estimated effort |
 | **Source** | Where the idea came from (video, research, manual input) |
-| **Status** | `Idea` > `Researched` > `Ready to Build` > `Active` > `Retired` |
+| **Status** | `Idea` > `Draft` > `Researched` > `Ready to Build` > `Active` > `Retired` |
 
 ### Optional Sections
 
@@ -46,8 +46,10 @@ Each playbook is a self-contained brief. HELM reads these to understand what a b
 
 | Playbook | Status | Category | Revenue Potential |
 |----------|--------|----------|-------------------|
-| [GEO Audit & Optimization Service](geo-audit-service.md) | Idea | Agency / Marketing | High ($1K-5K/client) |
-| [AIOS Consulting & Vertical Packages](aios-consulting-service.md) | Idea | Consulting | Very High ($8K-30K/client + $1.5K-5K/mo retainer) |
+| [GEO Audit & Optimization Service](geo-audit-service.md) | **Draft** | Agency / Marketing | High ($1K-5K/client) |
+| [AIOS Consulting & Vertical Packages](aios-consulting-service.md) | **Draft** | Consulting | Very High ($8K-30K/client + $1.5K-5K/mo retainer) |
+| [Customer Onboarding Playbook](customer-onboarding-playbook.md) | **Draft** | Consulting / Operations | (supports AIOS + all services) |
+| [Affiliate Revenue Streams](affiliate-revenue-streams.md) | Idea | Passive Income / Affiliate | Medium (compounding recurring commissions) |
 
 ---
 
@@ -58,12 +60,32 @@ Each playbook is a self-contained brief. HELM reads these to understand what a b
 - **Commerce** — Physical or digital product sales via managed storefronts
 - **Content / Media** — Revenue from content creation, publishing, monetization
 - **Consulting** — High-touch advisory services with AI-powered delivery
+- **Passive Income / Affiliate** — Recurring commissions from tools we use and recommend
+
+## Supporting Reference Material
+
+These reference docs support all playbook execution:
+
+| Document | Path | Purpose |
+|----------|------|---------|
+| Tool Selection Guide | `Library/knowledge/reference/tool-selection-guide.md` | Which OPAI tool for which task |
+| Client Onboarding Checklist | `Library/knowledge/reference/client-onboarding-checklist.md` | Step-by-step client intake process |
+| Service Delivery Workflow | `Library/knowledge/reference/service-delivery-workflow.md` | Lead-to-invoice pipeline |
+| Agency Pricing Framework | `Library/knowledge/reference/agency-pricing-framework.md` | Cost model, pricing tiers, competitive positioning |
+| HELM Business Handoff | `Templates/helm-business-brief.md` | Client intake form for HELM configuration |
+| AI-Native SaaS Playbook | `ai-native-saas-playbook.md` | 30-step framework for AI-native SaaS businesses |
+| Customer Onboarding Playbook | `customer-onboarding-playbook.md` | SOP for deploying consulting to paying customers: qualification, assessment, deployment, training, retainer |
+| OPAI Glossary | `Library/knowledge/reference/opai-glossary.md` | All OPAI terms and acronyms defined |
+| Disaster Recovery Plan | `Library/knowledge/reference/disaster-recovery-plan.md` | Recovery procedures for 7 failure scenarios |
+
+---
 
 ## Adding New Playbooks
 
 1. Create `<slug>.md` in this folder using the format above
 2. Add a row to the Playbook Index table in this README
 3. Set status to `Idea` initially
-4. When R&D is complete, update to `Researched` with findings
-5. When implementation plan exists, update to `Ready to Build`
-6. HELM promotes to `Active` when the business is live and operating
+4. When concrete implementation steps are written, update to `Draft`
+5. When R&D is complete, update to `Researched` with findings
+6. When implementation plan exists and resources are allocated, update to `Ready to Build`
+7. HELM promotes to `Active` when the business is live and operating

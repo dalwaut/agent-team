@@ -18,6 +18,7 @@ async def run(business_id: str, job_config: dict):
         log.warning("Business not found: %s", business_id)
         return
     business = biz_rows[0]
+    biz_name = business.get("name", "Business")
 
     # Load recent actions (last 7 days) — use Z suffix, not +00:00 (breaks URL query)
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%S.%f') + 'Z'
@@ -45,6 +46,32 @@ async def run(business_id: str, job_config: dict):
     extra_context = f"## Recent Actions (last 7 days)\n{action_summary or 'No actions this week.'}"
     if knowledge_summary:
         extra_context += f"\n\n## Knowledge Base\n{knowledge_summary}"
+
+    # Try NotebookLM pre-analysis (free, reduces Claude token usage)
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared"))
+        from nlm import (
+            is_available, get_client, ensure_notebook,
+            add_source_text, ask_notebook,
+        )
+
+        if is_available():
+            client = await get_client()
+            async with client:
+                nb_id = await ensure_notebook(client, f"HELM: {biz_name}")
+                await add_source_text(client, nb_id, "Weekly Actions", extra_context)
+                pre_result = await ask_notebook(
+                    client, nb_id,
+                    "Analyze performance trends, anomalies, and areas needing attention from these business actions."
+                )
+                pre_analysis = pre_result.get("answer", "")
+                if pre_analysis:
+                    extra_context += f"\n\n## Pre-Analysis (NotebookLM)\n{pre_analysis}"
+                    log.info("NotebookLM pre-analysis added for %s", biz_name)
+    except Exception as nlm_err:
+        log.debug("NotebookLM pre-analysis unavailable for %s: %s", biz_name, nlm_err)
 
     # Call Claude
     result = await call_claude(
@@ -81,13 +108,37 @@ async def run(business_id: str, job_config: dict):
     report = report_row[0] if isinstance(report_row, list) else report_row
     report_id = report.get("id", "")
 
+    # Optional: generate audio briefing via NotebookLM
+    audio_path = None
+    try:
+        from nlm import is_available as nlm_available, get_client as nlm_client, ensure_notebook as nlm_notebook, add_source_text as nlm_text, generate_audio as nlm_audio
+        if nlm_available():
+            client = await nlm_client()
+            async with client:
+                nb_id = await nlm_notebook(client, f"HELM: {biz_name}")
+                await nlm_text(client, nb_id, f"Weekly Report {period_end_date}", report_content)
+                audio_result = await nlm_audio(
+                    client, nb_id,
+                    instructions=f"Create a concise audio briefing for the {biz_name} weekly business report covering {period_start_date} to {period_end_date}.",
+                    timeout=300,
+                )
+                audio_path = audio_result.get("path")
+                if audio_path:
+                    log.info("Audio briefing generated for %s: %s", biz_name, audio_path)
+    except Exception as audio_err:
+        log.debug("Audio briefing generation skipped for %s: %s", biz_name, audio_err)
+
     # Create HITL item for review
+    hitl_payload = {"report_id": report_id, "report_type": "weekly_summary", "preview": report_content[:1200] + ("…" if len(report_content) > 1200 else "")}
+    if audio_path:
+        hitl_payload["audio_briefing"] = audio_path
+
     await create_hitl_item(
         business_id=business_id,
         action_type="report_review",
         title=f"Weekly Report — {business.get('name', 'Business')}",
-        description="A new weekly report has been generated and needs your review.",
-        payload={"report_id": report_id, "report_type": "weekly_summary", "preview": report_content[:1200] + ("…" if len(report_content) > 1200 else "")},
+        description="A new weekly report has been generated and needs your review." + (" Audio briefing attached." if audio_path else ""),
+        payload=hitl_payload,
         risk_level="low",
         expires_hours=168,  # 1 week
     )

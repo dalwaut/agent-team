@@ -1,0 +1,58 @@
+# BB VPS Routing Reference — opai.boutabyte.com
+#
+# NOTE: BB VPS uses Traefik via Coolify, NOT Caddy. The actual config is at:
+#   /data/coolify/proxy/dynamic/opai-boutabyte.yaml (on BB VPS)
+# This file is kept as a human-readable reference for the routing logic.
+#
+# Deployment target: BB VPS (72.60.115.74 / Tailscale bb-vps 100.106.200.68)
+# OPAI Server Tailscale IP: 100.72.206.23
+#
+# Routing:
+#   /about         → Static marketing page (index.html)
+#   /about/*       → Static assets for marketing page
+#   /welcome       → Static welcome/onboarding page
+#   /*             → Reverse proxy to OPAI Server Caddy via Tailscale
+#
+# Prerequisites:
+#   1. DNS: opai.boutabyte.com → 72.60.115.74 (A record)
+#   2. Firewall: ports 80 + 443 open
+#   3. Static site: /var/www/opai-landing/ (copy public-site/ contents)
+#   4. OPAI server reachable via Tailscale at 100.106.200.68
+
+opai.boutabyte.com {
+    # Marketing/about page — serves the static landing site
+    handle /about {
+        rewrite * /index.html
+        root * /var/www/opai-landing
+        file_server
+    }
+
+    handle /about/* {
+        uri strip_prefix /about
+        root * /var/www/opai-landing
+        file_server
+    }
+
+    # Welcome/onboarding page — static
+    handle /welcome {
+        rewrite * /welcome.html
+        root * /var/www/opai-landing
+        file_server
+    }
+
+    # Everything else → reverse proxy to OPAI Server Caddy via Tailscale
+    handle {
+        reverse_proxy https://100.72.206.23:443 {
+            transport http {
+                tls_insecure_skip_verify
+            }
+        }
+    }
+
+    log {
+        output file /var/log/caddy/opai-access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}

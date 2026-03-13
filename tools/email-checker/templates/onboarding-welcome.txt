@@ -1,0 +1,36 @@
+# Template: New Client Onboarding Welcome
+# Voice: paradise-web-agent
+# Trigger: After a new client signs their agreement and makes initial payment
+
+## Subject Line Options
+- Welcome aboard — Let's get {{project_name}} started
+- {{client_name}}, welcome to the team — Here's what's next
+- Getting started with {{project_name}} — Your onboarding guide
+
+## Body
+
+Hi {{client_name}},
+
+Welcome aboard — we're excited to get started on {{project_name}} with you.
+
+I wanted to send a quick note to walk you through how the next few weeks will look so you know exactly what to expect. We like to keep things transparent and straightforward from day one.
+
+Here's how our process works. First, we'll kick off with a {{kickoff_type}} where we'll nail down the details on {{kickoff_topics}}. That's scheduled for {{kickoff_date}}. From there, we move into {{phase_1_name}} which typically takes {{phase_1_duration}}. During that time, {{what_client_should_expect_during_phase_1}}.
+
+A few things that would help us hit the ground running — {{onboarding_item_1}}, {{onboarding_item_2}}, and {{onboarding_item_3}}. No rush on all of it right now, but having those ready by {{items_needed_by_date}} would keep us on schedule.
+
+Your main point of contact will be {{contact_name}} at {{contact_email}}. For anything urgent, you can always reach us at {{phone_number}}. We typically respond to emails within {{response_time}}.
+
+We'll send your first project update on {{first_update_date}}. In the meantime, if you have any questions or think of anything you want to add to the scope, just reply here.
+
+Looking forward to building something great together.
+
+## Notes
+- Use the "paradise-web-agent" voice for brand-appropriate warmth
+- This is the client's first real interaction post-sale — set the right tone
+- Be specific about what you need from them — vague requests lead to delays
+- Include real dates, not "soon" or "in the coming weeks"
+- Mention the first status update date to set the expectation for regular communication
+- For larger clients, consider a separate onboarding doc or portal link instead of listing everything in email
+- If the client has multiple stakeholders, ask who should be CC'd on project updates
+- Keep the tone confident and organized — they just made a buying decision and want to feel good about it

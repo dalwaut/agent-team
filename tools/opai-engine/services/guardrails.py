@@ -128,6 +128,24 @@ def request_approval(
     # Create a HITL task for the approval
     _create_approval_task(request_id, worker_id, worker_config, action, params)
 
+    # Queue Telegram notification to HITL topic
+    try:
+        from background.notifier import queue_notification
+        params_summary = ""
+        if params:
+            # Build a short summary of params (first 100 chars)
+            flat = ", ".join(f"{k}={v}" for k, v in list(params.items())[:3])
+            params_summary = flat[:100]
+        queue_notification(
+            "worker_approval",
+            request_id=request_id,
+            worker_name=worker_config.get("name", worker_id),
+            action=action,
+            params_summary=params_summary,
+        )
+    except Exception:
+        pass
+
     # Record in approval tracker (v3.3)
     try:
         from services.approval_tracker import record_event

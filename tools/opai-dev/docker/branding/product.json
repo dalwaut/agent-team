@@ -1,9 +1,0 @@
-{
-  "applicationName": "OPAI Dev",
-  "defaultTheme": "dark",
-  "reportIssueUrl": "",
-  "linkProtection": {
-    "confirm": true,
-    "allowedHosts": []
-  }
-}

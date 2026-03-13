@@ -47,6 +47,10 @@ function enginePost(path, body = {}, timeout = 10000) {
   return httpRequest(`${ENGINE}${path}`, 'POST', body, {}, timeout);
 }
 
+function engineDelete(path, timeout = 10000) {
+  return httpRequest(`${ENGINE}${path}`, 'DELETE', null, {}, timeout);
+}
+
 function brainGet(path, timeout = 5000) {
   const headers = {};
   if (process.env.SUPABASE_SERVICE_KEY) {
@@ -63,4 +67,4 @@ function brainPost(path, body = {}, timeout = 5000) {
   return httpRequest(`${BRAIN}${path}`, 'POST', body, headers, timeout);
 }
 
-module.exports = { engineGet, enginePost, brainGet, brainPost };
+module.exports = { engineGet, enginePost, engineDelete, brainGet, brainPost };

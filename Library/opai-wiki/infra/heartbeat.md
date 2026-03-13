@@ -1,6 +1,6 @@
 # Proactive Heartbeat (v3.5)
 
-> Last updated: 2026-03-02 | Source: `tools/opai-engine/background/heartbeat.py`
+> Last updated: 2026-03-12 (PI: disabled TeamHub item creation, fixed recursive self-feeding bug) | Source: `tools/opai-engine/background/heartbeat.py`
 
 ## Overview
 
@@ -10,10 +10,10 @@ The heartbeat is a background loop inside the Engine that transforms OPAI from a
 
 ## Architecture
 
-The heartbeat is the 10th background task in the Engine, sitting alongside 9 others. It is primarily an **aggregation layer** — it reads from existing systems, detects patterns, and takes corrective action (stall recovery, proactive suggestions, HITL escalation).
+The heartbeat is one of 12+ background tasks in the Engine. It is primarily an **aggregation layer** — it reads from existing systems, detects patterns, and takes corrective action (stall recovery, proactive suggestions, HITL escalation).
 
 ```
-Engine Background Tasks (11 total)
+Engine Background Tasks (12+ total)
 ├── scheduler (60s)           ← heartbeat READS active_jobs, last_run
 ├── service-monitor (300s)
 ├── auto-executor (30s)
@@ -24,7 +24,10 @@ Engine Background Tasks (11 total)
 ├── bottleneck-detector (6h)  ← detects approval/workflow bottlenecks
 ├── fleet-coordinator (5m)    ← work dispatch + Team Hub integration
 ├── nfs-dispatcher (30s)      ← NFS drop-folder worker communication
-└── heartbeat (1800s)         ← aggregates, detects, notifies, proactive intelligence
+├── process-sweeper (300s)    ← orphan Claude process cleanup
+├── heartbeat (1800s)         ← aggregates, detects, notifies, proactive intelligence
+├── notebooklm-sync (daily)   ← wiki sync to NotebookLM (optional)
+└── chat-fast-loop (30s)      ← Google Chat message polling (optional)
 ```
 
 ### What Shares the 30-Minute Interval
@@ -125,7 +128,8 @@ Each heartbeat cycle produces a snapshot:
     "summary": {
         "total": 29, "healthy": 3, "running_tasks": 1,
         "completed_since_last": 3, "failed_since_last": 1, "stalled": 0,
-        "active_sessions": 2, "cpu": 32.5, "memory": 58.1
+        "active_sessions": 2, "cpu": 32.5, "memory": 58.1,
+        "agent_feedback": {"active_hints": 42, "recent_24h": 3, "gaps": 7, "corrections": 2}
     },
     "changes": [
         {"type": "completed", "item": "task:t-20260228-001", "title": "..."},
@@ -143,6 +147,7 @@ Each heartbeat cycle produces a snapshot:
 | Task Registry | `tasks/registry.json` (non-terminal statuses) | `task:{id}` |
 | Session Collector | `get_concurrency_snapshot()` | `session:{pid}` |
 | Resource Monitor | `get_resource_state()` | CPU/memory in summary |
+| Agent Feedback | `engine_agent_feedback` (Supabase) | `agent_feedback` in summary (active hints, 24h, gaps, corrections). See [Agent Feedback Loops](agent-feedback-loops.md) |
 
 ## Change Detection
 
@@ -279,16 +284,19 @@ The proactive intelligence subsystem runs inside the heartbeat loop every N cycl
 | **Recurring patterns** | Fleet coordinator completions grouped by worker — same worker completing 3+ of same type | "Create automation for {pattern}" |
 | **Idle workers with pending work** | NFS workers reporting healthy + idle, while registry has pending tasks matching their capabilities | "Dispatch {task} to idle {worker}" |
 
+**Self-referential skip**: Items whose title starts with `[PI]` are excluded from overdue/stall detection to prevent recursive self-feeding (a bug where PI-created items were re-detected as overdue, creating nested `[PI] Unassigned for 90m: [PI] Unassigned for 90m:` spam — fixed 2026-03-12).
+
 ### Suggestion Flow
 
 ```
 PI Detection → Deduplicate (skip if already suggested in last 24h)
-             → Create Team Hub item (type: "idea", list: HITL Queue)
-             → Log to proactive-state.json
-             → Item appears in My Queue as low-priority suggestion
+             → Log to proactive-state.json + audit log
+             → Stored for human review (state file only)
 ```
 
-Suggestions are currently **proposal-only** (`auto_act_enabled: false`). They create Team Hub items of type "idea" that appear in the action items feed for human review. The `auto_act_enabled` flag is reserved for future low-risk auto-actions.
+Suggestions are **proposal-only** (`auto_act_enabled: false`) and are logged to `proactive-state.json` and the audit trail. They are **not** written to Team Hub as items — an earlier approach that created Team Hub "idea" items was disabled (2026-03-12) because it generated noise in workspaces. The `auto_act_enabled` flag is reserved for future low-risk auto-actions.
+
+**Future direction**: Pattern detection should evolve from superficial agent-run counting ("worker X ran 3 times") to meaningful operational pattern recognition ("you've fixed this same problem repeatedly across clients"). This is v4 scope.
 
 ### State Persistence
 
@@ -337,13 +345,30 @@ Button callbacks route through the Engine action items API when the callback key
 
 ---
 
+## Temporary Monitors
+
+### Synology Rescan Monitor (added 2026-03-05)
+
+Tracks Synology Drive rescan progress after blacklist filter changes. Sends to Server Status topic on the same digest cadence. Auto-stops when rescan finishes (no daemon activity for 5 min). See [File Sync & Storage](file-sync.md) for full context.
+
+- `notifier.py` → `notify_synology_rescan()` — reads daemon log, calculates progress/ETA
+- `heartbeat.py` → `_check_synology_rescan()` — fires on same `digest_interval_cycles`
+
+Can be removed once rescan completes and the notification returns `None` consistently.
+
+---
+
+## Relationship to Telegram Watchdog
+
+The heartbeat + notifier handle ALL per-service health alerts (service up/down transitions). Telegram's `alerts.js` is reduced to a **watchdog-only** role — it independently pings `/health` to detect if the Engine itself crashes (the one thing the Engine can't self-report). Per-service monitoring in Telegram was removed to eliminate redundancy. See [Scheduling Architecture](scheduling-architecture.md) for the full overlap analysis.
+
 ## What the Heartbeat Does NOT Touch
 
-- **Telegram service** (`tools/opai-telegram/`) — heartbeat sends notifications via Bot API (independent of the Telegram service process). 8 AM briefing continues independently
+- **Telegram service** (`tools/opai-telegram/`) — heartbeat sends notifications via Bot API (independent of the Telegram service process). 8 AM morning briefings (system/personal/team) are handled by the Telegram service's `alerts.js`, not the heartbeat
 - **Scheduler** — heartbeat reads but never writes to scheduler state
 - **Worker manager** — reads status, only calls `restart_worker()` for stall recovery
 - **Task registry** — read-only (proactive intelligence reads only)
-- **Team Hub** — proactive intelligence creates "idea" items (write), reads items for overdue/stall detection
+- **Team Hub** — proactive intelligence reads items for overdue/stall detection (read-only; previously wrote "idea" items, disabled 2026-03-12)
 - **Fleet coordinator** — PI reads completion history for pattern detection (read-only)
 - **NFS dispatcher** — PI reads worker health for idle detection (read-only)
 

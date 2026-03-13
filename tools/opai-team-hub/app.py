@@ -18,6 +18,10 @@ from routes_api import router as api_router
 from routes_comments import router as comments_router
 from routes_clickup import router as clickup_router
 from routes_spaces import router as spaces_router
+from routes_custom_fields import router as custom_fields_router
+from routes_automations import router as automations_router
+from routes_members import router as members_router
+from routes_hubs import router as hubs_router
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
@@ -46,6 +50,10 @@ app.include_router(api_router)
 app.include_router(comments_router)
 app.include_router(clickup_router)
 app.include_router(spaces_router)
+app.include_router(custom_fields_router)
+app.include_router(automations_router)
+app.include_router(members_router)
+app.include_router(hubs_router)
 
 app.mount("/static", StaticFiles(directory=str(config.STATIC_DIR)), name="static")
 

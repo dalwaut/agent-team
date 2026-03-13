@@ -9,10 +9,34 @@
 // e.g., at /engine/ → API = '/engine', at /tasks/ → API = '/tasks'
 const API = location.pathname.replace(/\/+$/, '');
 
-// Initialize auth (non-blocking — only needed for OC broker calls, not Engine's own API)
-if (typeof opaiAuth !== 'undefined') {
-  opaiAuth.init({ allowAnonymous: true }).catch(e => console.warn('Auth init:', e));
+// ── Toast Notifications ─────────────────────────────────
+(function() {
+  const c = document.createElement('div');
+  c.className = 'toast-container';
+  c.id = 'toast-container';
+  document.body.appendChild(c);
+})();
+
+function showToast(msg, type = 'info', duration = 4000) {
+  const c = document.getElementById('toast-container');
+  if (!c) return;
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  const icons = { success: '\u2705', info: '\u2139\uFE0F', warn: '\u26A0\uFE0F' };
+  t.innerHTML = `<span>${icons[type] || ''}</span><span>${msg}</span>`;
+  c.appendChild(t);
+  setTimeout(() => {
+    t.classList.add('toast-out');
+    t.addEventListener('animationend', () => t.remove());
+  }, duration);
 }
+
+// Initialize auth (waits for async config fetch, blocks data loading until ready)
+window.OPAI_AUTH_INIT = (typeof opaiAuth !== 'undefined')
+  ? (window.OPAI_AUTH_READY || Promise.resolve())
+      .then(() => opaiAuth.init({ allowAnonymous: true }))
+      .catch(e => { console.warn('Auth init:', e); return null; })
+  : Promise.resolve(null);
 
 // ── Auth-aware fetch ──────────────────────────────────────
 
@@ -82,6 +106,7 @@ function initTabs() {
 
 const _loaded = {};
 function onTabActivated(tab) {
+  if (tab === 'my-queue' && !_loaded.myQueue) { loadActionItems(); loadAvailableWorkers(); _loaded.myQueue = true; }
   if (tab === 'tasks' && !_loaded.tasks) { loadTasks(); loadFeedback(); _loaded.tasks = true; }
   if (tab === 'workers' && !_loaded.workers) { loadWorkers(); _loaded.workers = true; }
   if (tab === 'openclaw' && !_loaded.openclaw) { loadOCInstances(); _loaded.openclaw = true; }
@@ -89,6 +114,7 @@ function onTabActivated(tab) {
 }
 
 function onSubtabActivated(subtab) {
+  if (subtab === 'mq-all' || subtab === 'mq-hitl' || subtab === 'mq-reviews') { renderActionItemsFiltered(subtab); }
   if (subtab === 'task-audit' && !_loaded.audit) { loadAudit(); _loaded.audit = true; }
   if (subtab === 'worker-guardrails' && !_loaded.guardrails) { loadGuardrails(); _loaded.guardrails = true; }
   if (subtab === 'worker-approvals') { loadApprovals(); }
@@ -98,58 +124,68 @@ function onSubtabActivated(subtab) {
   if (subtab === 'sys-suggestions' && !_loaded.suggestions) { loadSuggestions(); _loaded.suggestions = true; }
   if (subtab === 'sys-bottlenecks') { loadBottlenecks(); loadApprovalTracker(); }
   if (subtab === 'sys-settings' && !_loaded.settings) { loadSettings(); _loaded.settings = true; }
+  if (subtab === 'worker-roster' && !_loaded.roster) { loadRoster(); _loaded.roster = true; }
 }
 
 // ── Command Center ────────────────────────────────────────
 
 async function loadCommandCenter() {
+  // Fire all API calls in parallel for fast dashboard load
+  const [statsRes, summaryRes, workersRes, healthRes, auditRes] =
+    await Promise.allSettled([
+      fetchJSON('/api/system/stats'),
+      fetchJSON('/api/tasks/summary'),
+      fetchJSON('/api/workers'),
+      fetchJSON('/api/health/summary'),
+      fetchJSON('/api/audit?limit=15'),
+    ]);
+
   // System stats
-  try {
-    const stats = await fetchJSON('/api/system/stats');
+  if (statsRes.status === 'fulfilled') {
+    const stats = statsRes.value;
     const cpu = Math.round(stats.cpu_percent || 0);
     const mem = Math.round(stats.memory?.percent || 0);
     const disk = Math.round(stats.disk?.percent || 0);
-
     document.getElementById('stat-cpu').textContent = cpu + '%';
     document.getElementById('stat-mem').textContent = mem + '%';
     document.getElementById('stat-disk').textContent = disk + '%';
-
     setBar('bar-cpu', cpu);
     setBar('bar-mem', mem);
     setBar('bar-disk', disk);
-  } catch (e) { console.warn('Stats error:', e); }
+  }
 
   // Task summary
-  try {
-    const summary = await fetchJSON('/api/tasks/summary');
+  if (summaryRes.status === 'fulfilled') {
+    const summary = summaryRes.value;
     document.getElementById('stat-tasks').textContent = summary.total;
     const pending = summary.by_status?.pending || 0;
     const running = summary.by_status?.running || 0;
     document.getElementById('stat-tasks-detail').textContent =
       `${pending} pending, ${running} running`;
-  } catch (e) { console.warn('Tasks error:', e); }
+  }
 
   // Workers
-  try {
-    const workers = await fetchJSON('/api/workers');
+  if (workersRes.status === 'fulfilled') {
+    const workers = workersRes.value;
     const entries = Object.entries(workers);
     const running = entries.filter(([, w]) => w.running === true).length;
     document.getElementById('stat-workers').textContent = `${running}/${entries.length}`;
     document.getElementById('stat-workers-detail').textContent =
       `${running} running, ${entries.length - running} idle/off`;
-  } catch (e) { console.warn('Workers error:', e); }
+  }
 
   // Service health
-  try {
-    const health = await fetchJSON('/api/health/summary');
-    renderServiceHealth(health);
-  } catch (e) { console.warn('Health error:', e); }
+  if (healthRes.status === 'fulfilled') {
+    renderServiceHealth(healthRes.value);
+  }
 
-  // Activity feed (recent audit entries)
-  try {
-    const audit = await fetchJSON('/api/audit?limit=15');
-    renderActivityFeed(audit.records || []);
-  } catch (e) { console.warn('Activity error:', e); }
+  // Activity feed
+  if (auditRes.status === 'fulfilled') {
+    renderActivityFeed(auditRes.value.records || []);
+  }
+
+  // Action items for CC widget (also fires in parallel with render above)
+  loadActionItemsCC();
 }
 
 function setBar(id, pct) {
@@ -1415,6 +1451,7 @@ window.clearLogs = function() {
 // Expose for inline onclick
 window.loadTasks = loadTasks;
 window.loadAudit = loadAudit;
+window.loadActionItems = loadActionItems;
 
 // ── WebSocket: Live Stats ─────────────────────────────────
 
@@ -1440,6 +1477,445 @@ function connectStatsWS() {
 
   ws.onerror = () => setTimeout(connectStatsWS, 5000);
   ws.onclose = () => setTimeout(connectStatsWS, 5000);
+}
+
+// ── My Queue / Action Items ──────────────────────────────
+
+let _actionItemsCache = [];
+
+async function loadActionItems() {
+  try {
+    const ageDays = document.getElementById('mq-filter-age')?.value || '';
+    const params = ageDays ? `?max_age_days=${ageDays}` : '';
+    const data = await fetchJSON(`/api/action-items${params}`);
+    _actionItemsCache = data.action_items || [];
+    renderActionItemsFiltered('mq-all');
+    updateTabBadge(_actionItemsCache.length);
+  } catch (e) {
+    console.warn('Action items load error:', e);
+    document.getElementById('mq-all-list').innerHTML =
+      '<div class="empty-state">Failed to load action items</div>';
+  }
+}
+
+async function loadActionItemsCC() {
+  try {
+    const data = await fetchJSON('/api/action-items');
+    _actionItemsCache = data.action_items || [];
+    renderCommandCenterActions(_actionItemsCache);
+    updateTabBadge(_actionItemsCache.length);
+  } catch (e) {
+    console.warn('CC action items error:', e);
+  }
+}
+
+function renderActionItemsFiltered(subtab) {
+  let items = _actionItemsCache;
+  let containerId;
+
+  if (subtab === 'mq-hitl') {
+    items = items.filter(i => i.type === 'hitl_decision');
+    containerId = 'mq-hitl-list';
+  } else if (subtab === 'mq-reviews') {
+    items = items.filter(i => i.type === 'review_needed');
+    containerId = 'mq-reviews-list';
+  } else {
+    containerId = 'mq-all-list';
+    // Apply type filter from dropdown
+    const typeFilter = document.getElementById('mq-filter-type')?.value || '';
+    if (typeFilter) {
+      items = items.filter(i => i.type === typeFilter);
+    }
+  }
+
+  // Update item count
+  const countEl = document.getElementById('mq-item-count');
+  if (countEl) countEl.textContent = `${items.length} item${items.length !== 1 ? 's' : ''}`;
+
+  // Show/hide bulk dismiss button based on whether suggestions exist
+  const bulkBtn = document.getElementById('mq-bulk-dismiss-btn');
+  if (bulkBtn) {
+    const hasSuggestions = _actionItemsCache.some(i => i.type === 'suggestion');
+    bulkBtn.style.display = hasSuggestions ? '' : 'none';
+  }
+
+  renderActionItems(containerId, items);
+}
+
+function renderActionItems(containerId, items) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+
+  if (!items.length) {
+    el.innerHTML = `<div class="empty-state-check">
+      <div class="empty-check-icon">&#10003;</div>
+      <div>Nothing needs your attention right now</div>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = items.map(item => `
+    <div class="action-item-card status-${(item.status || '').replace(/\s/g, '-')}" data-item-id="${item.id}" onclick="showActionItemDetail('${item.id}')">
+      <div class="ai-card-top">
+        <span class="ai-type-icon">${_typeIcon(item.type)}</span>
+        <span class="ai-title">${escapeHtml(item.title)}</span>
+        <span class="badge badge-${item.priority || 'normal'}">${item.priority}</span>
+        <span class="ai-score">${item.priority_score}</span>
+      </div>
+      <div class="ai-card-meta">
+        <span class="ai-source">${escapeHtml(item.source || '')}</span>
+        <span class="ai-age">${_formatAge(item.age_minutes)}</span>
+        ${item.assignee ? `<span class="ai-assignee">${escapeHtml(item.assignee)}</span>` : ''}
+      </div>
+      ${item.content_preview ? `<div class="ai-preview">${escapeHtml(item.content_preview)}</div>` : ''}
+      <div class="ai-actions" onclick="event.stopPropagation()">
+        ${(item.actions || []).map(a => `
+          <button class="btn btn-xs btn-${_actionStyle(a)}" onclick="actionItemAct('${item.id}','${a}')">${a}</button>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderCommandCenterActions(items) {
+  const panel = document.getElementById('cc-action-items');
+  const list = document.getElementById('cc-action-list');
+  const count = document.getElementById('cc-action-count');
+
+  if (!items.length) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = '';
+  count.textContent = items.length;
+
+  const top5 = items.slice(0, 5);
+  list.innerHTML = top5.map(item => `
+    <div class="action-item-compact" onclick="showActionItemDetail('${item.id}')">
+      <span class="ai-type-icon">${_typeIcon(item.type)}</span>
+      <span class="ai-compact-title">${escapeHtml(item.title)}</span>
+      <span class="badge badge-${item.priority || 'normal'} badge-sm">${item.priority}</span>
+      <span class="ai-age">${_formatAge(item.age_minutes)}</span>
+      <span class="ai-compact-actions" onclick="event.stopPropagation()">
+        ${(item.actions || []).slice(0, 2).map(a => `
+          <button class="btn btn-xs btn-${_actionStyle(a)}" onclick="actionItemAct('${item.id}','${a}')">${a}</button>
+        `).join('')}
+      </span>
+    </div>
+  `).join('');
+
+  if (items.length > 5) {
+    list.innerHTML += `<div class="ai-more" onclick="document.querySelector('[data-tab=my-queue]').click()">+ ${items.length - 5} more items</div>`;
+  }
+}
+
+function updateTabBadge(count) {
+  const badge = document.getElementById('mq-tab-badge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+window.showActionItemDetail = async function(itemId) {
+  const modal = document.getElementById('action-modal');
+  const body = document.getElementById('action-modal-body');
+  body.innerHTML = '<div class="loading">Loading...</div>';
+  modal.classList.add('open');
+
+  try {
+    const detail = await fetchJSON(`/api/action-items/${itemId}`);
+    const item = _actionItemsCache.find(i => i.id === itemId) || {};
+
+    body.innerHTML = `
+      <div class="modal-section">
+        <div class="modal-row">
+          <span class="modal-label">Type</span>
+          <span>${_typeIcon(item.type || '')} ${(item.type || '').replace(/_/g, ' ')}</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Status</span>
+          <span class="badge badge-${item.status || 'pending'}">${item.status || ''}</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Priority</span>
+          <span class="badge badge-${item.priority || 'normal'}">${item.priority || ''}</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Score</span>
+          <span>${item.priority_score || ''}</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Age</span>
+          <span>${_formatAge(item.age_minutes || 0)}</span>
+        </div>
+        <div class="modal-row">
+          <span class="modal-label">Source</span>
+          <span>${escapeHtml(item.source || '')}</span>
+        </div>
+        ${item.assignee ? `<div class="modal-row">
+          <span class="modal-label">Assignee</span>
+          <span>${escapeHtml(item.assignee)}</span>
+        </div>` : ''}
+      </div>
+
+      <h4 class="modal-subtitle">Title</h4>
+      <div class="modal-text">${escapeHtml(detail.title || item.title || '')}</div>
+
+      ${detail.description ? `
+        <h4 class="modal-subtitle">Description</h4>
+        <div class="modal-text modal-desc">${escapeHtml(detail.description)}</div>
+      ` : ''}
+
+      ${detail.comments && detail.comments.length ? `
+        <h4 class="modal-subtitle">Comments (${detail.comments.length})</h4>
+        <div class="ai-comments">
+          ${detail.comments.map(c => `
+            <div class="ai-comment">
+              <span class="ai-comment-author">${escapeHtml(c.author_id || '?')}</span>
+              <span class="ai-comment-time">${formatDate(c.created_at)}</span>
+              <div class="ai-comment-body">${escapeHtml(c.content || '')}</div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      <h4 class="modal-subtitle">Dispatch Worker</h4>
+      <div class="mq-dispatch-inline">
+        <select id="modal-worker-select" class="filter-select">
+          <option value="">Select Worker...</option>
+        </select>
+        <button class="btn btn-sm btn-primary" onclick="dispatchFromModal('${item.teamhub_item_id || ''}')">Dispatch</button>
+      </div>
+
+      <div class="modal-actions">
+        ${(item.actions || []).map(a => `
+          <button class="btn btn-sm btn-${_actionStyle(a)}" onclick="actionItemAct('${itemId}','${a}')">${a}</button>
+        `).join('')}
+      </div>
+    `;
+
+    // Ensure workers are loaded, then populate modal select
+    if (!_availableWorkers.length) {
+      await loadAvailableWorkers();
+    }
+    _populateWorkerSelect('modal-worker-select');
+  } catch (e) {
+    body.innerHTML = `<div class="empty-state">Failed to load: ${escapeHtml(e.message)}</div>`;
+  }
+};
+
+window.closeActionModal = function() {
+  document.getElementById('action-modal').classList.remove('open');
+};
+
+window.actionItemAct = async function(itemId, action) {
+  try {
+    const result = await fetchJSON(`/api/action-items/${itemId}/act`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    });
+
+    // Close modal if open
+    closeActionModal();
+
+    // Show toast feedback based on action + result
+    const newStatus = result.new_status || '';
+    if (action === 'approve' && newStatus === 'done') {
+      showToast('Work approved — marked as done', 'success');
+    } else if (action === 'approve' || action === 'run') {
+      showToast('Task scheduled — dispatching to worker...', 'success');
+      // Refresh tasks tab in background so it shows up
+      _loaded.tasks = false;
+    } else if (action === 'dismiss' || action === 'reject') {
+      showToast('Item dismissed', 'info');
+    } else if (action === 'gc') {
+      showToast('Acknowledged — handling in GravityClaw', 'info');
+    } else {
+      showToast(`Action: ${action}`, 'info');
+    }
+
+    // Fade out all matching cards in the DOM
+    const cards = document.querySelectorAll(`.action-item-card[data-item-id="${itemId}"]`);
+    cards.forEach(card => card.classList.add('fade-out'));
+
+    // Remove from cache immediately so counts update
+    _actionItemsCache = _actionItemsCache.filter(i => i.id !== itemId);
+    const countEl = document.getElementById('mq-item-count');
+    if (countEl) {
+      const visibleCount = _actionItemsCache.length;
+      countEl.textContent = `${visibleCount} item${visibleCount !== 1 ? 's' : ''}`;
+    }
+    updateTabBadge(_actionItemsCache.length);
+
+    // After animation completes, remove DOM nodes and refresh CC panel
+    setTimeout(() => {
+      cards.forEach(card => card.remove());
+      // Check if list is now empty and show empty state
+      const allList = document.getElementById('mq-all-list');
+      if (allList && !allList.querySelector('.action-item-card')) {
+        allList.innerHTML = `<div class="empty-state-check">
+          <div class="empty-check-icon">&#10003;</div>
+          <div>Nothing needs your attention right now</div>
+        </div>`;
+      }
+      // Silently refresh CC panel
+      loadActionItemsCC();
+    }, 400);
+
+  } catch (e) {
+    alert('Action failed: ' + e.message);
+  }
+};
+
+// ── Queue Filter Controls ────────────────────────────────
+
+window.applyQueueFilters = function() {
+  // Re-fetch with new age param, then re-render with type filter
+  _loaded.myQueue = false;
+  loadActionItems();
+};
+
+window.bulkDismissSuggestions = async function() {
+  const sugCount = _actionItemsCache.filter(i => i.type === 'suggestion').length;
+  if (!sugCount) { alert('No suggestions to dismiss'); return; }
+  if (!confirm(`Dismiss all ${sugCount} suggestion(s)? This cannot be undone.`)) return;
+  try {
+    const result = await fetchJSON('/api/action-items/bulk-dismiss', {
+      method: 'POST',
+      body: JSON.stringify({ kinds: ['update'] }),
+    });
+    alert(`Dismissed ${result.dismissed} suggestion(s)`);
+    _loaded.myQueue = false;
+    loadActionItems();
+    loadActionItemsCC();
+  } catch (e) {
+    alert('Bulk dismiss failed: ' + e.message);
+  }
+};
+
+// ── Worker Dispatch ──────────────────────────────────────
+
+let _availableWorkers = [];
+
+async function loadAvailableWorkers() {
+  try {
+    const data = await fetchJSON('/api/action-items/workers/available');
+    _availableWorkers = data.workers || [];
+    _populateWorkerSelect('mq-worker-select');
+  } catch (e) {
+    console.warn('Workers load error:', e);
+  }
+}
+
+function _populateWorkerSelect(selectId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Select Worker...</option>';
+  sel.innerHTML += '<option value="auto">\u2728 Auto (Fleet Coordinator)</option>';
+  for (const w of _availableWorkers) {
+    if (w.type !== 'task') continue;  // Only show dispatchable task workers
+    const running = w.running ? ' (running)' : '';
+    const purpose = w.intent ? ` — ${w.intent.substring(0, 40)}` : '';
+    sel.innerHTML += `<option value="${w.id}" ${w.running ? 'disabled' : ''}>${w.name || w.id}${purpose}${running}</option>`;
+  }
+  if (current) sel.value = current;
+}
+
+window.dispatchWorker = async function() {
+  const workerId = document.getElementById('mq-worker-select')?.value;
+  const title = document.getElementById('mq-dispatch-title')?.value || '';
+  if (!workerId) { alert('Select a worker first'); return; }
+
+  const isAuto = workerId === 'auto';
+  const payload = {
+    title: title || (isAuto ? 'Auto-dispatched task' : `Manual dispatch: ${workerId}`),
+  };
+  if (!isAuto) payload.worker_id = workerId;
+
+  try {
+    const result = await fetchJSON('/api/action-items/dispatch', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (result.success) {
+      document.getElementById('mq-dispatch-title').value = '';
+      _loaded.myQueue = false;
+      loadActionItems();
+      const routed = result.worker_id ? ` \u2192 ${result.worker_id}` : '';
+      alert(`Dispatched: ${result.dispatch_id || 'ok'}${routed}`);
+    } else {
+      alert('Dispatch failed: ' + (result.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Dispatch error: ' + e.message);
+  }
+};
+
+window.dispatchFromModal = async function(teamhubItemId) {
+  const workerId = document.getElementById('modal-worker-select')?.value;
+  if (!workerId) { alert('Select a worker'); return; }
+
+  const isAuto = workerId === 'auto';
+  const title = document.getElementById('action-modal-title')?.textContent || '';
+  const payload = {
+    teamhub_item_id: teamhubItemId || undefined,
+    title: title,
+  };
+  if (!isAuto) payload.worker_id = workerId;
+
+  try {
+    const result = await fetchJSON('/api/action-items/dispatch', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (result.success) {
+      closeActionModal();
+      _loaded.myQueue = false;
+      loadActionItems();
+      loadActionItemsCC();
+    } else {
+      alert('Dispatch failed: ' + (result.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Dispatch error: ' + e.message);
+  }
+};
+
+// ── Action Items Helpers ─────────────────────────────────
+
+function _typeIcon(type) {
+  const icons = {
+    hitl_decision: '\u2753',
+    blocked_agent: '\u26D4',
+    pending_approval: '\u23F3',
+    stalled_worker: '\u26A0',
+    review_needed: '\uD83D\uDD0D',
+    suggestion: '\uD83D\uDCA1',
+  };
+  return icons[type] || '\u2022';
+}
+
+function _actionStyle(action) {
+  const styles = {
+    approve: 'success', run: 'primary', dismiss: '', reject: 'danger',
+    deny: 'danger', restart: 'warning', accept: 'success', unblock: 'primary',
+    reassign: '',
+  };
+  return styles[action] || '';
+}
+
+function _formatAge(minutes) {
+  if (!minutes || minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 // ── Utilities ─────────────────────────────────────────────
@@ -1575,8 +2051,11 @@ window.loadApprovalTracker = loadApprovalTracker;
 // ── Init ──────────────────────────────────────────────────
 
 initTabs();
-loadCommandCenter();
-connectStatsWS();
+// Wait for auth before loading data (prevents redirect loop on remote access)
+window.OPAI_AUTH_INIT.then(() => {
+  loadCommandCenter();
+  connectStatsWS();
+});
 
 // Handle hash-based deep links (e.g., #system, #tasks, #workers)
 function handleHash() {
@@ -1590,6 +2069,368 @@ window.addEventListener('hashchange', handleHash);
 
 // Refresh command center every 30s
 setInterval(loadCommandCenter, 30000);
+
+// ── Workforce Roster ─────────────────────────────────────
+
+let _rosterData = null;
+let _rosterFilter = { type: '', search: '', category: '' };
+let _rosterBreadcrumb = []; // [{type, id, label}]
+const _rosterCollapsed = {}; // section key → bool
+
+async function loadRoster() {
+  try {
+    _rosterData = await fetchJSON('/api/workers/roster');
+    renderRosterStats(_rosterData.counts);
+    populateRosterCategories();
+    renderRosterList();
+  } catch (e) {
+    console.warn('Roster load error:', e);
+    document.getElementById('roster-list').innerHTML = '<div class="empty-state">Failed to load roster</div>';
+  }
+}
+
+function renderRosterStats(counts) {
+  const el = document.getElementById('roster-stats');
+  const items = [
+    { key: 'agents', label: 'Agents', count: counts.agents },
+    { key: 'squads', label: 'Squads', count: counts.squads },
+    { key: 'workers', label: 'Workers', count: counts.workers },
+    { key: 'templates', label: 'Templates', count: counts.templates },
+    { key: 'swarm', label: 'Swarm', count: counts.swarm },
+  ];
+  el.innerHTML = items.map(s =>
+    `<div class="roster-stat ${_rosterFilter.type === s.key ? 'active' : ''}" onclick="toggleRosterType('${s.key}')">
+      <strong>${s.count}</strong><span>${s.label}</span>
+    </div>`
+  ).join('');
+}
+
+function populateRosterCategories() {
+  if (!_rosterData) return;
+  const cats = new Set();
+  Object.values(_rosterData.agents).forEach(a => { if (a.category) cats.add(a.category); });
+  const sel = document.getElementById('roster-category');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All Categories</option>' +
+    [...cats].sort().map(c => `<option value="${c}">${c.charAt(0).toUpperCase() + c.slice(1)}</option>`).join('');
+  sel.value = current;
+}
+
+window.toggleRosterType = function(type) {
+  _rosterFilter.type = _rosterFilter.type === type ? '' : type;
+  renderRosterStats(_rosterData.counts);
+  renderRosterList();
+};
+
+// Search + category filter listeners
+document.getElementById('roster-search')?.addEventListener('input', (e) => {
+  _rosterFilter.search = e.target.value.toLowerCase();
+  renderRosterList();
+});
+document.getElementById('roster-category')?.addEventListener('change', (e) => {
+  _rosterFilter.category = e.target.value;
+  renderRosterList();
+});
+
+function renderRosterList() {
+  if (!_rosterData) return;
+  const el = document.getElementById('roster-list');
+  const { type, search, category } = _rosterFilter;
+  let html = '';
+
+  const sections = [
+    { key: 'agents', label: 'Agents', data: _rosterData.agents },
+    { key: 'squads', label: 'Squads', data: _rosterData.squads },
+    { key: 'workers', label: 'Workers', data: _rosterData.workers },
+    { key: 'templates', label: 'Templates', data: _rosterData.templates },
+    { key: 'swarm', label: 'Swarm', data: _rosterData.swarm },
+  ];
+
+  for (const sec of sections) {
+    if (type && type !== sec.key) continue;
+
+    let entries;
+    if (Array.isArray(sec.data)) {
+      entries = sec.data.map((item, i) => [item.id || String(i), item]);
+    } else {
+      entries = Object.entries(sec.data);
+    }
+
+    // Apply search filter
+    if (search) {
+      entries = entries.filter(([id, item]) => {
+        const text = `${id} ${item.name || ''} ${item.description || ''} ${item.category || ''}`.toLowerCase();
+        return text.includes(search);
+      });
+    }
+
+    // Apply category filter (agents only)
+    if (category && sec.key === 'agents') {
+      entries = entries.filter(([, item]) => item.category === category);
+    }
+
+    if (!entries.length) continue;
+
+    const isCollapsed = _rosterCollapsed[sec.key];
+    html += `<div class="roster-section-header ${isCollapsed ? 'collapsed' : ''}" onclick="toggleRosterSection('${sec.key}')">
+      <span class="chevron">\u25BE</span> ${sec.label} (${entries.length})
+    </div>`;
+
+    if (!isCollapsed) {
+      for (const [id, item] of entries) {
+        const emoji = item.emoji || (sec.key === 'squads' ? '\u25A0' : sec.key === 'workers' ? '\u2699' : sec.key === 'swarm' ? '\u26A1' : '\u2022');
+        const name = item.name || id;
+        const meta = sec.key === 'agents' ? (item.category || '')
+          : sec.key === 'squads' ? `${item.agent_count || 0} agents`
+          : sec.key === 'workers' ? (item.type || '')
+          : sec.key === 'swarm' ? (item.status || '')
+          : '';
+        const catAttr = sec.key === 'agents' && item.category ? ` data-cat="${item.category}"` : '';
+
+        html += `<div class="roster-item" data-type="${sec.key}" data-id="${id}"${catAttr} onclick="showRosterDetail('${sec.key}','${id}')">
+          <span class="roster-emoji">${escapeHtml(String(emoji))}</span>
+          <span class="roster-name">${escapeHtml(name)}</span>
+          <span class="roster-meta">${escapeHtml(meta)}</span>
+        </div>`;
+      }
+    }
+  }
+
+  el.innerHTML = html || '<div class="empty-state">No matches</div>';
+}
+
+window.toggleRosterSection = function(key) {
+  _rosterCollapsed[key] = !_rosterCollapsed[key];
+  renderRosterList();
+};
+
+window.showRosterDetail = function(type, id) {
+  if (!_rosterData) return;
+
+  // Highlight active item
+  document.querySelectorAll('.roster-item').forEach(el => el.classList.remove('active'));
+  const activeItem = document.querySelector(`.roster-item[data-type="${type}"][data-id="${id}"]`);
+  if (activeItem) activeItem.classList.add('active');
+
+  // Update breadcrumb
+  const existingIdx = _rosterBreadcrumb.findIndex(b => b.type === type && b.id === id);
+  if (existingIdx >= 0) {
+    _rosterBreadcrumb = _rosterBreadcrumb.slice(0, existingIdx + 1);
+  } else {
+    if (_rosterBreadcrumb.length >= 5) _rosterBreadcrumb.shift();
+    const label = getEntityName(type, id);
+    _rosterBreadcrumb.push({ type, id, label });
+  }
+
+  const detail = document.getElementById('roster-detail');
+
+  // Mobile: show detail as overlay
+  if (window.innerWidth <= 900) {
+    detail.classList.add('mobile-show');
+  }
+
+  let html = '';
+
+  // Back button (mobile)
+  html += `<button class="roster-back" onclick="closeRosterMobile()"><span>\u2190</span> Back</button>`;
+
+  // Breadcrumb
+  if (_rosterBreadcrumb.length > 1) {
+    html += '<div class="roster-breadcrumb">' +
+      _rosterBreadcrumb.map((b, i) =>
+        i < _rosterBreadcrumb.length - 1
+          ? `<a onclick="showRosterDetail('${b.type}','${b.id}')">${escapeHtml(b.label)}</a> <span>\u203A</span>`
+          : `<span style="color:var(--text)">${escapeHtml(b.label)}</span>`
+      ).join(' ') + '</div>';
+  }
+
+  if (type === 'agents') html += renderAgentDetail(id);
+  else if (type === 'squads') html += renderSquadDetail(id);
+  else if (type === 'workers') html += renderWorkerDetail(id);
+  else if (type === 'templates') html += renderTemplateDetail(id);
+  else if (type === 'swarm') html += renderSwarmDetail(id);
+
+  detail.innerHTML = html;
+};
+
+window.closeRosterMobile = function() {
+  document.getElementById('roster-detail').classList.remove('mobile-show');
+};
+
+function getEntityName(type, id) {
+  if (!_rosterData) return id;
+  if (type === 'agents') return _rosterData.agents[id]?.name || id;
+  if (type === 'squads') return id;
+  if (type === 'workers') return _rosterData.workers[id]?.name || id;
+  if (type === 'templates') {
+    const t = _rosterData.templates.find(t => t.id === id);
+    return t?.name || id;
+  }
+  if (type === 'swarm') {
+    const s = _rosterData.swarm.find(s => s.id === id);
+    return s?.name || id;
+  }
+  return id;
+}
+
+function renderAgentDetail(id) {
+  const a = _rosterData.agents[id];
+  if (!a) return '<div class="empty-state">Agent not found</div>';
+  return `
+    <div class="roster-detail-header">
+      <div class="detail-emoji">${escapeHtml(a.emoji || '?')}</div>
+      <div class="detail-title">
+        <h3>${escapeHtml(a.name)}</h3>
+        <div class="detail-tags">
+          <span class="badge badge-normal">${escapeHtml(a.category)}</span>
+          <span class="badge badge-pending">${escapeHtml(a.run_order)}</span>
+        </div>
+      </div>
+    </div>
+    <div class="roster-desc">${escapeHtml(a.description)}</div>
+    ${a.squads.length ? `
+      <div class="roster-section-title">Member Of (Squads)</div>
+      <div class="roster-links">${a.squads.map(s =>
+        `<a class="roster-link" onclick="showRosterDetail('squads','${s}')">${escapeHtml(s)}</a>`
+      ).join('')}</div>
+    ` : ''}
+    ${a.dynamic_pools.length ? `
+      <div class="roster-section-title">Also In Dynamic Pool</div>
+      <div class="roster-links">${a.dynamic_pools.map(s =>
+        `<a class="roster-link" onclick="showRosterDetail('squads','${s}')">${escapeHtml(s)}</a>`
+      ).join('')}</div>
+    ` : ''}
+    <div class="roster-section-title">Properties</div>
+    <div class="roster-props">
+      <span class="prop-label">Category</span><span class="prop-value">${escapeHtml(a.category)}</span>
+      <span class="prop-label">Prompt</span><span class="prop-value">${escapeHtml(a.prompt_file || '(none)')}</span>
+      <span class="prop-label">Model</span><span class="prop-value">${escapeHtml(a.model || '(inherit)')}</span>
+      <span class="prop-label">Max Turns</span><span class="prop-value">${a.max_turns || '0 (unlimited)'}</span>
+      <span class="prop-label">Run Order</span><span class="prop-value">${escapeHtml(a.run_order)}</span>
+    </div>
+  `;
+}
+
+function renderSquadDetail(id) {
+  const s = _rosterData.squads[id];
+  if (!s) return '<div class="empty-state">Squad not found</div>';
+  return `
+    <div class="roster-detail-header">
+      <div class="detail-emoji">\u25A0</div>
+      <div class="detail-title">
+        <h3>${escapeHtml(id)}</h3>
+        <div class="detail-tags">
+          <span class="badge badge-normal">${s.agent_count} agents</span>
+          ${s.pool_count ? `<span class="badge badge-pending">${s.pool_count} pool</span>` : ''}
+        </div>
+      </div>
+    </div>
+    <div class="roster-desc">${escapeHtml(s.description)}</div>
+    <div class="roster-section-title">Agents (${s.agents.length})</div>
+    <ul class="roster-agent-list">${s.agents.map(a => {
+      const agent = _rosterData.agents[a];
+      return `<li>
+        <span style="font-family:var(--font-mono);color:var(--accent);width:28px;text-align:center">${escapeHtml(agent?.emoji || '?')}</span>
+        <a class="roster-link" onclick="showRosterDetail('agents','${a}')">${escapeHtml(agent?.name || a)}</a>
+      </li>`;
+    }).join('')}</ul>
+    ${s.dynamic_pool.length ? `
+      <div class="roster-section-title">Dynamic Pool (${s.dynamic_pool.length})</div>
+      <div class="roster-links">${s.dynamic_pool.map(a =>
+        `<a class="roster-link" onclick="showRosterDetail('agents','${a}')">${escapeHtml(_rosterData.agents[a]?.name || a)}</a>`
+      ).join('')}</div>
+    ` : ''}
+    <div class="roster-section-title">Run Command</div>
+    <div class="roster-props">
+      <span class="prop-label">Command</span><span class="prop-value">./scripts/run_squad.sh -s "${escapeHtml(id)}"</span>
+    </div>
+  `;
+}
+
+function renderWorkerDetail(id) {
+  const w = _rosterData.workers[id];
+  if (!w) return '<div class="empty-state">Worker not found</div>';
+  return `
+    <div class="roster-detail-header">
+      <div class="detail-emoji">\u2699</div>
+      <div class="detail-title">
+        <h3>${escapeHtml(w.name)}</h3>
+        <div class="detail-tags">
+          <span class="badge badge-normal">${escapeHtml(w.type)}</span>
+          <span class="badge badge-pending">${escapeHtml(w.runtime)}</span>
+        </div>
+      </div>
+    </div>
+    <div class="roster-desc">${escapeHtml(w.intent || 'No description')}</div>
+    ${w.linked_agent ? `
+      <div class="roster-section-title">Linked Agent Role</div>
+      <div class="roster-links">
+        <a class="roster-link" onclick="showRosterDetail('agents','${w.linked_agent}')">${escapeHtml(_rosterData.agents[w.linked_agent]?.name || w.linked_agent)}</a>
+      </div>
+    ` : ''}
+    <div class="roster-section-title">Properties</div>
+    <div class="roster-props">
+      <span class="prop-label">Type</span><span class="prop-value">${escapeHtml(w.type)}</span>
+      <span class="prop-label">Runtime</span><span class="prop-value">${escapeHtml(w.runtime)}</span>
+      ${w.port ? `<span class="prop-label">Port</span><span class="prop-value">${w.port}</span>` : ''}
+      <span class="prop-label">Trigger</span><span class="prop-value">${escapeHtml(w.trigger || 'manual')}</span>
+    </div>
+    ${Object.keys(w.guardrails || {}).length ? `
+      <div class="roster-section-title">Guardrails</div>
+      <div class="roster-props">
+        ${Object.entries(w.guardrails).map(([k, v]) =>
+          `<span class="prop-label">${escapeHtml(k)}</span><span class="prop-value">${escapeHtml(String(v))}</span>`
+        ).join('')}
+      </div>
+    ` : ''}
+  `;
+}
+
+function renderTemplateDetail(id) {
+  const t = _rosterData.templates.find(t => t.id === id);
+  if (!t) return '<div class="empty-state">Template not found</div>';
+  return `
+    <div class="roster-detail-header">
+      <div class="detail-emoji">\u2022</div>
+      <div class="detail-title">
+        <h3>${escapeHtml(t.name)}</h3>
+        <div class="detail-tags">
+          <span class="badge badge-normal">template</span>
+        </div>
+      </div>
+    </div>
+    <div class="roster-desc">Specialist prompt template. Copy from Templates/ to scripts/ and customize per project.</div>
+    <div class="roster-section-title">Properties</div>
+    <div class="roster-props">
+      <span class="prop-label">Filename</span><span class="prop-value">${escapeHtml(t.filename)}</span>
+      <span class="prop-label">Location</span><span class="prop-value">Templates/${escapeHtml(t.filename)}</span>
+    </div>
+  `;
+}
+
+function renderSwarmDetail(id) {
+  const s = _rosterData.swarm.find(s => s.id === id);
+  if (!s) return '<div class="empty-state">Capability not found</div>';
+  return `
+    <div class="roster-detail-header">
+      <div class="detail-emoji">\u26A1</div>
+      <div class="detail-title">
+        <h3>${escapeHtml(s.name)}</h3>
+        <div class="detail-tags">
+          <span class="badge badge-${s.status === 'live' ? 'completed' : 'pending'}">${escapeHtml(s.status)}</span>
+          <span class="badge badge-normal">swarm</span>
+        </div>
+      </div>
+    </div>
+    <div class="roster-desc">${escapeHtml(s.description)}</div>
+    <div class="roster-section-title">What is Swarm?</div>
+    <div class="roster-desc" style="border:none;padding:0">
+      Swarm is NOT a runnable command. It is the runtime coordination layer that enables
+      OPAI's fleet of workers to operate as a cohesive unit. These capabilities are
+      implemented in the Fleet Coordinator and are always active during worker execution.
+    </div>
+  `;
+}
 
 // ── Keyboard Shortcuts ───────────────────────────────────
 
@@ -1606,8 +2447,14 @@ document.addEventListener('keydown', (e) => {
   // Don't capture when typing in inputs
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
 
-  // 1-5: Switch tabs
-  if (e.key >= '1' && e.key <= '5' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+  // Close action modal
+  if (e.key === 'Escape') {
+    const am = document.getElementById('action-modal');
+    if (am && am.classList.contains('open')) { closeActionModal(); return; }
+  }
+
+  // 1-6: Switch tabs
+  if (e.key >= '1' && e.key <= '6' && !e.ctrlKey && !e.metaKey && !e.altKey) {
     const tabs = document.querySelectorAll('.tab-btn');
     const idx = parseInt(e.key) - 1;
     if (tabs[idx]) { tabs[idx].click(); e.preventDefault(); }
@@ -1619,6 +2466,7 @@ document.addEventListener('keydown', (e) => {
     if (active) {
       const tab = active.dataset.tab;
       if (tab === 'command-center') loadCommandCenter();
+      else if (tab === 'my-queue') { _loaded.myQueue = false; loadActionItems(); loadAvailableWorkers(); }
       else if (tab === 'tasks') loadTasks();
       else if (tab === 'workers') loadWorkers();
       else if (tab === 'openclaw') { _loaded.openclaw = false; _loaded.ocHub = false; loadOCInstances(); }

@@ -1,7 +1,7 @@
 /**
  * Email Classifier — Classify emails using Claude CLI (Haiku model).
  *
- * Tags emails with: type tags, priority, urgency, requires_response, summary.
+ * Labels emails with: type labels, priority, urgency, requires_response, summary.
  * Uses `claude -p --model haiku` for cost-optimized classification.
  */
 
@@ -13,27 +13,27 @@ const os = require('os');
 const OPAI_ROOT = process.env.OPAI_ROOT || path.resolve(__dirname, '../..');
 
 // Valid classification values
-const VALID_TAGS = [
+const VALID_LABELS = [
   'urgent', 'action-required', 'informational', 'follow-up', 'scheduling',
   'invoice', 'support', 'client-communication', 'internal', 'automated',
   'marketing', 'personal', 'notification', 'approval-needed', 'time-sensitive',
   'newsletter', 'fyi', 'no-response-needed', 'thread-update', 'proposal',
-  // System message tags
+  // System message labels
   'system-alert', 'security-alert', 'service-notification', 'password-reset',
   'billing', 'verification',
 ];
 const VALID_PRIORITIES = ['critical', 'high', 'normal', 'low'];
 const VALID_URGENCIES = ['immediate', 'soon', 'standard', 'none'];
 
-// Tags that indicate a system/automated message (no human response needed)
-const SYSTEM_TAGS = [
+// Labels that indicate a system/automated message (no human response needed)
+const SYSTEM_LABELS = [
   'automated', 'notification', 'newsletter', 'system-alert', 'security-alert',
   'service-notification', 'password-reset', 'billing', 'verification',
   'no-response-needed', 'marketing',
 ];
 
-// System tags that warrant flagging the user (important system messages)
-const ALERT_TAGS = ['system-alert', 'security-alert', 'billing'];
+// System labels that warrant flagging the user (important system messages)
+const ALERT_LABELS = ['system-alert', 'security-alert', 'billing'];
 
 /**
  * Classify a single email using Claude Haiku.
@@ -42,7 +42,7 @@ const ALERT_TAGS = ['system-alert', 'security-alert', 'billing'];
  * @param {string} subject — Email subject
  * @param {string} body — Email text body
  * @param {string} accountName — Which account received this
- * @returns {Promise<{tags: string[], priority: string, urgency: string, requiresResponse: boolean, summary: string, assigneeHint: string}>}
+ * @returns {Promise<{labels: string[], priority: string, urgency: string, requiresResponse: boolean, summary: string, assigneeHint: string}>}
  */
 function classifyEmail(from, subject, body, accountName) {
   return new Promise((resolve) => {
@@ -51,7 +51,7 @@ function classifyEmail(from, subject, body, accountName) {
       ``,
       `Return this exact structure:`,
       `{`,
-      `  "tags": ["tag1", "tag2"],`,
+      `  "labels": ["label1", "label2"],`,
       `  "priority": "critical|high|normal|low",`,
       `  "urgency": "immediate|soon|standard|none",`,
       `  "requiresResponse": true|false,`,
@@ -61,7 +61,7 @@ function classifyEmail(from, subject, body, accountName) {
       `  "assigneeHint": "human|agent"`,
       `}`,
       ``,
-      `Tag taxonomy (use 1-4 tags):`,
+      `Label taxonomy (use 1-4 labels):`,
       `  HUMAN CORRESPONDENCE:`,
       `    urgent, action-required, informational, follow-up, scheduling,`,
       `    invoice, support, client-communication, internal, personal,`,
@@ -162,24 +162,25 @@ function classifyEmail(from, subject, body, accountName) {
  * Sanitize and validate classification output from Haiku.
  */
 function sanitizeClassification(raw) {
-  const tags = Array.isArray(raw.tags)
-    ? raw.tags.filter((t) => VALID_TAGS.includes(t)).slice(0, 4)
-    : [];
+  // Accept both "labels" and legacy "tags" field from AI output
+  const rawLabels = Array.isArray(raw.labels) ? raw.labels : (Array.isArray(raw.tags) ? raw.tags : []);
+  const validLabels = rawLabels.filter((t) => VALID_LABELS.includes(t)).slice(0, 4);
 
-  const finalTags = tags.length > 0 ? tags : ['informational'];
+  const finalLabels = validLabels.length > 0 ? validLabels : ['informational'];
 
-  // Determine if system message based on tags or explicit flag
-  const isSystem = raw.isSystem === true || finalTags.some(t => SYSTEM_TAGS.includes(t));
+  // Determine if system message based on labels or explicit flag
+  const isSystem = raw.isSystem === true || finalLabels.some(t => SYSTEM_LABELS.includes(t));
 
   // Determine if user needs to be alerted (important system messages)
-  const needsUserAttention = raw.needsUserAttention === true || finalTags.some(t => ALERT_TAGS.includes(t));
+  const needsUserAttention = raw.needsUserAttention === true || finalLabels.some(t => ALERT_LABELS.includes(t));
 
   // System messages should never require a human email response
   const requiresResponse = isSystem ? false
     : (typeof raw.requiresResponse === 'boolean' ? raw.requiresResponse : false);
 
   return {
-    tags: finalTags,
+    labels: finalLabels,
+    tags: finalLabels, // backward compat alias
     priority: VALID_PRIORITIES.includes(raw.priority) ? raw.priority : 'normal',
     urgency: VALID_URGENCIES.includes(raw.urgency) ? raw.urgency : 'standard',
     requiresResponse,
@@ -195,7 +196,8 @@ function sanitizeClassification(raw) {
  */
 function defaultClassification() {
   return {
-    tags: ['informational'],
+    labels: ['informational'],
+    tags: ['informational'], // backward compat alias
     priority: 'normal',
     urgency: 'standard',
     requiresResponse: false,
@@ -206,4 +208,4 @@ function defaultClassification() {
   };
 }
 
-module.exports = { classifyEmail, VALID_TAGS, VALID_PRIORITIES, VALID_URGENCIES, SYSTEM_TAGS, ALERT_TAGS };
+module.exports = { classifyEmail, VALID_LABELS, VALID_PRIORITIES, VALID_URGENCIES, SYSTEM_LABELS, ALERT_LABELS };

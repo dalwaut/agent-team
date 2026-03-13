@@ -168,6 +168,17 @@
       "run_order": "last",
       "category": "meta"
     },
+    "meta_assessment": {
+      "name": "Meta-Assessment",
+      "emoji": "MA",
+      "description": "Second-order loop: assesses whether the assessment system itself is functioning — fix pipeline, agent output quality, token efficiency, queue throughput, prompt quality",
+      "prompt_file": "prompt_meta_assessment.txt",
+      "depends_on": [
+        "self_assessment"
+      ],
+      "run_order": "last",
+      "category": "meta"
+    },
     "notes_curator": {
       "name": "Notes Curator",
       "emoji": "NC",
@@ -453,6 +464,16 @@
       "model": "sonnet",
       "max_turns": 6
     },
+    "react_doctor": {
+      "name": "React Doctor",
+      "emoji": "RX",
+      "description": "Runs react-doctor CLI against React/React Native projects to detect anti-patterns and code smells",
+      "prompt_file": "prompt_react_doctor.txt",
+      "depends_on": [],
+      "run_order": "parallel",
+      "category": "quality",
+      "model": "sonnet"
+    },
     "business_analyst": {
       "name": "Business & Market Analyst",
       "emoji": "BA",
@@ -486,6 +507,7 @@
         "a11y_auditor",
         "api_designer",
         "llm_engineer",
+        "react_doctor",
         "manager"
       ],
       "dynamic_pool": [
@@ -500,6 +522,7 @@
         "a11y_auditor",
         "api_designer",
         "llm_engineer",
+        "react_doctor",
         "api_contract_checker",
         "docker_auditor",
         "cicd_auditor",
@@ -620,9 +643,10 @@
       ]
     },
     "evolve": {
-      "description": "Self-improvement: assess team gaps and propose new agents",
+      "description": "Self-improvement: assess team gaps, propose improvements, then verify the assessment pipeline itself",
       "agents": [
-        "self_assessment"
+        "self_assessment",
+        "meta_assessment"
       ]
     },
     "knowledge": {
@@ -801,6 +825,29 @@
         "rd_analyst",
         "report_dispatcher"
       ]
+    },
+    "forge": {
+      "description": "Post-build quality gate for n8n-forge pipeline. Reviews converted standalone code for quality, security, tests, and API design. Run after /n8n-forge Phase C.",
+      "agents": [
+        "reviewer",
+        "security",
+        "test_writer",
+        "api_designer",
+        "frontend_auditor",
+        "ux_reviewer",
+        "manager"
+      ],
+      "dynamic_pool": [
+        "reviewer",
+        "security",
+        "test_writer",
+        "api_designer",
+        "frontend_auditor",
+        "ux_reviewer",
+        "accuracy",
+        "perf_profiler",
+        "llm_engineer"
+      ]
     }
   },
   "specialist_templates": {
@@ -808,7 +855,7 @@
     "available": [
       "prompt_expo_expert.txt",
       "prompt_supabase_expert.txt",
-      "prompt_n8n_connector.txt",
+      "prompt_n8n_specialist.txt",
       "prompt_wordpress_expert.txt",
       "prompt_fusion_builder.txt",
       "prompt_page_designer.txt",

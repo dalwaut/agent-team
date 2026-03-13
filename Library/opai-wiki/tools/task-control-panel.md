@@ -1,5 +1,5 @@
 # Task Control Panel
-> Last updated: 2026-02-25 | Source: `tools/opai-engine/`
+> Last updated: 2026-03-05 | Source: `tools/opai-engine/`
 
 > **v2 MIGRATION (2026-02-25)**: The Task Control Panel has been **merged into the [OPAI Engine](opai-v2.md)** at `tools/opai-engine/` on port **8080**. The standalone `tools/opai-tasks/` directory has been deleted. All task management, feedback, audit, and the Monitor sub-module are now served by the engine. See [OPAI v2](opai-v2.md).
 >
@@ -240,10 +240,10 @@ Overdue, propose-mode, and human-assigned cards use the same standardized action
 
 ### DOM Behavior
 
-- **No full re-renders**: Actions use card-level DOM manipulation (`removeQueueCard()`) — fade out + collapse animation, then remove from DOM
-- **15s polling does NOT re-render My Queue** — prevents destroying expanded briefings, typed notes, or open detail panels
-- Section headers auto-hide when their section becomes empty
-- Empty state ("You're all caught up") shows when queue reaches zero items
+- **No full re-renders**: Actions use card-level DOM manipulation via CSS class `fade-out` — 350ms opacity + max-height collapse animation, then DOM node removal after 400ms. Cache is updated immediately so counts/badges reflect the change before animation finishes.
+- Remaining items slide up naturally via flexbox gap as the card collapses
+- Empty state ("Nothing needs your attention right now") shows when queue reaches zero items
+- Command Center widget refreshes silently after animation completes
 
 ## Feedback View (Agent-First)
 
@@ -563,7 +563,7 @@ All endpoints below are served by TCP on port 8081. No authentication is require
 
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
-| `/api/monitor/health/summary` | GET | Public | Probes all 25 HTTP services + 3 systemd-only units. Returns `{status, services}` with per-service health, uptime, and memory. 2s probe timeout via httpx |
+| `/api/monitor/health/summary` | GET | Public | Probes all HTTP services + systemd-only units **in parallel** (`asyncio.gather`). Returns `{status, services}` with per-service health, uptime, and memory. 2s probe timeout via httpx |
 | `/api/monitor/system/stats` | GET | Admin | CPU, memory, disk, load, network, swap, process count |
 | `/api/monitor/system/services` | GET | Admin | All systemd unit statuses |
 | `/api/monitor/system/services/{name}/{action}` | POST | Admin | Control service (start/stop/restart) |
@@ -595,7 +595,7 @@ WebSocket streams are served at the TCP root (not under `/api/monitor/`). Each s
 
 ### Probed Services (Health Summary)
 
-The `/api/monitor/health/summary` endpoint probes 25 HTTP services (chat, tasks, terminal, messenger, users, dev, files, forum, agents, portal, docs, marketplace, email-agent, team-hub, billing, forumbot, wordpress, prd, orchestra, bot-space, bx4, brain, helm, marq, dam) with a 2-second timeout. It also checks 3 systemd-only services (discord-bot, orchestrator, email.timer) that have no HTTP endpoint. Results include status, uptime in seconds, and memory usage in MB per service.
+The `/api/monitor/health/summary` endpoint probes all configured HTTP services **in parallel** using `asyncio.gather()` with a 2-second timeout per probe. Systemd-only service checks also run in parallel via `asyncio.to_thread()`. Results include status, uptime in seconds, and memory usage in MB per service. The parallel design was introduced in v3.5 to reduce response time from ~145ms (sequential) to ~40-80ms (parallel, bounded by slowest service).
 
 ### Key Files
 
@@ -772,6 +772,43 @@ All timestamps written by `services.py` and `routes_api.py` use **real UTC** via
 > **Gotcha**: Do NOT use `datetime.now().isoformat() + "Z"` — the server runs in `America/Chicago` (CST/CDT), so `datetime.now()` returns local time. Appending `"Z"` falsely labels it as UTC; the browser then converts "UTC" to local, causing times to display 5–6 hours earlier than actual. Always use `datetime.now(timezone.utc)`.
 
 The only exceptions (intentionally local time): `.strftime()` calls used for date-based file naming (`audit-YYYYMMDD`, task ID generation `t-YYYYMMDD-NNN`) and freeform report header text — these are for human-readable organization, not parsed timestamps.
+
+## Performance Optimizations (2026-03-05)
+
+The Command Center dashboard had a ~928ms total load time due to sequential API calls and blocking patterns. Four optimizations reduced this to ~300-450ms (bounded by the slowest backend call):
+
+### 1. Parallel Action Items Queries
+
+**File**: `routes/action_items.py` → `_gather_teamhub_items()`
+
+The `/api/action-items` endpoint fetches from Team Hub for three statuses (`awaiting-human`, `blocked`, `review`). Previously these were sequential HTTP calls (~788ms total). Now uses `asyncio.gather()` to fire all three in parallel (~250-450ms, bounded by slowest query).
+
+### 2. Parallel Front-End API Calls
+
+**File**: `static/js/app.js` → `loadCommandCenter()`
+
+The Command Center made 6 sequential `await fetchJSON()` calls (stats, tasks summary, workers, health, audit, action items). Now uses `Promise.allSettled()` so all fire concurrently. Total load = slowest single call instead of sum of all calls.
+
+### 3. Parallel Health Probes
+
+**File**: `routes/health.py` → `health_summary()`
+
+The `/api/health/summary` endpoint probed 10+ HTTP services sequentially and ran `systemctl` checks one at a time. Now uses `asyncio.gather()` for all HTTP probes and `asyncio.to_thread()` for parallel systemd subprocess calls.
+
+### 4. Async Auth Bootstrap
+
+**File**: `static/index.html`
+
+The auth config was fetched with a **synchronous XHR** (`xhr.open('GET', '/auth/config', false)`) which blocked page rendering. Replaced with an async `fetch()` that stores its promise as `window.OPAI_AUTH_READY`. The app.js auth init awaits this promise before calling `opaiAuth.init()`. The page renders immediately while the config loads in the background.
+
+### Performance Impact
+
+| Metric | Before | After |
+|--------|--------|-------|
+| `/api/action-items` | ~788ms | ~250-450ms |
+| `/api/health/summary` | ~145ms | ~40-80ms |
+| Front-end total (sequential) | ~928ms | ~300-450ms (parallel) |
+| Auth bootstrap | Render-blocking sync XHR | Non-blocking async fetch |
 
 ## Dependencies
 

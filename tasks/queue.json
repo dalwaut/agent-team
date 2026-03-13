@@ -50,7 +50,8 @@
       "blocked_reason": null,
       "retry_count": 0,
       "max_retries": 3,
-      "completed_at": null
+      "completed_at": null,
+      "last_reviewed": "2026-03-05"
     },
     {
       "id": "q-20260222-001",
@@ -78,7 +79,8 @@
       "blocked_reason": null,
       "retry_count": 0,
       "max_retries": 3,
-      "completed_at": null
+      "completed_at": null,
+      "last_reviewed": "2026-03-05"
     },
     {
       "id": "q-20260228-001",
@@ -109,7 +111,8 @@
       "blocked_reason": null,
       "retry_count": 0,
       "max_retries": 3,
-      "completed_at": null
+      "completed_at": null,
+      "last_reviewed": "2026-03-05"
     },
     {
       "id": "q-20260228-002",
@@ -139,7 +142,8 @@
       "blocked_reason": null,
       "retry_count": 0,
       "max_retries": 3,
-      "completed_at": null
+      "completed_at": null,
+      "last_reviewed": "2026-03-05"
     },
     {
       "id": "q-20260228-003",
@@ -172,7 +176,8 @@
       "blocked_reason": null,
       "retry_count": 0,
       "max_retries": 3,
-      "completed_at": null
+      "completed_at": null,
+      "last_reviewed": "2026-03-05"
     },
     {
       "id": "q-20260228-004",
@@ -203,7 +208,8 @@
       "blocked_reason": null,
       "retry_count": 0,
       "max_retries": 3,
-      "completed_at": null
+      "completed_at": null,
+      "last_reviewed": "2026-03-05"
     },
     {
       "id": "q-20260228-005",
@@ -238,7 +244,8 @@
       "blocked_reason": null,
       "retry_count": 0,
       "max_retries": 3,
-      "completed_at": null
+      "completed_at": null,
+      "last_reviewed": "2026-03-05"
     },
     {
       "id": "q-20260228-006",
@@ -273,9 +280,32 @@
       "blocked_reason": null,
       "retry_count": 0,
       "max_retries": 3,
-      "completed_at": null
+      "completed_at": null,
+      "last_reviewed": "2026-03-05"
+    },
+    {
+      "id": "q-20260304-001",
+      "type": "maintenance",
+      "status": "blocked",
+      "priority": "critical",
+      "created": "2026-03-04T00:00:00Z",
+      "updated": "2026-03-05T00:00:00Z",
+      "description": "Restore NAS NFS mount for user sandboxes — IP changed from 192.168.2.138 to 192.168.1.200 (ds418.local), NFS export only allows old IP 192.168.2.92. Denise's files at /workspace/users/Denise are inaccessible.",
+      "payload": {
+        "area": "infrastructure",
+        "steps": [
+          "1. Update fstab: sudo sed -i 's|192.168.2.138:/volume2/opai-users|ds418.local:/volume2/opai-users|' /etc/fstab",
+          "2. On Synology DSM: Control Panel → Shared Folder → opai-users → NFS Permissions → change allowed client to 192.168.1.191 (or 192.168.1.0/24)",
+          "3. sudo mount /workspace/users",
+          "4. Verify: ls /workspace/users/Denise"
+        ]
+      },
+      "blocked_reason": "Requires sudo access + Synology DSM NFS permission update. Check with Dallas on next interactive session.",
+      "retry_count": 0,
+      "max_retries": 3,
+      "completed_at": null,
+      "last_reviewed": "2026-03-05"
     }
   ],
   "completed": []
 }
-

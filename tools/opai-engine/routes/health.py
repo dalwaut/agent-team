@@ -6,7 +6,7 @@ Migrated from opai-monitor/routes_api.py health/system section.
 import subprocess
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 import config
 from services import collectors
@@ -23,37 +23,54 @@ router = APIRouter(prefix="/api")
 @router.get("/health/summary")
 async def health_summary():
     """Aggregated health check across all OPAI services. No auth required."""
+    import asyncio
+
     results = {}
     overall = "healthy"
 
-    async with httpx.AsyncClient(timeout=2.0) as client:
-        for name, port in config.HEALTH_SERVICES.items():
-            try:
+    # Probe all HTTP services in parallel
+    async def _probe(name, port):
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
                 resp = await client.get(f"http://127.0.0.1:{port}/health")
                 data = resp.json()
-                results[name] = {
+                return name, {
                     "status": "healthy",
                     "uptime_seconds": data.get("uptime_seconds"),
                     "memory_mb": data.get("memory_mb"),
                 }
-            except Exception:
-                results[name] = {"status": "unreachable"}
-                overall = "degraded"
+        except Exception:
+            return name, {"status": "unreachable"}
 
-    # systemd-only services
-    for unit in config.SYSTEMD_ONLY:
+    probes = await asyncio.gather(*[
+        _probe(name, port) for name, port in config.HEALTH_SERVICES.items()
+    ])
+    for name, result in probes:
+        results[name] = result
+        if result["status"] != "healthy":
+            overall = "degraded"
+
+    # systemd-only services (run subprocess calls in thread pool, in parallel)
+    async def _check_systemd(unit):
         svc_name = unit if "." in unit else f"{unit}.service"
         try:
-            result = subprocess.run(
+            proc = await asyncio.to_thread(
+                subprocess.run,
                 ["systemctl", "--user", "is-active", svc_name],
                 capture_output=True, text=True, timeout=3,
             )
-            active = result.stdout.strip() == "active"
-            results[unit] = {"status": "healthy" if active else "inactive"}
-            if not active:
-                overall = "degraded"
+            active = proc.stdout.strip() == "active"
+            return unit, {"status": "healthy" if active else "inactive"}, active
         except Exception:
-            results[unit] = {"status": "unknown"}
+            return unit, {"status": "unknown"}, False
+
+    systemd_checks = await asyncio.gather(*[
+        _check_systemd(unit) for unit in config.SYSTEMD_ONLY
+    ])
+    for unit, result, active in systemd_checks:
+        results[unit] = result
+        if not active:
+            overall = "degraded"
 
     return {"status": overall, "services": results}
 
@@ -115,11 +132,16 @@ def kill_all_agents_endpoint():
 # ── Auth Config ───────────────────────────────────────────
 
 @router.get("/auth/config")
-def auth_config():
+def auth_config(request: Request):
     """Return Supabase config for frontend auth.js initialization."""
+    from_local = False
+    client = request.client
+    if client:
+        from_local = client.host in ("127.0.0.1", "::1", "localhost")
     return {
         "supabase_url": config.SUPABASE_URL,
         "supabase_anon_key": config.SUPABASE_ANON_KEY,
+        "auth_disabled": from_local,
     }
 
 

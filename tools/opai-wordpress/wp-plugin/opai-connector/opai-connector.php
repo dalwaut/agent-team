@@ -2,7 +2,7 @@
 /**
  * Plugin Name: OPAI Connector
  * Description: Enables remote management from OP WordPress — updates, backups, health checks.
- * Version: 1.4.0
+ * Version: 1.6.0
  * Author: BoutaByte / OPAI
  * License: GPL-2.0-or-later
  * Requires PHP: 7.4
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'OPAI_CONNECTOR_VERSION', '1.4.0' );
+define( 'OPAI_CONNECTOR_VERSION', '1.6.0' );
 define( 'OPAI_CONNECTOR_DIR', plugin_dir_path( __FILE__ ) );
 define( 'OPAI_CONNECTOR_BACKUP_DIR', WP_CONTENT_DIR . '/opai-backups' );
 
@@ -20,9 +20,15 @@ require_once OPAI_CONNECTOR_DIR . 'includes/class-auth.php';
 require_once OPAI_CONNECTOR_DIR . 'includes/class-health.php';
 require_once OPAI_CONNECTOR_DIR . 'includes/class-updater.php';
 require_once OPAI_CONNECTOR_DIR . 'includes/class-backup.php';
+require_once OPAI_CONNECTOR_DIR . 'includes/class-autologin.php';
+require_once OPAI_CONNECTOR_DIR . 'includes/class-performance.php';
+require_once OPAI_CONNECTOR_DIR . 'includes/class-self-update.php';
 
 // Register WP-Cron hook for async backups (runs in background PHP process)
 add_action( 'opai_backup_run', [ 'OPAI_Backup', 'run_scheduled_backup' ], 10, 2 );
+
+// Auto-login fires on 'init' (before headers) via ?opai_autologin=1 query var
+add_action( 'init', [ 'OPAI_AutoLogin', 'handle' ] );
 
 /**
  * Register REST API routes.
@@ -109,6 +115,18 @@ add_action( 'rest_api_init', function () {
     register_rest_route( $ns, '/backup/stream-tar', [
         'methods'             => 'GET',
         'callback'            => [ 'OPAI_Backup', 'stream_tar' ],
+        'permission_callback' => [ 'OPAI_Auth', 'check' ],
+    ] );
+
+    register_rest_route( $ns, '/performance/audit', [
+        'methods'             => 'GET',
+        'callback'            => [ 'OPAI_Performance', 'audit' ],
+        'permission_callback' => [ 'OPAI_Auth', 'check' ],
+    ] );
+
+    register_rest_route( $ns, '/connector/self-update', [
+        'methods'             => 'POST',
+        'callback'            => [ 'OPAI_SelfUpdate', 'update' ],
         'permission_callback' => [ 'OPAI_Auth', 'check' ],
     ] );
 

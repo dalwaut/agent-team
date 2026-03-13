@@ -8,10 +8,12 @@ Routes:
     /admin         — Admin dashboard
 """
 
+import fcntl
 import json
 import logging
 import resource
 import sys
+import threading
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -70,11 +72,19 @@ async def auth_verify():
 
 
 @app.get("/auth/config")
-async def auth_config():
+async def auth_config(request: Request):
     """Return Supabase config for frontend auth.js initialization."""
+    # Local access bypass: when AUTH_DISABLED or accessing from localhost,
+    # tell the frontend to skip Supabase auth and render as admin
+    from_local = False
+    client = request.client
+    if client:
+        from_local = client.host in ("127.0.0.1", "::1", "localhost")
+    auth_disabled = config.AUTH_DISABLED or from_local
     return {
         "supabase_url": config.SUPABASE_URL,
         "supabase_anon_key": config.SUPABASE_ANON_KEY,
+        "auth_disabled": auth_disabled,
     }
 
 
@@ -126,7 +136,8 @@ async def onboard_status(request: Request):
     try:
         _, _, token = auth_header.partition(" ")
         user = await decode_token(token)
-    except Exception:
+    except (ValueError, KeyError, Exception) as exc:
+        logging.getLogger(__name__).debug(f"Onboard status auth failed: {exc}")
         return {"onboarded": False}
 
     # Check profile
@@ -149,8 +160,8 @@ async def onboard_status(request: Request):
                 rows = resp.json()
                 if rows:
                     return {"onboarded": rows[0].get("onboarding_completed", False)}
-    except Exception:
-        pass
+    except (httpx.HTTPError, httpx.TimeoutException) as exc:
+        logging.getLogger(__name__).warning(f"Onboard status Supabase check failed: {exc}")
 
     return {"onboarded": False}
 
@@ -172,7 +183,8 @@ async def my_apps(request: Request):
     try:
         _, _, token = auth_header.partition(" ")
         user = await decode_token(token)
-    except Exception:
+    except (ValueError, KeyError, Exception) as exc:
+        logging.getLogger(__name__).debug(f"Apps auth failed: {exc}")
         return {"allowed_apps": []}
 
     service_key = os.getenv("SUPABASE_SERVICE_KEY", "")
@@ -192,8 +204,8 @@ async def my_apps(request: Request):
                 rows = resp.json()
                 if rows and rows[0].get("allowed_apps"):
                     return {"allowed_apps": rows[0]["allowed_apps"]}
-    except Exception:
-        pass
+    except (httpx.HTTPError, httpx.TimeoutException) as exc:
+        logging.getLogger(__name__).warning(f"Apps Supabase check failed: {exc}")
 
     return {"allowed_apps": []}
 
@@ -201,9 +213,11 @@ async def my_apps(request: Request):
 # ── Feedback ──────────────────────────────────────────────
 
 FEEDBACK_QUEUE = Path(__file__).parent.parent.parent / "notes" / "Improvements" / "feedback-queue.json"
+_feedback_queue_lock = threading.Lock()
 _feedback_rate: dict[str, list[float]] = defaultdict(list)
 _FEEDBACK_RATE_LIMIT = 5   # max per window
 _FEEDBACK_RATE_WINDOW = 60  # seconds
+_RATE_MAX_IPS = 10000  # prune rate dicts when they exceed this size
 
 
 @app.post("/api/feedback")
@@ -212,6 +226,11 @@ async def submit_feedback(request: Request):
     # Rate limit by IP
     client_ip = request.client.host if request.client else "unknown"
     now = time.time()
+    # Prune stale IPs to prevent unbounded growth
+    if len(_feedback_rate) > _RATE_MAX_IPS:
+        stale = [ip for ip, ts in _feedback_rate.items() if not ts or now - ts[-1] > _FEEDBACK_RATE_WINDOW]
+        for ip in stale:
+            del _feedback_rate[ip]
     hits = _feedback_rate[client_ip]
     _feedback_rate[client_ip] = [t for t in hits if now - t < _FEEDBACK_RATE_WINDOW]
     if len(_feedback_rate[client_ip]) >= _FEEDBACK_RATE_LIMIT:
@@ -234,7 +253,7 @@ async def submit_feedback(request: Request):
     saved_attachments = []
     raw_attachments = body.get("attachments") or []
     if isinstance(raw_attachments, list) and len(raw_attachments) <= 5:
-        attach_dir = Path(__file__).parent.parent.parent / "notes" / "feedback" / "attachments"
+        attach_dir = Path(__file__).parent.parent.parent / "notes" / "Improvements" / "attachments"
         attach_dir.mkdir(parents=True, exist_ok=True)
         for i, att in enumerate(raw_attachments[:5]):
             try:
@@ -267,11 +286,12 @@ async def submit_feedback(request: Request):
         "attachments": saved_attachments,
     }
 
-    # Atomic-ish write: read → append → write
+    # Thread-safe write: read → append → write under lock
     try:
-        queue = json.loads(FEEDBACK_QUEUE.read_text()) if FEEDBACK_QUEUE.exists() else {"version": 1, "items": []}
-        queue["items"].append(item)
-        FEEDBACK_QUEUE.write_text(json.dumps(queue, indent=2))
+        with _feedback_queue_lock:
+            queue = json.loads(FEEDBACK_QUEUE.read_text()) if FEEDBACK_QUEUE.exists() else {"version": 1, "items": []}
+            queue["items"].append(item)
+            FEEDBACK_QUEUE.write_text(json.dumps(queue, indent=2))
     except Exception as exc:
         logging.getLogger(__name__).error(f"Failed to write feedback: {exc}")
         return JSONResponse({"error": "Server error"}, status_code=500)
@@ -324,6 +344,7 @@ def _write_feedback_to_tool_file(item: dict):
 # ── User Requests (App / Tool / Agent) ────────────────────
 
 TASKS_REGISTRY = Path(__file__).parent.parent.parent / "tasks" / "registry.json"
+TASKS_REGISTRY_LOCK = TASKS_REGISTRY.parent / ".registry.lock"
 IMPROVEMENTS_DIR = Path(__file__).parent.parent.parent / "notes" / "Improvements"
 _request_rate: dict[str, list[float]] = defaultdict(list)
 
@@ -334,6 +355,11 @@ async def submit_request(request: Request):
     # Rate limit by IP
     client_ip = request.client.host if request.client else "unknown"
     now = time.time()
+    # Prune stale IPs to prevent unbounded growth
+    if len(_request_rate) > _RATE_MAX_IPS:
+        stale = [ip for ip, ts in _request_rate.items() if not ts or now - ts[-1] > _FEEDBACK_RATE_WINDOW]
+        for ip in stale:
+            del _request_rate[ip]
     hits = _request_rate[client_ip]
     _request_rate[client_ip] = [t for t in hits if now - t < _FEEDBACK_RATE_WINDOW]
     if len(_request_rate[client_ip]) >= _FEEDBACK_RATE_LIMIT:
@@ -361,61 +387,67 @@ async def submit_request(request: Request):
     }
     type_label = type_labels.get(request_type, request_type.title())
 
-    # 1. Create task in registry
+    # 1. Create task in registry (file-locked to prevent cross-process ID collisions)
     task_id = None
     try:
-        registry = json.loads(TASKS_REGISTRY.read_text()) if TASKS_REGISTRY.is_file() else {"tasks": {}}
+        lock_fd = open(TASKS_REGISTRY_LOCK, "w")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        try:
+            registry = json.loads(TASKS_REGISTRY.read_text()) if TASKS_REGISTRY.is_file() else {"tasks": {}}
 
-        date_str = time.strftime("%Y%m%d")
-        existing = [k for k in registry["tasks"] if k.startswith(f"t-{date_str}-")]
-        next_num = len(existing) + 1
-        while f"t-{date_str}-{next_num:03d}" in registry["tasks"]:
-            next_num += 1
-        task_id = f"t-{date_str}-{next_num:03d}"
+            date_str = time.strftime("%Y%m%d")
+            existing = [k for k in registry["tasks"] if k.startswith(f"t-{date_str}-")]
+            next_num = len(existing) + 1
+            while f"t-{date_str}-{next_num:03d}" in registry["tasks"]:
+                next_num += 1
+            task_id = f"t-{date_str}-{next_num:03d}"
 
-        now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-        task = {
-            "id": task_id,
-            "title": f"[{type_label} Request] {description[:80]}",
-            "description": description,
-            "source": "user-request",
-            "sourceRef": {
-                "requestType": request_type,
-                "typeLabel": type_label,
-                "userId": user_id,
-                "userEmail": user_email,
-            },
-            "project": None,
-            "client": None,
-            "assignee": "agent",
-            "status": "pending",
-            "priority": "normal",
-            "deadline": None,
-            "routing": {
-                "type": "user-request",
-                "squads": [],
-                "mode": "propose",
-            },
-            "queueId": None,
-            "createdAt": now_iso,
-            "updatedAt": None,
-            "completedAt": None,
-            "agentConfig": {
-                "agentId": "problem-solver",
-                "agentType": "agent",
-                "agentName": "Problem Solver",
-                "instructions": f"Review this {type_label} request from a user. Classify it as: (a) a valid system improvement — write a brief spec to notes/Improvements/, or (b) unnecessary/duplicate — explain why. Always create an actionable recommendation for the HITL reviewer.",
-                "response": None,
-                "reportFile": None,
+            now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+            task = {
+                "id": task_id,
+                "title": f"[{type_label} Request] {description[:80]}",
+                "description": description,
+                "source": "user-request",
+                "sourceRef": {
+                    "requestType": request_type,
+                    "typeLabel": type_label,
+                    "userId": user_id,
+                    "userEmail": user_email,
+                },
+                "project": None,
+                "client": None,
+                "assignee": "agent",
+                "status": "pending",
+                "priority": "normal",
+                "deadline": None,
+                "routing": {
+                    "type": "user-request",
+                    "squads": [],
+                    "mode": "propose",
+                },
+                "queueId": None,
+                "createdAt": now_iso,
+                "updatedAt": None,
                 "completedAt": None,
-            },
-            "attachments": [],
-            "notes": f"Submitted via portal by {user_email or 'anonymous'}",
-        }
+                "agentConfig": {
+                    "agentId": "problem-solver",
+                    "agentType": "agent",
+                    "agentName": "Problem Solver",
+                    "instructions": f"Review this {type_label} request from a user. Classify it as: (a) a valid system improvement — write a brief spec to notes/Improvements/, or (b) unnecessary/duplicate — explain why. Always create an actionable recommendation for the HITL reviewer.",
+                    "response": None,
+                    "reportFile": None,
+                    "completedAt": None,
+                },
+                "attachments": [],
+                "notes": f"Submitted via portal by {user_email or 'anonymous'}",
+            }
 
-        registry["tasks"][task_id] = task
-        registry["lastUpdated"] = now_iso
-        TASKS_REGISTRY.write_text(json.dumps(registry, indent=2))
+            registry["tasks"][task_id] = task
+            registry["lastUpdated"] = now_iso
+            TASKS_REGISTRY.write_text(json.dumps(registry, indent=2))
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
     except Exception as exc:
         logging.getLogger(__name__).error(f"Failed to create task for request: {exc}")
         return JSONResponse({"error": "Server error creating task"}, status_code=500)
@@ -459,9 +491,10 @@ async def submit_request(request: Request):
             "files_modified": [],
             "task_id": task_id,
         }
-        queue = json.loads(FEEDBACK_QUEUE.read_text()) if FEEDBACK_QUEUE.exists() else {"version": 1, "items": []}
-        queue["items"].append(fb_item)
-        FEEDBACK_QUEUE.write_text(json.dumps(queue, indent=2))
+        with _feedback_queue_lock:
+            queue = json.loads(FEEDBACK_QUEUE.read_text()) if FEEDBACK_QUEUE.exists() else {"version": 1, "items": []}
+            queue["items"].append(fb_item)
+            FEEDBACK_QUEUE.write_text(json.dumps(queue, indent=2))
     except Exception as exc:
         logging.getLogger(__name__).warning(f"Failed to write request to feedback queue: {exc}")
 
@@ -487,7 +520,7 @@ def rustdesk_info():
             if stripped.isdigit():
                 rd_id = stripped
                 break
-    except Exception:
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
         pass
 
     # Check systemd service status
@@ -498,7 +531,7 @@ def rustdesk_info():
             capture_output=True, text=True, timeout=3,
         )
         active = result.stdout.strip() == "active"
-    except Exception:
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
         pass
 
     return {
@@ -523,7 +556,7 @@ import shutil
 ARCHIVE_DIR = config.STATIC_DIR / "archive"
 ARCHIVE_DIR.mkdir(exist_ok=True)
 
-_PUBLIC_SITE_DIR = Path("/workspace/synced/opai/tools/opai-billing/public-site")
+_PUBLIC_SITE_DIR = config.PUBLIC_SITE_DIR
 _REGISTRY_PATH = ARCHIVE_DIR / "pages-registry.json"
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,28}[a-z0-9]$")
@@ -534,7 +567,7 @@ _RESERVED_ROUTES = frozenset([
 ])
 _MAX_HTML_SIZE = 2 * 1024 * 1024  # 2 MB
 
-_OPAI_SERVER_TAILSCALE = "100.72.206.23"
+_OPAI_SERVER_TAILSCALE = config.OPAI_SERVER_TAILSCALE
 
 _SEED_PAGES = [
     {
@@ -661,6 +694,7 @@ def _page_info(slug: str) -> dict | None:
 
 def _generate_traefik_yaml() -> str:
     """Generate Traefik dynamic config YAML from active pages."""
+    domain = config.PUBLIC_DOMAIN
     pages = [p for p in _registry.list() if p["status"] == "active"]
     lines = [
         "# Auto-generated by OPAI Pages Manager",
@@ -672,7 +706,7 @@ def _generate_traefik_yaml() -> str:
     # HTTP → HTTPS redirect
     lines += [
         "    http-catchall:",
-        "      rule: \"HostRegexp(`opai.boutabyte.com`)\"",
+        f"      rule: \"HostRegexp(`{domain}`)\"",
         "      entryPoints:",
         "        - http",
         "      middlewares:",
@@ -689,7 +723,7 @@ def _generate_traefik_yaml() -> str:
             # Strip prefix, serve from static dir (like /about → index.html)
             lines += [
                 f"    {slug}-router:",
-                f"      rule: \"Host(`opai.boutabyte.com`) && PathPrefix(`{route}`)\"",
+                f"      rule: \"Host(`{domain}`) && PathPrefix(`{route}`)\"",
                 "      entryPoints:",
                 "        - https",
                 "      priority: 100",
@@ -704,7 +738,7 @@ def _generate_traefik_yaml() -> str:
             # Rewrite path to specific file (like /welcome → welcome.html)
             lines += [
                 f"    {slug}-router:",
-                f"      rule: \"Host(`opai.boutabyte.com`) && Path(`{route}`)\"",
+                f"      rule: \"Host(`{domain}`) && Path(`{route}`)\"",
                 "      entryPoints:",
                 "        - https",
                 "      priority: 100",
@@ -719,7 +753,7 @@ def _generate_traefik_yaml() -> str:
     # Catch-all → OPAI Server
     lines += [
         "    opai-catchall:",
-        "      rule: \"Host(`opai.boutabyte.com`)\"",
+        f"      rule: \"Host(`{domain}`)\"",
         "      entryPoints:",
         "        - https",
         "      priority: 1",
@@ -794,7 +828,7 @@ async def list_source_files():
     return {"files": files, "dir": str(_PUBLIC_SITE_DIR)}
 
 
-_BROWSE_ROOT = Path("/workspace/synced/opai")
+_BROWSE_ROOT = config.WORKSPACE_ROOT
 
 
 @app.get("/api/pages/browse")
@@ -842,7 +876,8 @@ async def read_source_file(path: str):
         return JSONResponse({"error": "File too large"}, status_code=400)
     try:
         content = target.read_text(errors="replace")
-    except Exception:
+    except OSError as exc:
+        logging.getLogger(__name__).warning(f"Cannot read file {target}: {exc}")
         return JSONResponse({"error": "Cannot read file"}, status_code=500)
     return {"path": path, "content": content, "size_kb": round(target.stat().st_size / 1024, 1)}
 
@@ -1085,19 +1120,19 @@ async def deploy_routes():
     yaml_content = _generate_traefik_yaml()
 
     # Write locally first
-    local_yaml = Path("/workspace/synced/opai/tools/opai-billing/deploy/opai-boutabyte.yaml")
+    local_yaml = config.WORKSPACE_ROOT / "tools" / "opai-billing" / "deploy" / "opai-boutabyte.yaml"
     local_yaml.parent.mkdir(parents=True, exist_ok=True)
     local_yaml.write_text(yaml_content)
 
     # SCP to BB VPS
-    key = Path.home() / ".ssh" / "bb_vps"
+    key = config.SSH_KEY_PATH
     if not key.exists():
-        return JSONResponse({"error": "SSH key not found at ~/.ssh/bb_vps"}, status_code=500)
+        return JSONResponse({"error": f"SSH key not found at {key}"}, status_code=500)
 
     try:
         result = subprocess.run(
             ["scp", "-i", str(key), "-o", "StrictHostKeyChecking=accept-new",
-             str(local_yaml), "root@bb-vps:/data/coolify/proxy/dynamic/opai-boutabyte.yaml"],
+             str(local_yaml), f"{config.BB_VPS_HOST}:/data/coolify/proxy/dynamic/opai-boutabyte.yaml"],
             capture_output=True, text=True, timeout=30,
             env={**os.environ, "HOME": str(Path.home())},
         )
@@ -1116,15 +1151,15 @@ async def deploy_all():
     import subprocess
     import os
 
-    key = Path.home() / ".ssh" / "bb_vps"
+    key = config.SSH_KEY_PATH
     if not key.exists():
-        return JSONResponse({"error": "SSH key not found at ~/.ssh/bb_vps"}, status_code=500)
+        return JSONResponse({"error": f"SSH key not found at {key}"}, status_code=500)
 
     results = {"content": None, "routes": None}
 
     # 1. Deploy content (rsync public-site files)
     src = str(_PUBLIC_SITE_DIR) + "/"
-    dest = "root@bb-vps:/var/www/opai-landing/"
+    dest = f"{config.BB_VPS_HOST}:/var/www/opai-landing/"
     try:
         r = subprocess.run(
             ["rsync", "-az", "--no-perms", "--no-group", "--no-owner",
@@ -1142,14 +1177,14 @@ async def deploy_all():
 
     # 2. Deploy routes (Traefik YAML)
     yaml_content = _generate_traefik_yaml()
-    local_yaml = Path("/workspace/synced/opai/tools/opai-billing/deploy/opai-boutabyte.yaml")
+    local_yaml = config.WORKSPACE_ROOT / "tools" / "opai-billing" / "deploy" / "opai-boutabyte.yaml"
     local_yaml.parent.mkdir(parents=True, exist_ok=True)
     local_yaml.write_text(yaml_content)
 
     try:
         r = subprocess.run(
             ["scp", "-i", str(key), "-o", "StrictHostKeyChecking=accept-new",
-             str(local_yaml), "root@bb-vps:/data/coolify/proxy/dynamic/opai-boutabyte.yaml"],
+             str(local_yaml), f"{config.BB_VPS_HOST}:/data/coolify/proxy/dynamic/opai-boutabyte.yaml"],
             capture_output=True, text=True, timeout=30,
             env={**os.environ, "HOME": str(Path.home())},
         )
@@ -1265,12 +1300,12 @@ async def archive_deploy():
     import subprocess
     import os
 
-    key = Path.home() / ".ssh" / "bb_vps"
+    key = config.SSH_KEY_PATH
     if not key.exists():
-        return JSONResponse({"error": "SSH key not found at ~/.ssh/bb_vps"}, status_code=500)
+        return JSONResponse({"error": f"SSH key not found at {key}"}, status_code=500)
 
     src = str(_PUBLIC_SITE_DIR) + "/"
-    dest = "root@bb-vps:/var/www/opai-landing/"
+    dest = f"{config.BB_VPS_HOST}:/var/www/opai-landing/"
 
     try:
         result = subprocess.run(
@@ -1285,7 +1320,7 @@ async def archive_deploy():
 
     if result.returncode != 0:
         return JSONResponse({"error": f"Deploy failed: {result.stderr.strip()}"}, status_code=500)
-    return {"ok": True, "message": "Deployed to opai.boutabyte.com"}
+    return {"ok": True, "message": f"Deployed to {config.PUBLIC_DOMAIN}"}
 
 
 import uuid as _uuid
@@ -1324,7 +1359,7 @@ async def pages_generate(request: Request):
                     {"error": "A generation is already in progress. Stop it first."},
                     status_code=409,
                 )
-        except Exception:
+        except (AttributeError, ProcessLookupError):
             pass
         # Process already finished — clear stale state
         _gen_state["proc"] = None
@@ -1379,7 +1414,7 @@ async def pages_generate(request: Request):
     )
 
     env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
-    nvm_bin = "/home/dallas/.nvm/versions/node/v20.19.5/bin"
+    nvm_bin = config.NVM_BIN
     if nvm_bin not in env.get("PATH", ""):
         env["PATH"] = nvm_bin + ":" + env.get("PATH", "")
 

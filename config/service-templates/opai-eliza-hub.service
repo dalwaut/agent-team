@@ -1,0 +1,21 @@
+[Unit]
+Description=OPAI Eliza Hub — ElizaOS management dashboard (port 8083)
+After=network.target
+
+[Service]
+Type=simple
+User=dallas
+Group=dallas
+WorkingDirectory=/workspace/synced/opai/tools/opai-eliza-hub
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-eliza-hub
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8083
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/home/dallas/.nvm/versions/node/v20.19.5/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/workspace/synced/opai/tools/opai-eliza-hub/.env
+EnvironmentFile=-%t/opai-vault/opai-eliza-hub.env
+
+[Install]
+WantedBy=default.target

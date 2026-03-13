@@ -73,6 +73,8 @@ class WorkerManager:
         self._managed_procs: dict[str, subprocess.Popen] = {}
         self._managed_logs: dict[str, deque] = {}  # Ring buffer per worker
         self._managed_auto_restart: dict[str, bool] = {}  # Track auto-restart intent
+        # Worker mail reference (set by app.py after startup)
+        self._mail = None  # Optional[WorkerMail]
 
     def load(self):
         """Load worker registrations from config/workers.json."""
@@ -429,8 +431,8 @@ class WorkerManager:
         if max_per_hour and not self.rate_limiter.check(worker_id, max_per_hour):
             return {"status": "rate_limited", "error": "Rate limit exceeded"}
 
-        # Load prompt
-        prompt = self._load_prompt(w, task_context)
+        # Load prompt (with priming context for this worker)
+        prompt = self._load_prompt(w, task_context, worker_id=worker_id)
         if not prompt:
             return {"status": "error", "error": "Could not load prompt"}
 
@@ -486,6 +488,9 @@ class WorkerManager:
 
         self.task_processes.pop(worker_id, None)
         output_text = stdout.decode(errors="replace")
+        stderr_text = stderr.decode(errors="replace").strip()
+        if stderr_text:
+            logger.warning("Task worker %s stderr: %s", worker_id, stderr_text[:500])
 
         # Save output to report file
         output_path = self._save_output(w, worker_id, output_text)
@@ -495,14 +500,19 @@ class WorkerManager:
             try:
                 ws_output_dir = workspace_path / "output"
                 ws_output_dir.mkdir(parents=True, exist_ok=True)
-                (ws_output_dir / "result.txt").write_text(output_text)
+                (ws_output_dir / "result.md").write_text(output_text)
             except OSError as e:
                 logger.warning("Failed to write workspace output: %s", e)
 
         status = "completed" if proc.returncode == 0 else "failed"
+
+        # Evaluate output against success criteria
+        evaluation = self._evaluate_output(w, output_text, proc.returncode)
+        eval_tag = "PASS" if evaluation["passed"] else f"FAIL({evaluation['score']})"
+
         logger.info(
-            "Task worker %s %s (exit=%d, output=%s)",
-            worker_id, status, proc.returncode, output_path,
+            "Task worker %s %s [%s] (exit=%d, output=%s)",
+            worker_id, status, eval_tag, proc.returncode, output_path,
         )
 
         return {
@@ -510,6 +520,7 @@ class WorkerManager:
             "exit_code": proc.returncode,
             "output_path": str(output_path) if output_path else None,
             "output_length": len(output_text),
+            "evaluation": evaluation,
         }
 
     def get_available_workers(self) -> list[str]:
@@ -540,11 +551,16 @@ class WorkerManager:
 
         return available
 
-    def _load_prompt(self, w: dict, task_context: Optional[dict]) -> Optional[str]:
+    def _load_prompt(
+        self, w: dict, task_context: Optional[dict], worker_id: Optional[str] = None,
+    ) -> Optional[str]:
         """Load a worker's prompt file, optionally injecting task context.
 
         If prompt_protection is enabled, tries vault first (synchronous fallback
         reads the vault env file). Otherwise loads directly from the prompt file.
+
+        When worker_id is provided, operational context (journal) and unread mail
+        are injected as priming blocks before the task context.
         """
         guardrails = w.get("guardrails", {})
 
@@ -575,10 +591,70 @@ class WorkerManager:
 
         prompt = prompt_path.read_text()
 
+        # Inject intent block before task context
+        intent_block = self._format_intent(w.get("intent", {}))
+        if intent_block:
+            prompt += intent_block
+
+        # Pre-task context priming: operational journal + unread mail
+        if worker_id:
+            journal_prime = self._load_journal_prime()
+            if journal_prime:
+                prompt += journal_prime
+            mail_prime = self._load_mail_prime(worker_id)
+            if mail_prime:
+                prompt += mail_prime
+
         if task_context:
             prompt += self._format_context(task_context)
 
         return prompt
+
+    def _load_journal_prime(self) -> str:
+        """Load the latest operational journal as context for workers.
+
+        Reads from the context harvester's latest journal, capped at 2000 chars.
+        Returns empty string if missing or stale.
+        """
+        try:
+            if not config.JOURNAL_LATEST.is_file():
+                return ""
+            data = json.loads(config.JOURNAL_LATEST.read_text())
+            summary = data.get("summary", "")
+            if not summary:
+                return ""
+            # Cap at 2000 chars
+            if len(summary) > 2000:
+                summary = summary[:2000] + "..."
+            return f"\n\n--- OPERATIONAL CONTEXT ---\n{summary}\n--- END OPERATIONAL CONTEXT ---\n"
+        except (json.JSONDecodeError, OSError) as e:
+            logger.debug("Journal prime load failed: %s", e)
+            return ""
+
+    def _load_mail_prime(self, worker_id: str) -> str:
+        """Load unread mail for a worker as context priming.
+
+        Reads up to 10 recent unread messages, formatted as a block.
+        Returns empty string if no mail system or no unread messages.
+        """
+        if not self._mail:
+            return ""
+        try:
+            messages = self._mail.check_inbox(worker_id, unread_only=True, limit=10)
+            if not messages:
+                return ""
+            lines = ["\n--- WORKER MAIL (unread) ---"]
+            for msg in messages:
+                body_preview = (msg.get("body") or "")[:300]
+                lines.append(
+                    f"[{msg.get('type', '?')}] from={msg.get('from_worker', '?')} "
+                    f"subject=\"{msg.get('subject', '')}\"\n  {body_preview}"
+                )
+            lines.append("--- END WORKER MAIL ---\n")
+            return "\n".join(lines)
+        except Exception as e:
+            logger.debug("Mail prime load failed: %s", e)
+            return ""
 
     @staticmethod
     def _format_context(task_context: dict) -> str:
@@ -588,6 +664,69 @@ class WorkerManager:
             block += f"{key}: {val}\n"
         block += "--- END CONTEXT ---\n"
         return block
+
+    @staticmethod
+    def _format_intent(intent: dict) -> str:
+        """Format a worker's intent block as readable text for prompt injection."""
+        if not intent:
+            return ""
+        lines = ["\n--- WORKER INTENT ---"]
+        if intent.get("purpose"):
+            lines.append(f"Purpose: {intent['purpose']}")
+        if intent.get("goals"):
+            lines.append(f"Goals: {', '.join(intent['goals'])}")
+        if intent.get("anti_goals"):
+            lines.append(f"Anti-goals: {', '.join(intent['anti_goals'])}")
+        lines.append("")
+        lines.append("Self-improvement: If you discover a new task, bug, or improvement "
+                      "during your work, you can propose it by including this line in your output:")
+        lines.append('  PROPOSE_TASK: title="..." reason="..." priority=normal')
+        lines.append("Proposed tasks go through human approval before execution.")
+        lines.append("--- END INTENT ---\n")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _evaluate_output(w: dict, output: str, exit_code: int) -> dict:
+        """Evaluate worker output against success_criteria. Returns pass/fail + reasons."""
+        criteria = w.get("success_criteria", {})
+        if not criteria:
+            return {"passed": True, "score": 1.0, "reasons": []}
+
+        reasons = []
+        checks_passed = 0
+        checks_total = 0
+
+        if criteria.get("exit_code_zero", True):
+            checks_total += 1
+            if exit_code == 0:
+                checks_passed += 1
+            else:
+                reasons.append(f"Non-zero exit code: {exit_code}")
+
+        min_len = criteria.get("min_output_length", 0)
+        if min_len:
+            checks_total += 1
+            if len(output) >= min_len:
+                checks_passed += 1
+            else:
+                reasons.append(f"Output too short: {len(output)} < {min_len}")
+
+        for pattern in criteria.get("must_contain", []):
+            checks_total += 1
+            if pattern.lower() in output.lower():
+                checks_passed += 1
+            else:
+                reasons.append(f"Missing required section: {pattern}")
+
+        for pattern in criteria.get("must_not_contain", []):
+            checks_total += 1
+            if pattern.lower() not in output.lower():
+                checks_passed += 1
+            else:
+                reasons.append(f"Contains prohibited pattern: {pattern}")
+
+        score = checks_passed / checks_total if checks_total else 1.0
+        return {"passed": score >= 0.8, "score": round(score, 2), "reasons": reasons}
 
     def _save_output(self, w: dict, worker_id: str, output: str) -> Optional[Path]:
         """Save task worker output to the configured report path."""

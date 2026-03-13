@@ -15,7 +15,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPAI_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENV_FILE="${OPAI_ROOT}/tools/opai-monitor/.env"
+ENV_FILE="${OPAI_ROOT}/tools/opai-engine/.env"
 MIGRATIONS_DIR="${OPAI_ROOT}/config/supabase-migrations"
 
 # ── Load config ──────────────────────────────────────────────

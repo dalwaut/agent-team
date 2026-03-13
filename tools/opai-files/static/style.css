@@ -216,6 +216,20 @@ body {
 }
 .btn-ai:hover { background: rgba(139, 92, 246, 0.25); border-color: rgba(139, 92, 246, 0.5); }
 
+.btn-context-switch {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.3);
+    color: #60a5fa;
+    font-weight: 500;
+}
+.btn-context-switch:hover { background: rgba(59, 130, 246, 0.25); border-color: rgba(59, 130, 246, 0.5); }
+.btn-context-switch.context-personal {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #34d399;
+}
+.btn-context-switch.context-personal:hover { background: rgba(16, 185, 129, 0.25); border-color: rgba(16, 185, 129, 0.5); }
+
 .path-info {
     font-size: 0.8rem;
     color: var(--text-dim);

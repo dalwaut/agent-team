@@ -143,24 +143,66 @@ async def youtube_save(req: YouTubeSaveRequest):
 # ── Research from Video ──────────────────────────────────────────────────────
 
 async def _run_youtube_research(session_id: str, title: str, transcript: str, url: str):
-    """Background: run Claude research on the video transcript."""
+    """Background: run research on the video transcript.
+
+    Uses NotebookLM when available (native YouTube URL indexing, free),
+    falls back to Claude CLI transcript analysis.
+    """
+    analysis_source = "claude"
+
     try:
         await _sb_patch_research(session_id, {"status": "running"})
 
-        truncated = truncate_transcript(transcript, 60000)
-        prompt = (
-            f"Research and analyze this YouTube video deeply.\n\n"
-            f"Video: \"{title}\"\nURL: {url}\n\n"
-            f"Transcript:\n{truncated}\n\n"
-            f"Provide:\n"
-            f"1. Key themes and concepts\n"
-            f"2. Notable claims or data points\n"
-            f"3. Related topics worth exploring\n"
-            f"4. Potential applications or action items\n"
-            f"5. Questions this raises for further research"
-        )
+        result = None
 
-        result = await call_claude(prompt, model=config.CLAUDE_MODEL, timeout=120)
+        # Try NotebookLM first — native YouTube URL support
+        try:
+            from nlm import (
+                is_available, get_client, ensure_notebook,
+                add_source_youtube, ask_notebook,
+            )
+
+            if is_available():
+                client = await get_client()
+                async with client:
+                    nb_id = await ensure_notebook(client, "YouTube Research")
+                    await add_source_youtube(client, nb_id, url)
+
+                    research_prompt = (
+                        f"Analyze this YouTube video \"{title}\" deeply. Provide:\n"
+                        f"1. Key themes and concepts\n"
+                        f"2. Notable claims or data points\n"
+                        f"3. Related topics worth exploring\n"
+                        f"4. Potential applications or action items\n"
+                        f"5. Questions this raises for further research"
+                    )
+                    nlm_result = await ask_notebook(client, nb_id, research_prompt)
+                    nlm_answer = nlm_result.get("answer", "")
+
+                    if len(nlm_answer) > 200:
+                        result = nlm_answer
+                        analysis_source = "notebooklm"
+                        log.info("[YouTube] NotebookLM research succeeded for session %s", session_id[:8])
+
+        except Exception as nlm_err:
+            log.warning("[YouTube] NotebookLM unavailable, falling back to Claude: %s", nlm_err)
+
+        # Fallback to Claude
+        if not result:
+            truncated = truncate_transcript(transcript, 60000)
+            prompt = (
+                f"Research and analyze this YouTube video deeply.\n\n"
+                f"Video: \"{title}\"\nURL: {url}\n\n"
+                f"Transcript:\n{truncated}\n\n"
+                f"Provide:\n"
+                f"1. Key themes and concepts\n"
+                f"2. Notable claims or data points\n"
+                f"3. Related topics worth exploring\n"
+                f"4. Potential applications or action items\n"
+                f"5. Questions this raises for further research"
+            )
+            result = await call_claude(prompt, model=config.CLAUDE_MODEL, timeout=120)
+            analysis_source = "claude"
 
         # Create a brain node with the research
         node = {
@@ -173,6 +215,7 @@ async def _run_youtube_research(session_id: str, title: str, transcript: str, ur
                 "source": "youtube-research",
                 "video_url": url,
                 "research_session": session_id,
+                "analysis_source": analysis_source,
             },
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -288,9 +331,32 @@ async def _run_youtube_rewrite(
     session_id: str, title: str, author: str, transcript: str,
     url: str, summary_data: Optional[dict],
 ):
-    """Background: run Claude re-write content generation from video topics."""
+    """Background: run Claude re-write content generation from video topics.
+
+    When available, uses NotebookLM to pre-analyze the video for richer context.
+    """
     try:
         await _sb_patch_research(session_id, {"status": "running"})
+
+        # Try NotebookLM pre-analysis for better theme extraction
+        nlm_context = ""
+        try:
+            from nlm import is_available, get_client, ensure_notebook, add_source_youtube, ask_notebook
+            if is_available():
+                client = await get_client()
+                async with client:
+                    nb_id = await ensure_notebook(client, "YouTube Research")
+                    await add_source_youtube(client, nb_id, url)
+                    nlm_result = await ask_notebook(
+                        client, nb_id,
+                        f"Extract the core topics, themes, key arguments, and unique angles from this video by {author}: \"{title}\""
+                    )
+                    nlm_answer = nlm_result.get("answer", "")
+                    if len(nlm_answer) > 100:
+                        nlm_context = f"\n\nPre-research analysis:\n{nlm_answer}"
+                        log.info("[YouTube] NotebookLM pre-analysis enriched rewrite for session %s", session_id[:8])
+        except Exception as nlm_err:
+            log.debug("[YouTube] NotebookLM unavailable for rewrite pre-analysis: %s", nlm_err)
 
         # Build theme summary from summary_data or transcript
         themes = ""
@@ -308,6 +374,10 @@ async def _run_youtube_rewrite(
         if not themes:
             # Fall back to truncated transcript for theme extraction
             themes = truncate_transcript(transcript, 8000)
+
+        # Enrich themes with NotebookLM pre-analysis if available
+        if nlm_context:
+            themes += nlm_context
 
         prompt = _REWRITE_PROMPT.format(
             title=title, author=author, url=url, themes=themes,

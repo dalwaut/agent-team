@@ -136,4 +136,29 @@ Review and assign to an agent squad or handle manually.
     config.REPORTS_HITL.mkdir(parents=True, exist_ok=True)
     (config.REPORTS_HITL / f"{task_id}.md").write_text(briefing)
 
+    # Create Team Hub HITL item (primary record — v3.5)
+    th_item_id = ""
+    try:
+        from services.task_processor import create_teamhub_hitl_item
+        th_result = create_teamhub_hitl_item(task_data)
+        if th_result:
+            th_item_id = th_result.get("id", "")
+    except Exception:
+        pass
+
+    # Queue Telegram notification to HITL topic
+    try:
+        from background.notifier import queue_notification
+        queue_notification(
+            "hitl_briefing",
+            task_id=task_id,
+            filename=f"{task_id}.md",
+            title=task_data["title"],
+            priority=task_data.get("priority", "normal"),
+            source=f"UPD System Changes -- {suggestion_id}",
+            teamhub_item_id=th_item_id,
+        )
+    except Exception:
+        pass
+
     return {"success": True, "task_id": task_id}

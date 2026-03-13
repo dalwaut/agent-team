@@ -1,5 +1,5 @@
 # Portal
-> Last updated: 2026-02-25 | Source: `tools/opai-portal/`
+> Last updated: 2026-03-05 | Source: `tools/opai-portal/`
 
 ## Overview
 
@@ -61,6 +61,14 @@ Browser → Caddy (:80) → Portal (:8090)
 | `SUPABASE_ANON_KEY` | Supabase public key | (required) |
 | `SUPABASE_SERVICE_KEY` | Service role key (needed for `/onboard/status` profile query) | (required) |
 | `SUPABASE_JWT_SECRET` | JWT secret for HS256 fallback | (required) |
+| `PUBLIC_DOMAIN` | Public-facing domain for the OPAI instance | `opai.boutabyte.com` |
+| `BB_VPS_HOST` | BB VPS SSH host for deploy operations | `bb-vps` |
+| `SSH_KEY_PATH` | SSH key for VPS deploy (rsync/SCP) | `~/.ssh/bb_vps` |
+| `OPAI_SERVER_TAILSCALE` | Tailscale hostname for internal routing | `opai-server.tail856df6.ts.net` |
+| `NVM_BIN` | nvm node binary path (for Claude CLI workers) | auto-detected |
+
+Additional path constants (in `config.py`):
+- `PUBLIC_SITE_DIR` -- path to public site HTML files used by Pages Manager deploy
 
 ## Public Landing Page
 
@@ -100,9 +108,9 @@ Shown when `user.app_metadata.role === "admin"`.
 1. **Status Bar** — Overall system health ("All Systems Operational" / "Some Systems Degraded") with per-service mini dots
 2. **Quick Stats Row** — CPU, Memory, Disk, Uptime with progress bars (fetched from `/engine/api/system/stats` every 10s)
 3. **Dashboard Toolbar** — Search, sort, view toggle, and layout save controls (see [Dashboard Toolbar](#dashboard-toolbar))
-4. **Service Cards** (16 tiles, rendered dynamically from `ADMIN_CARDS` array — 9 active + 7 v3-deferred):
+4. **Service Cards** (18 tiles, rendered dynamically from `ADMIN_CARDS` array — 11 active + 7 v3-deferred):
 
-**Active tiles (9):**
+**Active tiles (11):**
 
 | Card | Route | Health Source | Description |
 |------|-------|---------------|-------------|
@@ -111,6 +119,8 @@ Shown when `user.app_metadata.role === "admin"`.
 | OPAI Files | `/files/` | `services.files` | File manager |
 | OP WordPress | `/wordpress/` | `services.wordpress` | Multi-site WordPress management |
 | Email Agent | `/email-agent/` | `services.email-agent` | Autonomous email handling |
+| Vault | `/vault/` | `services.vault` | Encrypted credential management |
+| Studio | `/studio/` | `services.studio` | AI image generation + editing |
 | User Controls | `/users/` | `services.users` | User management (admin only) |
 | Discord Bot | — | `services.discord-bot` | Discord bridge (no web UI) |
 | Pages Manager | `/archive/` | (no health dot) | Page version management |
@@ -219,6 +229,18 @@ Shown when role is not admin. Cards are **dynamic** — rendered from the user's
 3. `renderUserCards()` builds card tiles from `APP_CARDS` catalog (JS object mapping app IDs to href/icon/title/desc)
 4. Only apps in the user's list are shown; empty list shows "No apps assigned" message
 5. Health dots are updated dynamically for all rendered cards
+
+**User APP_CARDS catalog** (JS object mapping app IDs to card definitions):
+
+| Key | Title | Route | Description |
+|-----|-------|-------|-------------|
+| `files` | My Files | `/files/` | Personal file storage & knowledge base |
+| `vault` | My Vault | `/vault/my/` | Personal encrypted credential vault |
+| `studio` | Studio | `/studio/` | AI image generation, editing, and media tools |
+| `team-hub` | Team Hub | `/team-hub/` | Tasks, projects, and collaboration |
+| `brain` | 2nd Brain | `/brain/` | Knowledge graph & research tools |
+
+**Important**: The `vault` key in APP_CARDS must match the `vault` entry in each user's `allowed_apps` array. Historically this was `my-vault` which caused a mismatch — fixed 2026-03-04.
 
 Fallback: if `/api/me/apps` fails, defaults to `['chat', 'messenger', 'files', 'forum']`.
 
@@ -558,8 +580,8 @@ All password inputs (login + onboarding) include an **eye toggle** button for sh
 
 - **Supabase**: Cloud-hosted auth (project `idorgloobxkmlnwnxbej`)
 - **Fetches from**: Engine (`/engine/api/health/summary`, `/engine/api/system/stats`)
-- **Serves auth for**: All web services (Chat, [Monitor](monitor.md), [Task Control Panel](task-control-panel.md), [Terminal](terminal.md), [Files](opai-files.md))
-- **Onboarding triggers**: [Sandbox System](sandbox-system.md) provisioning via [Monitor](monitor.md) API — see [Invite & Onboarding Flow](invite-onboarding-flow.md)
+- **Serves auth for**: All web services (Chat, [Monitor](monitor.md), [Task Control Panel](task-control-panel.md), [Terminal](terminal.md), [Files](opai-files.md), [Studio](studio.md), [Vault](vault.md))
+- **Onboarding triggers**: [Sandbox System](sandbox-system.md) provisioning via Engine API (`/api/users/{id}/provision-sandbox`) — see [Invite & Onboarding Flow](invite-onboarding-flow.md)
 - **Python deps**: fastapi, uvicorn, python-dotenv, httpx
 - **Frontend deps**: Supabase JS client v2 (CDN), Inter font (Google Fonts)
 - **Managed by**: [Services & systemd](services-systemd.md) (`opai-portal` service)
@@ -569,6 +591,6 @@ All password inputs (login + onboarding) include an **eye toggle** button for sh
 
 The shared `navbar.js` maintains a `FULL_HEIGHT_TOOLS` list for SPAs that use `flex: 1` root layouts with internal scrolling. Any tool in this list gets special body styling so `overflow-y: auto` triggers correctly. Current list:
 
-`terminal`, `claude`, `chat`, `bx4`, `brain`, `bot-space`, `orchestra`, `helm`, `marq`, `dam`
+`terminal`, `claude`, `chat`, `bx4`, `brain`, `bot-space`, `orchestra`, `helm`, `marq`, `dam`, `studio`
 
 See the [Common Gotchas section in CLAUDE.md](../CLAUDE.md) for details on why this is required.

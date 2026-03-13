@@ -10,6 +10,7 @@ ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh disco
 ExecStart=/workspace/synced/opai/tools/discord-bridge/start-bot.sh
 Restart=on-failure
 RestartSec=10
+TimeoutStopSec=10
 Environment=NODE_ENV=production
 
 EnvironmentFile=-%t/opai-vault/discord-bridge.env

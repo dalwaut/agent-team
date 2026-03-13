@@ -4,6 +4,8 @@ Read .agent/project_context.md if it exists for project-specific file paths and 
 
 Analyze the codebase for calculation accuracy and data correctness.
 
+OPAI CONTEXT: This workspace contains 22 active tools (Python Flask + Node.js) backed by Supabase (PostgreSQL). Common accuracy risks: timezone handling across Python/Node boundaries, Supabase timestamp fields (always UTC), JSON serialization round-trips between services, Stripe money calculations (cents vs dollars), and task status state machines in Team Hub.
+
 Your audit must cover:
 
 1. DATE/TIME CALCULATIONS
@@ -42,7 +44,56 @@ For each issue found, provide:
 - What the correct behavior should be
 - Recommended fix
 
-End with a summary table of all findings sorted by severity.
+For each finding, assign a unique ID (ACC-001, ACC-002, etc.) for traceability.
+
+End with the following sections:
+
+## Accuracy Audit Report — {DATE}
+
+### Finding Summary
+
+| ID | File | Line(s) | Category | Severity | Description |
+|----|------|---------|----------|----------|-------------|
+| ACC-001 | ... | ... | Date/Time | Critical | ... |
+| ACC-002 | ... | ... | Numerical | High | ... |
+
+### Detailed Findings
+
+For each finding:
+
+**ACC-NNN**: [Title]
+- **File:** path and line number(s)
+- **Severity:** Critical / High / Medium / Low
+- **Category:** Date/Time | Numerical | Data Mapping | Edge Case | Visualization
+- **What is wrong:** (with code snippet)
+- **Correct behavior:** (what it should do)
+- **Recommended fix:** (specific code change)
+
+### Top 5 Prioritized Fixes
+
+1. [Most critical fix with file path]
+2. ...
 
 Format your response as valid markdown.
 Do not ask for clarification, just do the analysis.
+
+## Feedback (End of Report)
+
+At the END of your report, include a feedback block for future runs.
+Wrap it in an HTML comment so it stays hidden from the visible report:
+
+<!-- FEEDBACK
+{
+  "hints": ["investigation strategies that proved useful"],
+  "missing": ["information you needed but couldn't find in the docs"],
+  "corrections": ["any outdated or wrong info you found in wiki/docs"]
+}
+-->
+
+Rules:
+- Only include items you're genuinely confident about
+- Empty arrays are fine — don't force feedback
+- Keep each item to 1-2 sentences
+- "hints" = what would help YOU next time you run this same task
+- "missing" = knowledge gaps that should be documented
+- "corrections" = specific factual errors (cite the file/doc)

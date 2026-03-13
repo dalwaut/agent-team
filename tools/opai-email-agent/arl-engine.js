@@ -27,12 +27,36 @@ const {
 const { logAction } = require('./action-logger');
 const { logAudit } = require('../shared/audit');
 const { resolveUser, canPerform } = require('./user-resolver');
+const { classifyEmail } = require('../email-checker/classifier');
+const { applyLabelsToAccount } = require('../email-checker/sender');
+const { getCapabilitiesForAccount } = require('./mode-engine');
 
 const SKILLS_PATH = path.join(__dirname, 'arl-skills.json');
+const CONFIG_PATH = path.join(__dirname, 'config.json');
+
+// ── Layer 4: Global outbound rate limiter ──────────────────
+// Tracks ARL sends per hour across ALL accounts. Resets hourly.
+const MAX_ARL_SENDS_PER_HOUR = 30;
+const _arlSendTracker = { count: 0, hourStart: Date.now() };
+
+// NOTE: Layer 1 AI-sent detection is now handled universally in agent-core.js (Step 0.5)
+// using a file-persisted tracker (data/ai-sent-tracker.json) that survives restarts.
+
+// ── Layer 5: Thread dedup tracker ────────────────────────
+// Only allow 1 ARL reply per unique thread per cycle.
+// Key = normalized(sender + subject), Value = timestamp of last reply.
+// Also persists across cycles to prevent re-replying to old threads.
+const _arlRepliedThreads = new Map();
+const THREAD_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown between replies to same thread
 
 function loadSkillsConfig() {
   try { return JSON.parse(fs.readFileSync(SKILLS_PATH, 'utf8')); }
   catch { return { arlEnabled: false }; }
+}
+
+function loadAccountConfig() {
+  try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); }
+  catch { return { accounts: [] }; }
 }
 
 /**
@@ -45,7 +69,7 @@ function shouldProcessArl(email, account) {
 
   // ARL processes emails on the Paradise agent account (primary ARL inbox)
   // and dallas@paradisewebfl.com when enabled
-  const arlAccounts = ['acc-paradise', 'acc-dallas-pw'];
+  const arlAccounts = ['arl-agent-pw', 'arl-dallas-pw'];
   if (!arlAccounts.includes(account.id)) return false;
 
   return true;
@@ -65,10 +89,86 @@ async function processArlEmail(email, account) {
 
   console.log(`[ARL] [${label}] Processing email from ${sender}: "${email.subject}"`);
 
+  // NOTE: Layer 1 (AI-sent detection) is now handled universally in agent-core.js Step 0.5.
+  // By the time we reach here, the email has already passed the AI-sent check.
+
+  // ── Layer 5: Thread dedup — max 1 ARL reply per thread per hour ──
+  // Prevents the agent from replying to multiple emails in the same thread
+  // in one cycle (e.g., 8 old emails in "Re: Response issues").
+  const threadKey = `${sender.toLowerCase()}|${email.subject.replace(/^(Re:\s*)+/gi, '').trim().toLowerCase()}`;
+  const lastReply = _arlRepliedThreads.get(threadKey);
+  if (lastReply && (Date.now() - lastReply) < THREAD_COOLDOWN_MS) {
+    console.log(`[ARL] [${label}] BLOCKED: thread dedup — already replied to "${email.subject}" from ${sender} within cooldown`);
+    logAction({
+      accountId: account.id,
+      action: 'arl-thread-dedup',
+      emailId: email.messageId,
+      sender,
+      subject: email.subject,
+      reasoning: `[${label}] Thread dedup: already replied to this thread within ${THREAD_COOLDOWN_MS / 60000}min cooldown`,
+      mode: 'arl',
+    });
+    return { handled: true }; // handled:true so agent-core skips it entirely
+  }
+
+  // ── Layer 3: Reply-chain depth limit — cap runaway threads ──
+  const reDepth = (email.subject.match(/Re:/gi) || []).length;
+  const MAX_REPLY_DEPTH = 3;
+  if (reDepth > MAX_REPLY_DEPTH) {
+    console.log(`[ARL] [${label}] BLOCKED: reply chain depth ${reDepth} exceeds limit ${MAX_REPLY_DEPTH}`);
+    logAction({
+      accountId: account.id,
+      action: 'arl-depth-block',
+      emailId: email.messageId,
+      sender,
+      subject: email.subject,
+      reasoning: `[${label}] Blocked: reply depth ${reDepth} > max ${MAX_REPLY_DEPTH}`,
+      mode: 'arl',
+    });
+    return { handled: false };
+  }
+
   // ── Step 0: Resolve user identity ──
   const user = resolveUser(sender);
   if (user) {
     console.log(`[ARL] [${label}] User resolved: ${user.name} (${user.role})`);
+  }
+
+  // ── Step 0.5: Classify + Tag (same as normal pipeline Steps 2-3) ──
+  const caps = getCapabilitiesForAccount(account);
+  let classification = null;
+  if (caps.classify) {
+    try {
+      classification = await classifyEmail(
+        email.from, email.subject, email.body || '', account.name || 'Agent'
+      );
+      logAction({
+        accountId: account.id, action: 'classify',
+        emailId: email.messageId, sender, subject: email.subject,
+        reasoning: `[${label}] Classified: tags=[${(classification.labels || []).join(', ')}], priority=${classification.priority}, urgency=${classification.urgency}`,
+        mode: 'arl', details: { classification },
+      });
+    } catch (err) {
+      console.error(`[ARL] [${label}] Classification error (non-fatal):`, err.message);
+    }
+  }
+  if (caps.label && classification) {
+    try {
+      const { setEnvBridgeForAccount } = require('./agent-core');
+      setEnvBridgeForAccount(account);
+      await applyLabelsToAccount(
+        email.uid, classification.labels || [], classification.priority || 'normal',
+        classification.isSystem || false, '', email.folder || 'INBOX'
+      );
+      logAction({
+        accountId: account.id, action: 'label',
+        emailId: email.messageId, sender, subject: email.subject,
+        reasoning: `[${label}] Applied IMAP labels: ${(classification.labels || []).join(', ')}`,
+        mode: 'arl',
+      });
+    } catch (labelErr) {
+      console.error(`[ARL] [${label}] Label error (non-fatal):`, labelErr.message);
+    }
   }
 
   // ── Step 1: Check for follow-up in active conversation ──
@@ -83,8 +183,17 @@ async function processArlEmail(email, account) {
   const intent = parseIntent(email);
 
   if (!intent.detected && !isFollowUp) {
-    console.log(`[ARL] [${label}] No actionable intent detected — skipping ARL`);
-    return { handled: false };
+    if (user) {
+      // Known internal user — always respond, fallback to research skill
+      console.log(`[ARL] [${label}] No specific intent from known user ${user.name} — defaulting to research skill`);
+      intent.detected = true;
+      intent.intents = ['research'];
+      intent.matchedSkills = ['research'];
+      intent.confidence = 0.5;
+    } else {
+      console.log(`[ARL] [${label}] No actionable intent detected from unknown sender — skipping ARL`);
+      return { handled: false };
+    }
   }
 
   // For follow-ups with no explicit intent, use the previous conversation's skills
@@ -121,6 +230,7 @@ async function processArlEmail(email, account) {
   console.log(`[ARL] [${label}] Intent: ${intent.intents.join(', ') || 'follow-up'} | Skills: ${skillIds.join(', ')} | Confidence: ${intent.confidence}`);
 
   logAction({
+    accountId: account.id,
     action: 'arl-intent',
     emailId: email.messageId,
     sender,
@@ -182,14 +292,64 @@ async function processArlEmail(email, account) {
     responseText = buildFallbackResponse(email, skillResults);
   }
 
-  // ── Step 6: Send reply via SMTP ──
+  // ── Step 6: Save draft + send based on mode ──
   let sendSuccess = false;
+  let draftSaved = false;
+
+  // Save draft to IMAP Drafts folder
   try {
-    await sendArlReply(email, account, responseText);
-    sendSuccess = true;
-    console.log(`[ARL] [${label}] Reply sent to ${sender}`);
+    const { saveDraftToAccount } = require('../email-checker/sender');
+    const { setEnvBridgeForAccount } = require('./agent-core');
+    setEnvBridgeForAccount(account);
+    const replySubject = email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`;
+    await saveDraftToAccount(replySubject, responseText, sender, '');
+    draftSaved = true;
+    console.log(`[ARL] [${label}] Draft saved to account`);
   } catch (err) {
-    console.error(`[ARL] [${label}] Send error:`, err.message);
+    console.error(`[ARL] [${label}] Draft save error (non-fatal):`, err.message);
+  }
+
+  // Determine if we should auto-send based on mode + permissions
+  const accountMode = account.mode || 'suggestion';
+  const canAutoSend = (accountMode === 'internal' || accountMode === 'auto') &&
+    (!account.permissions || account.permissions.send !== false);
+
+  if (canAutoSend) {
+    // Auto-send (all safety layers still enforced inside sendArlReply)
+    try {
+      const didSend = await sendArlReply(email, account, responseText);
+      if (didSend) {
+        sendSuccess = true;
+        console.log(`[ARL] [${label}] Reply sent to ${sender}`);
+      } else {
+        console.log(`[ARL] [${label}] Reply skipped (blocked by send permission or rate limit)`);
+      }
+    } catch (err) {
+      console.error(`[ARL] [${label}] Send error:`, err.message);
+    }
+  } else {
+    // Queue for manual approval
+    const { addToQueue } = require('./agent-core');
+    addToQueue({
+      accountId: account.id,
+      emailId: email.messageId,
+      uid: email.uid,
+      folder: email.folder,
+      sender,
+      subject: email.subject,
+      draft: responseText,
+      draftId: `arl-${Date.now()}`,
+      reason: `ARL draft — ${accountMode} mode, awaiting approval`,
+    });
+    console.log(`[ARL] [${label}] Draft queued for approval (${accountMode} mode, send=${account.permissions?.send})`);
+  }
+
+  // ── Step 6.5: Mark original email as read ──
+  try {
+    const { markEmailSeen } = require('./agent-core');
+    await markEmailSeen(email.uid, email.folder || 'INBOX', account);
+  } catch (err) {
+    console.error(`[ARL] [${label}] markEmailSeen error (non-fatal):`, err.message);
   }
 
   // ── Step 7: Track conversation for follow-up window ──
@@ -205,11 +365,12 @@ async function processArlEmail(email, account) {
 
   // ── Step 8: Log everything ──
   logAction({
-    action: sendSuccess ? 'arl-respond' : 'arl-respond-failed',
+    accountId: account.id,
+    action: sendSuccess ? 'arl-respond' : (draftSaved ? 'arl-draft' : 'arl-respond-failed'),
     emailId: email.messageId,
     sender,
     subject: email.subject,
-    reasoning: `[${label}] ARL ${isFollowUp ? 'follow-up' : 'response'}: ${skillResults.length} skills, ${duration}ms. ${sendSuccess ? 'Sent.' : 'Send failed.'}`,
+    reasoning: `[${label}] ARL ${isFollowUp ? 'follow-up' : 'response'}: ${skillResults.length} skills, ${duration}ms. ${sendSuccess ? 'Sent.' : (draftSaved ? 'Draft saved.' : 'Failed.')}${!canAutoSend ? ' Queued for approval.' : ''}`,
     mode: 'arl',
     details: {
       skills: skillResults.map(r => ({ id: r.skillId, success: r.success, duration: r.duration })),
@@ -248,7 +409,7 @@ async function processArlEmail(email, account) {
         sendSuccess,
       },
     });
-  } catch {}
+  } catch { }
 
   return {
     handled: true,
@@ -289,7 +450,7 @@ Write a clear, professional email response that:
 1. Directly answers their question/request using the skill results above
 2. Includes specific data, findings, or diagnostics from the results
 3. Is concise but thorough — no fluff
-4. Ends with a note that they can reply within 10 minutes for follow-up questions
+4. Ends with a note that they can reply within 30 minutes for follow-up questions
 5. Sign off as "OPAI Agent" (automated email assistant)
 
 Do NOT include a subject line. Just the response body.`;
@@ -326,7 +487,7 @@ function buildFallbackResponse(email, skillResults) {
     lines.push('');
   }
 
-  lines.push('\nReply within 10 minutes if you have follow-up questions.\n');
+  lines.push('\nReply within 30 minutes if you have follow-up questions.\n');
   lines.push('— OPAI Agent');
   return lines.join('\n');
 }
@@ -340,21 +501,77 @@ async function sendArlReply(email, account, responseText) {
   const { sendResponse } = require('../email-checker/sender');
   const { setEnvBridgeForAccount } = require('./agent-core');
 
+  // ── Layer 2: Enforce account send permissions ──
+  // arl-dallas-pw has send:false — ARL must respect this.
+  // Only accounts with explicit send:true can send ARL replies.
+  if (account.permissions && account.permissions.send === false) {
+    console.log(`[ARL] [${account.name || account.email}] BLOCKED: account does not have send permission — skipping ARL reply`);
+    logAction({
+      accountId: account.id,
+      action: 'arl-send-blocked',
+      emailId: email.messageId,
+      sender: email.fromAddress,
+      subject: email.subject,
+      reasoning: `[${account.name}] ARL send blocked: account.permissions.send is false`,
+      mode: 'arl',
+    });
+    return false;
+  }
+
+  // ── Layer 4: Global outbound rate limit ──
+  const now = Date.now();
+  if (now - _arlSendTracker.hourStart > 3600000) {
+    _arlSendTracker.count = 0;
+    _arlSendTracker.hourStart = now;
+  }
+  if (_arlSendTracker.count >= MAX_ARL_SENDS_PER_HOUR) {
+    console.log(`[ARL] RATE LIMIT HIT: ${_arlSendTracker.count} ARL sends this hour — blocking further sends until next hour`);
+    logAction({
+      accountId: account.id,
+      action: 'arl-rate-limited',
+      emailId: email.messageId,
+      sender: email.fromAddress,
+      subject: email.subject,
+      reasoning: `ARL rate limit: ${_arlSendTracker.count}/${MAX_ARL_SENDS_PER_HOUR} sends this hour — blocked`,
+      mode: 'arl',
+    });
+    return false;
+  }
+
   // Bridge SMTP credentials for the sender module
   setEnvBridgeForAccount(account);
 
   const subject = email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`;
 
-  await sendResponse({
+  const result = await sendResponse({
     to: email.fromAddress,
     subject,
     finalContent: responseText,
     emailMessageId: email.messageId,
+    headers: { 'X-OPAI-ARL-Sent': 'true' }, // Tag so receiving accounts can detect AI-sent emails
   }, ''); // empty prefix — using bridged env vars
 
-  // Mark original email as seen (non-blocking)
-  const { markEmailSeen } = require('./agent-core');
-  markEmailSeen(email.uid, email.folder, account).catch(() => {});
+  // Check if the SMTP send actually succeeded
+  if (!result?.success) {
+    console.error(`[ARL] [${account.name || account.email}] SMTP send failed: ${result?.error || 'unknown error'}`);
+    return false;
+  }
+
+  // Record in file-persisted AI-sent tracker (survives restarts)
+  const { recordAiSent } = require('./agent-core');
+  recordAiSent({ messageId: result?.messageId, to: email.fromAddress, subject });
+
+  // Increment rate tracker after successful send
+  _arlSendTracker.count++;
+  console.log(`[ARL] Send tracker: ${_arlSendTracker.count}/${MAX_ARL_SENDS_PER_HOUR} this hour`);
+
+  // Record in thread dedup tracker (Layer 5)
+  const threadKey = `${email.fromAddress.toLowerCase()}|${subject.replace(/^(Re:\s*)+/gi, '').trim().toLowerCase()}`;
+  _arlRepliedThreads.set(threadKey, Date.now());
+
+  // NOTE: markEmailSeen is now called in Step 6.5 of processArlEmail (runs regardless of send outcome)
+
+  return true;
 }
 
 // ── Helpers ────────────────────────────────────────────────

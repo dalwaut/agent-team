@@ -1,0 +1,40 @@
+# Template: Follow-Up Sequence (3-Touch)
+# Voice: boutabyte-professional
+# Trigger: After sending a proposal, quote, or initial outreach with no response
+
+## Subject Line Options
+- Re: {{original_subject}}
+- Quick follow-up — {{project_name}}
+- Checking in — {{project_name}}
+
+## Body — Touch 1 (Day 1 after no response)
+
+Hi {{client_name}},
+
+Just wanted to circle back on the {{document_type}} I sent over {{send_date}}. I know things get busy, so no rush at all — just wanted to make sure it landed in your inbox and see if you had any questions about what we outlined.
+
+If anything needs adjusting or if you'd like to talk through any part of it, I'm happy to set up a quick call whenever works for you. Otherwise, take your time and let me know when you're ready to move forward.
+
+## Body — Touch 2 (Day 3 after no response)
+
+Hi {{client_name}},
+
+Following up on the {{document_type}} for {{project_name}}. Wanted to check if you've had a chance to review it or if there's anything I can clarify.
+
+If the timing isn't right or priorities have shifted, totally understand — just let me know either way so I can plan accordingly.
+
+## Body — Touch 3 (Day 7 after no response)
+
+Hi {{client_name}},
+
+Last check-in on the {{project_name}} {{document_type}}. I want to respect your time, so this will be my final follow-up on this thread.
+
+If you'd like to revisit this down the road, my door is always open. Just reply whenever the timing is better and we'll pick up right where we left off.
+
+## Notes
+- Each touch gets progressively shorter and more direct
+- Never send more than 3 follow-ups — after Touch 3, move to "cold" status
+- Touch 1 is warm and helpful, Touch 2 is concise and practical, Touch 3 gracefully closes the loop
+- Space follow-ups: Day 1, Day 3, Day 7 after the original send (not after each follow-up)
+- If they reply to any touch, reset the sequence — do not continue automated follow-ups
+- Track which touch was last sent via the email agent's action log

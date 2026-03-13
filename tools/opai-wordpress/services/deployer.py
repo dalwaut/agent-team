@@ -5,6 +5,7 @@ working method per-site in the `capabilities` JSONB column, and presents
 a uniform interface regardless of host limitations.
 
 Strategy chain (tried in order, pinned on success):
+  0. Self-Update — POST ZIP to connector's own /connector/self-update endpoint
   1. REST API   — deactivate old, delete, upload via admin form, activate, setup
   2. Admin Upload — wp-admin login, nonce, POST ZIP, activate, setup
   3. File Manager — use WP File Manager plugin's AJAX API to upload
@@ -25,13 +26,13 @@ import config
 log = logging.getLogger("opai-wordpress.deployer")
 
 # Must match Version in opai-connector.php
-OPAI_CONNECTOR_VERSION_STR = "1.4.0"
+OPAI_CONNECTOR_VERSION_STR = "1.6.0"
 
 
 @dataclass
 class DeployResult:
     success: bool
-    method: str  # "rest_api", "admin_upload", "file_manager", "manual"
+    method: str  # "self_update", "rest_api", "admin_upload", "file_manager", "manual"
     message: str
     connector_key: Optional[str] = None
     download_url: Optional[str] = None
@@ -190,6 +191,31 @@ async def _try_rest_api_deploy(client: httpx.AsyncClient, site: dict) -> Optiona
 
 # ── Strategy 2: Admin Upload ─────────────────────────────────────
 
+async def _detect_canonical_base(client: httpx.AsyncClient, base: str) -> str:
+    """Detect canonical WP base URL by checking wp-admin redirect.
+
+    WordPress redirects wp-admin to the canonical siteurl. If the stored URL
+    uses www but WP's siteurl is non-www (or vice versa), the cookies from
+    login won't carry over.  Detect this and return the canonical base.
+    """
+    from urllib.parse import urlparse
+    try:
+        # Use a fresh client that does NOT follow redirects to see where wp-admin points
+        async with httpx.AsyncClient(timeout=15, follow_redirects=False) as probe:
+            resp = await probe.get(f"{base}/wp-admin/")
+            if resp.status_code in (301, 302):
+                location = resp.headers.get("location", "")
+                parsed = urlparse(location)
+                if parsed.scheme and parsed.netloc:
+                    canonical = f"{parsed.scheme}://{parsed.netloc}"
+                    if canonical.rstrip("/") != base.rstrip("/"):
+                        log.info("Canonical URL detected: %s → %s", base, canonical)
+                        return canonical.rstrip("/")
+    except Exception as e:
+        log.debug("Canonical detection failed: %s", e)
+    return base
+
+
 async def _try_admin_upload(client: httpx.AsyncClient, site: dict) -> Optional[DeployResult]:
     """Login to wp-admin, upload ZIP via plugin-install.php."""
     admin_pwd = site.get("admin_password")
@@ -203,15 +229,18 @@ async def _try_admin_upload(client: httpx.AsyncClient, site: dict) -> Optional[D
     log.info("Built connector ZIP: %d bytes", len(zip_data))
 
     try:
-        # Login to wp-admin
-        await client.get(f"{base}/wp-login.php")
+        # Detect canonical URL (handles www/non-www mismatch)
+        canonical_base = await _detect_canonical_base(client, base)
+
+        # Login to wp-admin (use canonical URL for cookie domain alignment)
+        await client.get(f"{canonical_base}/wp-login.php")
         login_resp = await client.post(
-            f"{base}/wp-login.php",
+            f"{canonical_base}/wp-login.php",
             data={
                 "log": site["username"],
                 "pwd": admin_pwd,
                 "wp-submit": "Log In",
-                "redirect_to": f"{base}/wp-admin/",
+                "redirect_to": f"{canonical_base}/wp-admin/",
                 "testcookie": "1",
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -219,7 +248,7 @@ async def _try_admin_upload(client: httpx.AsyncClient, site: dict) -> Optional[D
 
         cookie_names = list(client.cookies.keys())
         has_auth = any("wordpress_logged_in" in c for c in cookie_names)
-        log.info("Admin login: cookies=%s, has_auth=%s", cookie_names, has_auth)
+        log.info("Admin login: cookies=%s, has_auth=%s, canonical=%s", cookie_names, has_auth, canonical_base)
 
         if not has_auth:
             await _update_capabilities(site["id"], {
@@ -227,6 +256,9 @@ async def _try_admin_upload(client: httpx.AsyncClient, site: dict) -> Optional[D
                 "last_failure_log": "Admin login failed — no auth cookies",
             })
             return None
+
+        # Use canonical_base for all subsequent wp-admin operations
+        base = canonical_base
 
         # GET upload page for nonce
         page_resp = await client.get(f"{base}/wp-admin/plugin-install.php?tab=upload")
@@ -452,18 +484,21 @@ async def _try_file_manager_deploy(client: httpx.AsyncClient, site: dict) -> Opt
     base = site["url"].rstrip("/")
 
     try:
+        # Detect canonical URL (handles www/non-www mismatch)
+        canonical_base = await _detect_canonical_base(client, base)
+
         # Login if not already
         cookie_names = list(client.cookies.keys())
         has_auth = any("wordpress_logged_in" in c for c in cookie_names)
         if not has_auth:
-            await client.get(f"{base}/wp-login.php")
+            await client.get(f"{canonical_base}/wp-login.php")
             await client.post(
-                f"{base}/wp-login.php",
+                f"{canonical_base}/wp-login.php",
                 data={
                     "log": site["username"],
                     "pwd": admin_pwd,
                     "wp-submit": "Log In",
-                    "redirect_to": f"{base}/wp-admin/",
+                    "redirect_to": f"{canonical_base}/wp-admin/",
                     "testcookie": "1",
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -472,6 +507,9 @@ async def _try_file_manager_deploy(client: httpx.AsyncClient, site: dict) -> Opt
             has_auth = any("wordpress_logged_in" in c for c in cookie_names)
             if not has_auth:
                 return None
+
+        # Use canonical_base for wp-admin operations
+        base = canonical_base
 
         # Get File Manager page to extract nonce/security token
         fm_page = await client.get(f"{base}/wp-admin/admin.php?page=wp_file_manager")
@@ -636,6 +674,48 @@ async def deploy_connector(site: dict) -> DeployResult:
     return _manual_fallback(site)
 
 
+async def _try_self_update(client: httpx.AsyncClient, site: dict) -> Optional[DeployResult]:
+    """Push update via connector's self-update endpoint (requires connector already installed).
+
+    Uses X-OPAI-Key auth — no wp-admin login needed.
+    """
+    connector_key = site.get("connector_secret")
+    if not connector_key:
+        log.info("No connector_secret — skipping self-update for %s", site.get("name"))
+        return None
+
+    base = site["url"].rstrip("/")
+    url = f"{base}/wp-json/opai/v1/connector/self-update"
+    zip_data = _build_connector_zip()
+
+    try:
+        resp = await client.post(
+            url,
+            headers={"X-OPAI-Key": connector_key},
+            files={"plugin": ("opai-connector.zip", zip_data, "application/zip")},
+            timeout=60,
+        )
+
+        if resp.status_code == 200:
+            data = resp.json()
+            log.info("Self-update succeeded for %s: %s → %s",
+                     site.get("name"), data.get("old_version"), data.get("new_version"))
+            await _finalize_install(site, "self_update", connector_key)
+            return DeployResult(
+                success=True,
+                method="self_update",
+                message=f"Connector updated via self-update ({data.get('old_version')} → {data.get('new_version')}).",
+                connector_key=connector_key,
+            )
+
+        log.info("Self-update returned %d for %s: %s", resp.status_code, site.get("name"), resp.text[:200])
+        return None
+
+    except Exception as e:
+        log.info("Self-update failed for %s: %s", site.get("name"), e)
+        return None
+
+
 async def push_update_connector(site: dict) -> DeployResult:
     """Force-push the latest connector ZIP to a site using its pinned connection type.
 
@@ -656,13 +736,16 @@ async def push_update_connector(site: dict) -> DeployResult:
 
     # Map pinned method → push strategy
     push_strategy_map = {
+        "self_update": _try_self_update,
         "rest_api": _push_via_rest_api,
         "admin_upload": _try_admin_upload,
         "file_manager": _try_file_manager_deploy,
     }
 
     # Ordered chain for unrecognized / no pinned method
+    # self_update first — works whenever connector is reachable, no wp-admin needed
     push_chain = [
+        ("self_update", _try_self_update),
         ("admin_upload", _try_admin_upload),
         ("file_manager", _try_file_manager_deploy),
         ("rest_api", _push_via_rest_api),
@@ -728,15 +811,18 @@ async def deploy_plugin_zip(site: dict, zip_data: bytes, plugin_folder_name: str
 
     try:
         async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            # Detect canonical URL (handles www/non-www mismatch)
+            canonical_base = await _detect_canonical_base(client, base)
+
             # Login
-            await client.get(f"{base}/wp-login.php")
+            await client.get(f"{canonical_base}/wp-login.php")
             await client.post(
-                f"{base}/wp-login.php",
+                f"{canonical_base}/wp-login.php",
                 data={
                     "log": site["username"],
                     "pwd": admin_pwd,
                     "wp-submit": "Log In",
-                    "redirect_to": f"{base}/wp-admin/",
+                    "redirect_to": f"{canonical_base}/wp-admin/",
                     "testcookie": "1",
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -749,6 +835,9 @@ async def deploy_plugin_zip(site: dict, zip_data: bytes, plugin_folder_name: str
                     success=False, method="admin_upload",
                     message="Admin login failed — check credentials.",
                 )
+
+            # Use canonical_base for wp-admin operations
+            base = canonical_base
 
             # Get upload page nonce
             page_resp = await client.get(f"{base}/wp-admin/plugin-install.php?tab=upload")

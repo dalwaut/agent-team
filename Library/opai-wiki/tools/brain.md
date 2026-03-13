@@ -1,6 +1,6 @@
 # OPAI 2nd Brain — Wiki
 
-> **Status**: Phase 8.1 Live (2026-02-27)
+> **Status**: Phase 9 Live (2026-03-01)
 > **Service**: `opai-brain` | **Port**: `8101` | **Path**: `/brain/`
 > **Tool dir**: `tools/opai-brain/` | **Stack**: FastAPI (Python) + Supabase + pgvector + Editor.js
 > **Dev doc**: `tools/opai-brain/DEV.md` — detailed implementation reference
@@ -13,7 +13,7 @@ The 2nd Brain is the **cognitive layer of OPAI** — where ideas live, grow, con
 
 **Musical metaphor**: The 2nd Brain is the **Composer's Notebook** — where the score is written before it's handed to the Conductor.
 
-Five tabs: **Library** (notes), **Inbox** (quick capture), **Canvas** (spatial board), **Research** (AI synthesis), **Graph** (force layout).
+Five tabs: **Library** (notes), **Inbox** (quick capture), **Canvas** (spatial board), **Research** (AI synthesis), **Graph** (Obsidian-style knowledge graph).
 
 ---
 
@@ -33,7 +33,7 @@ tools/opai-brain/
 │   ├── snapshots.py    — Version snapshot CRUD (max 20/node); write_snapshot() helper
 │   ├── inbox.py        — quick capture, promote to Library, dismiss
 │   ├── search.py       — full-text search (FTS via Supabase wfts)
-│   ├── graph.py        — nodes + links formatted for D3 force-directed visualization
+│   ├── graph.py        — graph data: positions, groups, bulk save/reset; D3 force-directed + Obsidian-style persistence
 │   ├── canvas.py       — spatial canvas: positions, link CRUD, auto-layout, suggest-label, PATCH links
 │   ├── schedule.py     — admin-only: GET/PATCH brain_schedule, POST run/{agent}
 │   ├── ai.py           — AI co-editor actions (tier-gated: pro/ultimate/admin)
@@ -43,7 +43,7 @@ tools/opai-brain/
 │   └── tier.py         — GET /api/me: tier, features, research quota + usage
 ├── static/
 │   ├── index.html      — SPA shell: 5 tabs, modals, snapshot drawer, schedule panel
-│   ├── app.js          — Vanilla JS SPA (~2200 lines); all UI logic, block editor, canvas, suggestions
+│   ├── app.js          — Vanilla JS SPA (~2400 lines); all UI logic, block editor, canvas, graph side panel, suggestions
 │   └── style.css       — OPAI dark theme (--bg #0d0d0f, --accent #8b5cf6 purple)
 └── data/               — runtime data dir (created on startup if missing)
 ```
@@ -66,6 +66,7 @@ Haiku used for suggest-label (cheap, fast — only needs 5 words): `claude-haiku
 | **Phase 6** | Block editor (Editor.js), version snapshots, canvas relationship label modal + AI suggest, agent scheduler (croniter), link strength visuals | ✅ **Live** |
 | **Phase 7** | Smart Suggestions — Claude Haiku semantic matching across all 5 tabs; `brain_suggestions` table, 5 API endpoints, library sidebar, graph overlay + orphan detection, inbox chips, research related notes, canvas suggest links | ✅ **Live** |
 | **Phase 8.1** | Relationship Intelligence — color-coded typed edges (8 types, 8 colors), `created_by` provenance tracking, enhanced graph popover (type chips, provenance counts, relationship creator), dead-end detection + orange pulse, graph legend toggle, relationship create modal, graph analytics API (orphans, dead-ends, clusters, bridges), `confidence` + `source` columns on nodes | ✅ **Live** |
+| **Phase 9** | Obsidian-Style Graph — position persistence (drag-stays-put), cluster grouping (source dir/type), resizable side panel with full CRUD (view original source, edit content, manage tags + connections), bulk lock/reset/freeze, granular group derivation from `sync_dir` | ✅ **Live** |
 
 ---
 
@@ -133,21 +134,39 @@ AI research synthesis. Tier-gated: pro / ultimate / admin only.
 
 ### Graph Tab
 
-Auto-computed force-directed graph. Node layout is automatic (D3 force simulation), not persisted — distinct from Canvas.
+Obsidian-style knowledge graph with persistent position, cluster grouping, and a full CRUD side panel.
 
+**Core behavior (Phase 9)**:
 - D3 force layout: link distance 80, charge -120, center force
-- Node color by type; click → jumps to Library editor
-- Drag nodes during session (not persisted), zoom/pan via d3.zoom
-- Tooltip on hover shows title
-- **Color-coded edges** (Phase 8.1): edges colored by relationship type — related (#60a5fa blue), supports (#22c55e green), contradicts (#ef4444 red), derived_from (#a78bfa purple), suggested (#f59e0b amber dashed), blocks (#f97316 orange), enables (#06b6d4 cyan), canvas_edge (#6b7280 gray). Strength still drives width+opacity.
-- **Legend toggle** (Phase 8.1): "Legend" button in toolbar → shows/hides color key box (bottom-left)
-- **Suggested connections** (Phase 7): dashed amber lines between nodes with pending suggestions; click → accept/dismiss popover
-- **Orphan node highlights** (Phase 7): nodes with 0 connections get pulsing amber ring animation
-- **Dead-end node highlights** (Phase 8.1): nodes with outgoing links but no incoming links get pulsing orange ring (distinct from orphan amber)
-- **Auto-Suggest button** (Phase 7): in toolbar, generates suggestions for top 10 most-recently-edited nodes then re-renders graph
-- **Right-click popover** (Phase 7+8.1): shows node title, type badge, connection count, **relationship type chips** (colored by type, e.g. "2 supports, 1 contradicts"), **provenance indicator** ("3 manual · 1 AI"), top 3 suggestions with accept action, "Find Suggestions", "Open in Library", and **"+ Relationship"** buttons
-- **Relationship create modal** (Phase 8.1): source pre-filled, searchable target dropdown, radio type picker (7 types with color dots), optional label, strength slider (0.0-1.0), calls `POST /api/relationships`
-- **Stats bar**: shows total nodes, links, orphan count, and dead-end count
+- **Position persistence**: drag a node → it stays put (`d.fx`/`d.fy` pinned), position saved to `metadata.graph_x`/`graph_y` via debounced PATCH. Reload → same positions.
+- **Cluster grouping**: Group By dropdown (None / Source Directory / Node Type) → `d3.forceX`/`d3.forceY` pull nodes toward computed cluster centers; convex hull backgrounds with labels
+- **Toolbar**: Auto-Suggest | Legend | Group By dropdown | Freeze/Unfreeze | Lock All (bulk save) | Reset (clear positions)
+- **Auto-freeze**: if all nodes have saved positions, simulation skips entirely; otherwise auto-freezes after settling
+- Node color by type; zoom/pan via d3.zoom; tooltip on hover
+- **Granular groups**: `_derive_group()` uses full `metadata.sync_dir` path (e.g. "notes/plans", "notes/ideas", "helm-playbooks") not collapsed first segment
+
+**Side panel (Phase 9)** — double-click a node:
+- **Resizable**: drag left edge to widen/narrow (min 280px, max 70% viewport)
+- **Title editing**: double-click title h3 → inline input, Enter saves via PATCH, updates SVG label
+- **Tags**: add/remove tags with optimistic UI → PATCH `/api/nodes/{id}`
+- **Source path**: shows `metadata.sync_source_path` when present
+- **Summary / Original / Edit toggle**:
+  - **Summary**: rendered markdown of node content (default view)
+  - **Original**: fetches original source file via `GET /api/nodes/{id}/original` (reads disk file)
+  - **Edit**: textarea with raw markdown, Save persists via PATCH, Cancel reverts to rendered view
+- **Connections**: list of connected nodes (colored by type), click to navigate, delete button per connection
+- **Open in Library**: switches to Library tab with the node loaded
+
+**Existing features preserved**:
+- **Color-coded edges** (Phase 8.1): 8 types, 8 colors. Strength drives width+opacity.
+- **Legend toggle** (Phase 8.1): button in toolbar → color key box
+- **Suggested connections** (Phase 7): dashed amber lines; click → accept/dismiss popover
+- **Orphan node highlights** (Phase 7): nodes with 0 connections get pulsing amber ring
+- **Dead-end node highlights** (Phase 8.1): pulsing orange ring for outgoing-only nodes
+- **Auto-Suggest button** (Phase 7): generates suggestions for top 10 recently-edited nodes
+- **Right-click popover** (Phase 7+8.1): type chips, provenance counts, suggestions, "Find Suggestions", "Open in Library", "+ Relationship"
+- **Relationship create modal** (Phase 8.1): source pre-filled, searchable target, type picker, label, strength slider
+- **Stats bar**: total nodes, links, orphan count, dead-end count
 
 ### AI Toolbar (Phase 2, tier-gated)
 
@@ -531,7 +550,7 @@ Migration: `config/supabase-migrations/028_brain.sql`
 | `type` | text | `note` \| `concept` \| `question` \| `inbox` |
 | `title` | text | default '' |
 | `content` | text | Markdown — always populated even in block mode (converted via `blocksToMarkdown`) |
-| `metadata` | jsonb | `canvas_x`, `canvas_y`, `blocks` (Editor.js block array), `source`, `research_id`, etc. |
+| `metadata` | jsonb | `canvas_x`, `canvas_y`, `graph_x`, `graph_y` (Phase 9), `blocks` (Editor.js block array), `sync_dir`, `sync_source_path`, `source`, `research_id`, etc. |
 | `confidence` | integer | Phase 8.1 — 1=speculative .. 5=certain, default 3 |
 | `source` | text | Phase 8.1 — `manual` \| `graduated` \| `imported` \| `agent-suggested` |
 | `embedding` | vector(1536) | **NULL** — not yet populated (Phase 4.5+) |
@@ -686,7 +705,11 @@ Response: `{action, result}` or `{action, result, related_ids, related_nodes}` f
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/graph` | All non-inbox nodes + links formatted for D3 |
+| GET | `/api/graph` | All non-inbox nodes + links for D3; extracts `graph_x`/`graph_y` from metadata, derives `group` from `sync_dir` |
+| PATCH | `/api/graph/nodes/{id}/position` | Save `{x, y}` → merged into node metadata as `graph_x`/`graph_y` |
+| POST | `/api/graph/save-all-positions` | Bulk save positions for all nodes (Lock All). Body: `{positions: [{id, x, y}, ...]}` |
+| POST | `/api/graph/reset-positions` | Clear all `graph_x`/`graph_y` from metadata (Reset) |
+| GET | `/api/nodes/{id}/original` | Read original source file from disk via `metadata.sync_source_path` (Phase 9) |
 
 ### Canvas
 
@@ -984,9 +1007,11 @@ Use Brain's **Inbox** for quick captures as you work. Drop in ideas, decisions, 
 |------|---------|
 | `tools/opai-brain/` | Service root |
 | `tools/opai-brain/DEV.md` | **Full developer reference** — state vars, JS architecture, gotchas |
-| `tools/opai-brain/routes/ai.py` | AI co-editor — tier-gated actions |
-| `tools/opai-brain/routes/research.py` | Research synthesis — tier-gated + quota |
-| `tools/opai-brain/routes/youtube.py` | [YouTube transcriber](youtube-transcriber.md): save video as node, start research from transcript |
+| `tools/opai-brain/routes/ai.py` | AI co-editor — tier-gated actions. [NotebookLM](../integrations/notebooklm.md) for summarize action |
+| `tools/opai-brain/routes/research.py` | Research synthesis — tier-gated + quota. [NotebookLM](../integrations/notebooklm.md) pre-research with Claude fallback |
+| `tools/opai-brain/routes/youtube.py` | [YouTube transcriber](youtube-transcriber.md): save video as node, start research from transcript. [NotebookLM](../integrations/notebooklm.md) native YouTube source |
+| `tools/opai-brain/routes/instagram.py` | [Instagram scraper](../integrations/instagram-scraper.md): reel research. [NotebookLM](../integrations/notebooklm.md) grounded Q&A with Claude fallback |
+| `tools/opai-brain/routes/notebooklm.py` | [NotebookLM](../integrations/notebooklm.md) deliverables engine — generate audio/reports/quizzes from brain nodes |
 | `tools/opai-brain/routes/canvas.py` | Canvas positions + link CRUD + suggest-label |
 | `tools/opai-brain/routes/relationships.py` | Phase 8.1 — typed relationship CRUD + graph analytics |
 | `tools/opai-brain/routes/snapshots.py` | Version snapshot CRUD |

@@ -80,40 +80,13 @@ WP.Sites = {
     },
 
     async loginToSite(siteId) {
+        // Temporarily switch context if needed, then use shared auto-login
         const site = WP.sites.find(s => s.id === siteId);
         if (!site) return;
-
-        const loginUrl = site.url.replace(/\/$/, '') + '/wp-login.php';
-
-        try {
-            const creds = await WP.api(`sites/${siteId}/credentials`);
-
-            const win = window.open('about:blank', '_blank');
-            if (!win) {
-                WP.toast('Pop-up blocked — allow pop-ups for this site', 'error');
-                return;
-            }
-
-            win.document.write(`<!DOCTYPE html>
-                <html><head><title>Logging in to ${WP.stripHtml(site.name)}...</title>
-                <style>body{background:#1e1e2e;color:#cdd6f4;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-                .msg{text-align:center}.spinner{width:28px;height:28px;border:3px solid #45475a;border-top-color:#89b4fa;border-radius:50%;animation:spin .8s linear infinite;margin:16px auto}
-                @keyframes spin{to{transform:rotate(360deg)}}</style></head>
-                <body><div class="msg"><div class="spinner"></div><p>Logging in to ${WP.stripHtml(site.name)}...</p></div>
-                <form id="wp-login" method="post" action="${loginUrl}" style="display:none">
-                    <input name="log" value="${creds.username}">
-                    <input name="pwd" value="${creds.admin_password || creds.app_password}">
-                    <input name="wp-submit" value="Log In">
-                    <input name="redirect_to" value="${site.url.replace(/\/$/, '')}/wp-admin/">
-                    <input name="testcookie" value="1">
-                </form>
-                <script>document.getElementById('wp-login').submit();<\/script>
-                </body></html>`);
-            win.document.close();
-        } catch (e) {
-            window.open(loginUrl, '_blank');
-            WP.toast('Could not auto-login. Opening login page.', 'error');
-        }
+        const prev = WP.currentSite;
+        WP.currentSite = site;
+        await WP.wpAdminOpen(null, siteId);
+        WP.currentSite = prev;
     },
 
     async test(siteId) {

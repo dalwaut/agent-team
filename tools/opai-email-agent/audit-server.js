@@ -63,7 +63,7 @@ function groupActions(actions) {
         subject: a.subject || '(no subject)',
         date: a.timestamp,
         actions: [],
-        tags: [],
+        labels: [],
         outcome: 'classified',
         draft: null,
       });
@@ -73,13 +73,18 @@ function groupActions(actions) {
     group.actions.push(a);
     if (a.timestamp < group.date) group.date = a.timestamp;
 
-    const extractTags = (details) => {
+    // Fill in sender/subject from any action that has it
+    if (a.sender && group.sender === '--') group.sender = a.sender;
+    if (a.subject && group.subject === '(no subject)') group.subject = a.subject;
+
+    const extractLabels = (details) => {
       if (!details) return [];
       const found = [];
-      if (Array.isArray(details.tags)) details.tags.forEach(t => { if (typeof t === 'string') found.push(t); });
       if (Array.isArray(details.labels)) details.labels.forEach(t => { if (typeof t === 'string') found.push(t); });
+      if (Array.isArray(details.tags)) details.tags.forEach(t => { if (typeof t === 'string') found.push(t); }); // legacy compat
       if (details.classification && typeof details.classification === 'object') {
-        if (Array.isArray(details.classification.tags)) details.classification.tags.forEach(t => { if (typeof t === 'string') found.push(t); });
+        if (Array.isArray(details.classification.labels)) details.classification.labels.forEach(t => { if (typeof t === 'string') found.push(t); });
+        if (Array.isArray(details.classification.tags)) details.classification.tags.forEach(t => { if (typeof t === 'string') found.push(t); }); // legacy compat
         if (typeof details.classification.priority === 'string' && details.classification.priority !== 'normal') found.push(details.classification.priority);
       }
       if (typeof details.category === 'string') found.push(details.category);
@@ -87,16 +92,16 @@ function groupActions(actions) {
       return found;
     };
 
-    if (a.action === 'tag' || a.action === 'classify' || a.action === 'suggest') {
-      for (const t of extractTags(a.details)) {
-        if (!group.tags.includes(t)) group.tags.push(t);
+    if (a.action === 'label' || a.action === 'tag' || a.action === 'classify' || a.action === 'suggest') {
+      for (const t of extractLabels(a.details)) {
+        if (!group.labels.includes(t)) group.labels.push(t);
       }
     }
 
     // Action → outcome mapping with priority for resolution
-    const actionPri = { skip: 1, blacklist: 2, 'manual-trash': 2, 'auto-trash': 2, classify: 3, tag: 4, suggest: 4, organize: 4, queue: 5, draft: 6, send: 7, error: 8 };
-    const outcomePri = { classified: 0, skipped: 1, blacklisted: 2, trashed: 2, 'auto-trash': 2, tagged: 4, draft: 6, sent: 7, error: 8 };
-    const actionToOutcome = { skip: 'skipped', blacklist: 'blacklisted', 'manual-trash': 'trashed', 'auto-trash': 'auto-trash', classify: 'classified', tag: 'tagged', suggest: 'classified', organize: 'classified', queue: 'draft', draft: 'draft', send: 'sent', error: 'error' };
+    const actionPri = { skip: 1, blacklist: 2, 'manual-trash': 2, 'auto-trash': 2, classify: 3, label: 4, tag: 4, suggest: 4, organize: 4, queue: 5, draft: 6, 'arl-draft': 6, send: 7, 'arl-respond': 7, error: 8, 'arl-respond-failed': 8 };
+    const outcomePri = { classified: 0, skipped: 1, blacklisted: 2, trashed: 2, 'auto-trash': 2, labeled: 4, draft: 6, sent: 7, error: 8 };
+    const actionToOutcome = { skip: 'skipped', blacklist: 'blacklisted', 'manual-trash': 'trashed', 'auto-trash': 'auto-trash', classify: 'classified', label: 'labeled', tag: 'labeled', suggest: 'classified', organize: 'classified', queue: 'draft', 'arl-draft': 'draft', draft: 'draft', send: 'sent', 'arl-respond': 'sent', error: 'error', 'arl-respond-failed': 'error' };
 
     // Undo actions always reset regardless of priority
     if (a.action === 'trash-undo' || a.action === 'classify-undo') {
@@ -301,16 +306,29 @@ function createAuditServer(agentRef) {
     } else {
       actions = actionLogger.getActions(200, null, acctId);
     }
-    const emails = groupActions(actions);
+    let emails = groupActions(actions);
 
-    // Enrich with classification data from email-meta + classification assignments
+    // Enrich with email metadata + classification assignments
     try {
-      const { getEmailMeta } = require('./agent-core');
+      const { getEmailMeta, getQueueItems } = require('./agent-core');
       const acctCls = classificationEngine.getClassifications(acctId);
+
+      // Build set of emailIds currently in the queue (pending/edited)
+      const queuedItems = getQueueItems(null, acctId);
+      const queuedEmailIds = new Set(
+        queuedItems
+          .filter(q => q.status === 'pending' || q.status === 'edited')
+          .map(q => q.emailId)
+      );
+
       for (const group of emails) {
         const meta = getEmailMeta(group.emailId);
-        if (meta?.classificationSuggestions) {
-          group.classificationSuggestions = meta.classificationSuggestions;
+        if (meta) {
+          if (!group.sender || group.sender === '--') group.sender = meta.fromAddress || meta.from || '--';
+          if (!group.subject || group.subject === '(no subject)') group.subject = meta.subject || '(no subject)';
+          if (meta.classificationSuggestions) {
+            group.classificationSuggestions = meta.classificationSuggestions;
+          }
         }
         // Check if this email has been assigned to a custom classification
         for (const cls of acctCls) {
@@ -322,6 +340,9 @@ function createAuditServer(agentRef) {
           }
         }
       }
+
+      // Filter out emails that are currently in the Queue (pending/edited)
+      emails = emails.filter(g => !queuedEmailIds.has(g.emailId));
     } catch {}
 
     res.json({ emails });
@@ -377,31 +398,50 @@ function createAuditServer(agentRef) {
   });
 
   app.post('/api/queue/:id/approve', async (req, res) => {
-    const { updateQueueItem, markEmailSeen } = require('./agent-core');
-    const item = updateQueueItem(req.params.id, { status: 'approved' });
+    const { updateQueueItem, markEmailSeen, setEnvBridgeForAccount } = require('./agent-core');
+    const { checkSenderForAccount } = require('./whitelist-gate');
+
+    const { getQueueItemById } = require('./agent-core');
+    const item = getQueueItemById(req.params.id);
     if (!item) return res.status(404).json({ error: 'Queue item not found' });
 
-    // Attempt to send the approved draft
+    const account = modeEngine.getAccountById(item.accountId) || modeEngine.getActiveAccount();
+
+    // Outbound safety gate: only send to whitelisted domains/addresses
+    const recipientCheck = checkSenderForAccount(item.sender, account);
+    if (!recipientCheck.allowed) {
+      return res.status(403).json({
+        error: `Send blocked: recipient not in approved list. ${recipientCheck.reason}`,
+        recipient: item.sender,
+        hint: 'Add the recipient domain or address to this account\'s whitelist to allow sending.',
+      });
+    }
+
+    updateQueueItem(req.params.id, { status: 'approved' });
+
     try {
       const { sendResponse, removeDraftFromAccount } = require('../email-checker/sender');
-      const { setEnvBridgeForAccount } = require('./agent-core');
-
-      // Bridge the queue item's account credentials to env for sender module
-      const account = modeEngine.getAccountById(item.accountId) || modeEngine.getActiveAccount();
       setEnvBridgeForAccount(account);
 
-      const replySubject = item.subject.startsWith('Re:') ? item.subject : `Re: ${item.subject}`;
-      await sendResponse({
+      const replySubject = item.subject.startsWith('Re:') ? item.subject : 'Re: ' + item.subject;
+      const result = await sendResponse({
         to: item.sender,
         subject: replySubject,
         finalContent: item.draft,
         emailMessageId: item.emailId,
+        headers: { 'X-OPAI-ARL-Sent': 'true' },
       }, '');
 
-      // Mark source email as read in Gmail (non-blocking)
-      markEmailSeen(item.uid, item.folder || 'INBOX').catch(() => {});
+      if (!result.success) {
+        updateQueueItem(req.params.id, { status: 'pending' }); // revert
+        return res.status(500).json({ error: 'Send failed: ' + result.error });
+      }
 
-      // Clean up the Gmail draft now that it's sent (non-blocking)
+      // Record in AI-sent tracker (prevents cross-account loops on restart)
+      const { recordAiSent } = require('./agent-core');
+      recordAiSent({ messageId: result.messageId, to: item.sender, subject: replySubject });
+
+      markEmailSeen(item.uid, item.folder || 'INBOX').catch(() => {});
       removeDraftFromAccount(replySubject, '').catch(() => {});
 
       updateQueueItem(req.params.id, { status: 'sent' });
@@ -411,13 +451,55 @@ function createAuditServer(agentRef) {
         emailId: item.emailId,
         sender: item.sender,
         subject: item.subject,
-        reasoning: 'Approved and sent by admin from queue.',
+        reasoning: `Approved and sent by admin from queue. Recipient approved: ${recipientCheck.reason}`,
         mode: modeEngine.getMode(),
       });
 
       res.json({ success: true, status: 'sent' });
     } catch (err) {
-      res.status(500).json({ error: `Send failed: ${err.message}` });
+      updateQueueItem(req.params.id, { status: 'pending' }); // revert on crash
+      res.status(500).json({ error: 'Send failed: ' + err.message });
+    }
+  });
+
+  // ── Save draft to Gmail (without sending) ──
+  app.post('/api/queue/:id/save-draft', async (req, res) => {
+    const { getQueueItemById, updateQueueItem, setEnvBridgeForAccount } = require('./agent-core');
+    const item = getQueueItemById(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Queue item not found' });
+    if (!item.draft) return res.status(400).json({ error: 'No draft content to save' });
+
+    try {
+      const { saveDraftToAccount } = require('../email-checker/sender');
+      const account = modeEngine.getAccountById(item.accountId) || modeEngine.getActiveAccount();
+      setEnvBridgeForAccount(account);
+
+      const replySubject = item.subject.startsWith('Re:') ? item.subject : 'Re: ' + item.subject;
+      const result = await saveDraftToAccount({
+        refinedDraft: item.draft,
+        subject: replySubject,
+        to: item.sender,
+        emailMessageId: item.emailId,
+      }, '');
+
+      if (!result.success) {
+        return res.status(500).json({ error: 'Save draft failed: ' + result.error });
+      }
+
+      updateQueueItem(req.params.id, { savedToGmail: true });
+      actionLogger.logAction({
+        accountId: item.accountId || reqAccountId(req),
+        action: 'draft-saved',
+        emailId: item.emailId,
+        sender: item.sender,
+        subject: item.subject,
+        reasoning: 'Draft saved to Gmail Drafts folder.',
+        mode: modeEngine.getMode(),
+      });
+
+      res.json({ success: true, folder: result.folder });
+    } catch (err) {
+      res.status(500).json({ error: 'Save draft failed: ' + err.message });
     }
   });
 
@@ -458,6 +540,81 @@ function createAuditServer(agentRef) {
     });
 
     res.json({ success: true, item });
+  });
+
+  app.post('/api/queue/:id/regenerate', async (req, res) => {
+    const { updateQueueItem, getQueueItemById, getEmailMeta, setEnvBridgeForAccount, markEmailSeen } = require('./agent-core');
+    const { draftGuidance, model, length } = req.body;
+
+    const item = getQueueItemById(req.params.id);
+    if (!item) return res.status(404).json({ error: 'Queue item not found' });
+
+    try {
+      const account = modeEngine.getAccountById(item.accountId) || modeEngine.getActiveAccount();
+      setEnvBridgeForAccount(account);
+
+      const { draftResponse, getResponse } = require('../email-checker/response-drafter');
+      const feedbackContext = feedbackEngine.buildPromptContext(item.sender, item.accountId);
+      const voiceProfile = account.voiceProfile || 'paradise-web-agent';
+
+      // Get original email body from metadata
+      const meta = getEmailMeta(item.emailId);
+      let bodyText = meta?.bodyPreview || '';
+      if (feedbackContext) bodyText += feedbackContext;
+      if (draftGuidance) bodyText = '[DRAFT GUIDANCE FROM ADMIN: ' + draftGuidance + ']\n\n' + bodyText;
+
+      // Length instruction injected into guidance
+      const lengthHint = length === 'long'
+        ? '[LENGTH: Write a thorough, detailed response covering all points. 3-5 paragraphs.]\n\n'
+        : '[LENGTH: Keep it short and concise. 1-2 brief paragraphs max.]\n\n';
+
+      const responseId = await draftResponse(
+        {
+          from: item.sender,
+          fromName: meta?.fromName || item.sender,
+          subject: item.subject,
+          text: lengthHint + bodyText,
+          date: meta?.date,
+        },
+        account.name || 'Agent',
+        voiceProfile,
+        { model: model || 'haiku' }
+      );
+
+      if (!responseId) return res.status(500).json({ error: 'Draft generation returned empty' });
+
+      const draft = getResponse(responseId);
+      const draftContent = draft ? (draft.refinedDraft || draft.initialDraft || '') : '';
+
+      // Draft saved locally only — NOT pushed to Gmail until approved
+      const originalDraft = item.draft;
+      const updated = updateQueueItem(req.params.id, { draft: draftContent, draftId: responseId, status: 'pending' });
+
+      // Record correction for learning
+      feedbackEngine.addCorrection({
+        accountId: item.accountId,
+        actionId: item.id,
+        originalDraft,
+        correctedDraft: draftContent,
+        sender: item.sender,
+      });
+
+      actionLogger.logAction({
+        accountId: item.accountId,
+        action: 'draft',
+        emailId: item.emailId,
+        sender: item.sender,
+        subject: item.subject,
+        reasoning: 'Regenerated draft from queue' + (draftGuidance ? ': ' + draftGuidance.slice(0, 200) : ''),
+        mode: modeEngine.getMode(),
+        details: { draftId: responseId, draftGuidance, draftPreview: draftContent.slice(0, 200) },
+      });
+
+      res.json({ success: true, item: updated });
+    } catch (err) {
+      console.error('[EMAIL-AGENT] Queue regenerate failed:', err.message);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ── Feedback ───────────────────────────────────────────
@@ -666,12 +823,12 @@ function createAuditServer(agentRef) {
   });
 
   app.post('/api/classifications/:id/assign', async (req, res) => {
-    const { emailId, sender, subject, tags, needsReply, actions } = req.body;
+    const { emailId, sender, subject, labels, tags, needsReply, actions } = req.body;
     if (!emailId) return res.status(400).json({ error: 'emailId required' });
     const acctId = reqAccountId(req);
     const result = classificationEngine.assignToClassification(
       req.params.id,
-      { emailId, sender, subject, tags },
+      { emailId, sender, subject, labels: labels || tags || [] },
       acctId
     );
     if (!result.success) return res.status(400).json(result);
@@ -695,17 +852,41 @@ function createAuditServer(agentRef) {
     const { getEmailMeta, setEnvBridgeForAccount, addToQueue } = require('./agent-core');
     const meta = getEmailMeta(emailId);
     const account = modeEngine.getAccountById(acctId) || modeEngine.getActiveAccount();
+    const executedActions = [];
+
+    // ── Apply IMAP label for the classification name ──
+    if (meta?.uid && cls?.name) {
+      try {
+        const { applyLabelsToAccount } = require('../email-checker/sender');
+        setEnvBridgeForAccount(account);
+        const imapLabel = 'OPAI/' + cls.name.replace(/\s+/g, '-');
+        const labelResult = await applyLabelsToAccount(meta.uid, [imapLabel], 'normal', false, '', meta.folder || 'INBOX');
+        if (labelResult.success) {
+          actionLogger.logAction({
+            accountId: acctId, action: 'label', emailId, sender, subject,
+            reasoning: `Applied IMAP label: ${imapLabel}`,
+            mode: modeEngine.getMode(),
+          });
+          executedActions.push({ type: 'label', label: imapLabel, success: true });
+        } else {
+          executedActions.push({ type: 'label', label: imapLabel, success: false, error: labelResult.error });
+        }
+      } catch (labelErr) {
+        console.error('[EMAIL-AGENT] Manual classification IMAP label failed:', labelErr.message);
+        executedActions.push({ type: 'label', success: false, error: labelErr.message });
+      }
+    }
 
     // ── Needs Reply → draft generation ──
     if (needsReply && meta) {
       try {
-        const { draftResponse } = require('../email-checker/response-drafter');
+        const { draftResponse, getResponse } = require('../email-checker/response-drafter');
         const feedbackEngine = require('./feedback-engine');
         const feedbackContext = feedbackEngine.buildPromptContext(sender, acctId);
         const voiceProfile = account.voiceProfile || 'paradise-web-agent';
 
         setEnvBridgeForAccount(account);
-        const draft = await draftResponse(
+        const responseId = await draftResponse(
           {
             from: sender,
             fromName: meta.from || sender,
@@ -717,7 +898,10 @@ function createAuditServer(agentRef) {
           voiceProfile
         );
 
-        if (draft) {
+        if (responseId) {
+          const draft = getResponse(responseId);
+          const draftContent = draft ? (draft.refinedDraft || draft.initialDraft || '') : '';
+
           addToQueue({
             accountId: acctId,
             emailId,
@@ -725,8 +909,8 @@ function createAuditServer(agentRef) {
             folder: meta.folder,
             sender,
             subject: subject || meta.subject,
-            draft: draft.finalContent || draft.refinedDraft || draft.initialDraft,
-            draftId: draft.id,
+            draft: draftContent,
+            draftId: responseId,
             reason: 'Needs reply (manual classification)',
           });
 
@@ -738,7 +922,7 @@ function createAuditServer(agentRef) {
             subject,
             reasoning: `Draft queued from manual classification (needs reply).`,
             mode: modeEngine.getMode(),
-            details: { draftId: draft.id, draftPreview: (draft.finalContent || draft.refinedDraft || '').slice(0, 200) },
+            details: { draftId: responseId, draftPreview: draftContent.slice(0, 200) },
           });
         }
       } catch (err) {
@@ -750,6 +934,25 @@ function createAuditServer(agentRef) {
     if (Array.isArray(actions) && actions.length > 0) {
       for (const act of actions) {
         try {
+          if (act.type === 'mark-spam' && meta?.uid) {
+            setEnvBridgeForAccount(account);
+            const { markAsSpam } = require('../email-checker/sender');
+            const spamResult = await markAsSpam(meta.uid, meta.folder || 'INBOX', '');
+            if (spamResult.success) {
+              addToBlacklist({ address: sender }, acctId);
+              actionLogger.logAction({
+                accountId: acctId, action: 'organize', emailId, sender, subject,
+                reasoning: `Marked as spam — moved to ${spamResult.folder}, sender blacklisted`,
+                mode: modeEngine.getMode(),
+                details: { actionType: 'mark-spam', folder: spamResult.folder, blacklisted: sender },
+              });
+              executedActions.push({ type: 'mark-spam', success: true, folder: spamResult.folder });
+            } else {
+              console.error(`[EMAIL-AGENT] Mark as spam failed for UID ${meta.uid}:`, spamResult.error);
+              executedActions.push({ type: 'mark-spam', success: false, error: spamResult.error });
+            }
+          }
+
           if (act.type === 'move-to-folder' && act.folder && meta?.uid) {
             setEnvBridgeForAccount(account);
             const { moveToFolder } = require('../email-checker/sender');
@@ -760,6 +963,7 @@ function createAuditServer(agentRef) {
               mode: modeEngine.getMode(),
               details: { actionType: 'move-to-folder', folder: act.folder },
             });
+            executedActions.push({ type: 'move-to-folder', success: true, folder: act.folder });
           }
 
           if (act.type === 'forward-to' && act.email && meta?.uid) {
@@ -772,6 +976,7 @@ function createAuditServer(agentRef) {
               mode: modeEngine.getMode(),
               details: { actionType: 'forward-to', forwardTo: act.email },
             });
+            executedActions.push({ type: 'forward-to', success: true, email: act.email });
           }
 
           if (act.type === 'delete-after') {
@@ -785,6 +990,7 @@ function createAuditServer(agentRef) {
               mode: modeEngine.getMode(),
               details: { actionType: 'delete-after', deleteAt, value: act.value, unit: act.unit },
             });
+            executedActions.push({ type: 'delete-after', success: true, deleteAt });
           }
 
           if (act.type === 'create-task') {
@@ -818,8 +1024,10 @@ function createAuditServer(agentRef) {
                 mode: modeEngine.getMode(),
                 details: { actionType: 'create-task', taskTitle },
               });
+              executedActions.push({ type: 'create-task', success: true, taskTitle });
             } catch (taskErr) {
               console.error('[EMAIL-AGENT] TeamHub task creation failed:', taskErr.message);
+              executedActions.push({ type: 'create-task', success: false, error: taskErr.message });
             }
           }
         } catch (actErr) {
@@ -828,7 +1036,7 @@ function createAuditServer(agentRef) {
       }
     }
 
-    res.json(result);
+    res.json({ ...result, executedActions });
   });
 
   app.post('/api/classifications/:id/unassign', (req, res) => {
@@ -841,10 +1049,17 @@ function createAuditServer(agentRef) {
       acctId
     );
     if (!result.success) return res.status(400).json(result);
+
+    // Pull sender/subject from email metadata so the action log entry is complete
+    const { getEmailMeta } = require('./agent-core');
+    const meta = getEmailMeta(emailId);
+
     actionLogger.logAction({
       accountId: acctId,
       action: 'classify-undo',
       emailId,
+      sender: meta?.fromAddress || req.body.sender || '',
+      subject: meta?.subject || req.body.subject || '',
       reasoning: 'Classification removed by admin.',
       mode: modeEngine.getMode(),
     });
@@ -914,22 +1129,7 @@ function createAuditServer(agentRef) {
         const draftContent = draft ? (draft.refinedDraft || draft.initialDraft || '') : '';
         const draftSubject = draft ? draft.subject : ('Re: ' + (subject || meta.subject || '').replace(/^Re:\s*/i, ''));
 
-        // Save draft to Gmail drafts folder via IMAP
-        try {
-          const saveResult = await saveDraftToAccount({
-            refinedDraft: draftContent,
-            subject: draftSubject,
-            to: sender || meta.from,
-            emailMessageId: emailId,
-          }, '');
-          if (saveResult.success) {
-            console.log('[EMAIL-AGENT] Recompose draft saved to Gmail:', saveResult.folder);
-          } else {
-            console.warn('[EMAIL-AGENT] Failed to save draft to Gmail:', saveResult.error);
-          }
-        } catch (saveErr) {
-          console.warn('[EMAIL-AGENT] Gmail draft save error:', saveErr.message);
-        }
+        // Draft saved locally only — NOT pushed to Gmail until approved from Queue
 
         addToQueue({
           accountId: acctId,
@@ -1041,7 +1241,12 @@ function createAuditServer(agentRef) {
       const { sendResponse } = require('../email-checker/sender');
       const { setEnvBridge } = require('./agent-core');
       setEnvBridge();
-      await sendResponse({ to, subject, finalContent: body, emailMessageId: null }, '');
+      const result = await sendResponse({ to, subject, finalContent: body, emailMessageId: null, headers: { 'X-OPAI-ARL-Sent': 'true' } }, '');
+
+      // Record in AI-sent tracker (prevents cross-account loops)
+      const { recordAiSent } = require('./agent-core');
+      recordAiSent({ messageId: result?.messageId, to, subject });
+
       actionLogger.logAction({
         accountId: reqAccountId(req),
         action: 'send',
@@ -1155,7 +1360,7 @@ function createAuditServer(agentRef) {
     try {
       const { sendResponse } = require('../email-checker/sender');
       const { setEnvBridgeForAccount } = require('./agent-core');
-      const account = modeEngine.getAccountById('acc-paradise') || modeEngine.getActiveAccount();
+      const account = modeEngine.getAccountById('arl-agent-pw') || modeEngine.getActiveAccount();
       setEnvBridgeForAccount(account);
 
       await sendResponse({
@@ -1202,7 +1407,7 @@ function createAuditServer(agentRef) {
     try {
       const { sendResponse } = require('../email-checker/sender');
       const { setEnvBridgeForAccount } = require('./agent-core');
-      const account = modeEngine.getAccountById('acc-paradise') || modeEngine.getActiveAccount();
+      const account = modeEngine.getAccountById('arl-agent-pw') || modeEngine.getActiveAccount();
       setEnvBridgeForAccount(account);
 
       await sendResponse({
@@ -1232,6 +1437,140 @@ function createAuditServer(agentRef) {
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // ── Inbox Cleanup API ────────────────────────────────────
+
+  const cleanupScanner = require('./cleanup-scanner');
+
+  app.post('/api/cleanup/scan', async (req, res) => {
+    const acctId = reqAccountId(req);
+    const account = modeEngine.getAccountById(acctId);
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    const { getCredentialsForAccount } = require('./agent-core');
+    const creds = getCredentialsForAccount(account);
+    const options = {
+      includeSpam: req.body.includeSpam || false,
+      includeTrash: req.body.includeTrash || false,
+      maxAge: req.body.maxAge || '5y',
+    };
+
+    const result = await cleanupScanner.startScan(creds, acctId, options, broadcastSSE);
+    res.json(result);
+  });
+
+  app.post('/api/cleanup/cancel', (req, res) => {
+    res.json(cleanupScanner.cancelScan());
+  });
+
+  app.get('/api/cleanup/status', (req, res) => {
+    res.json(cleanupScanner.getScanState());
+  });
+
+  app.get('/api/cleanup/folders', (req, res) => {
+    const acctId = reqAccountId(req);
+    const result = cleanupScanner.getFolders(acctId);
+    if (!result) return res.json({ folders: null, hasCachedData: cleanupScanner.hasCachedData(acctId) });
+    res.json(result);
+  });
+
+  app.get('/api/cleanup/emails', (req, res) => {
+    const acctId = reqAccountId(req);
+    const category = req.query.category || 'all';
+    const page = parseInt(req.query.page) || 1;
+    const pageSize = parseInt(req.query.pageSize) || 100;
+    const sortBy = req.query.sortBy || 'date-desc';
+    res.json(cleanupScanner.getEmails(acctId, category, page, pageSize, sortBy));
+  });
+
+  app.get('/api/cleanup/preview/:uid', async (req, res) => {
+    const acctId = reqAccountId(req);
+    const account = modeEngine.getAccountById(acctId);
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    const { getCredentialsForAccount } = require('./agent-core');
+    const creds = getCredentialsForAccount(account);
+    const uid = parseInt(req.params.uid);
+    const folder = req.query.folder || 'INBOX';
+    const result = await cleanupScanner.getEmailPreview(uid, folder, creds);
+    res.json(result);
+  });
+
+  app.post('/api/cleanup/trash', async (req, res) => {
+    const acctId = reqAccountId(req);
+    const account = modeEngine.getAccountById(acctId);
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    const { getCredentialsForAccount } = require('./agent-core');
+    const creds = getCredentialsForAccount(account);
+    const { uids, folder } = req.body;
+    const result = await cleanupScanner.bulkTrash(uids, folder || 'INBOX', creds, acctId);
+
+    if (result.success) {
+      actionLogger.logAction({
+        accountId: acctId,
+        action: 'cleanup-trash',
+        reasoning: `Bulk trashed ${result.moved} emails from Inbox Cleanup`,
+        mode: 'cleanup',
+      });
+      broadcastSSE('cleanup-action', { type: 'trash', count: result.moved });
+    }
+    res.json(result);
+  });
+
+  app.post('/api/cleanup/archive', async (req, res) => {
+    const acctId = reqAccountId(req);
+    const account = modeEngine.getAccountById(acctId);
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    const { getCredentialsForAccount } = require('./agent-core');
+    const creds = getCredentialsForAccount(account);
+    const { uids, folder } = req.body;
+    const result = await cleanupScanner.bulkArchive(uids, folder || 'INBOX', creds, acctId);
+
+    if (result.success) {
+      actionLogger.logAction({
+        accountId: acctId,
+        action: 'cleanup-archive',
+        reasoning: `Bulk archived ${result.moved} emails from Inbox Cleanup`,
+        mode: 'cleanup',
+      });
+      broadcastSSE('cleanup-action', { type: 'archive', count: result.moved });
+    }
+    res.json(result);
+  });
+
+  app.post('/api/cleanup/flag', async (req, res) => {
+    const acctId = reqAccountId(req);
+    const account = modeEngine.getAccountById(acctId);
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    const { getCredentialsForAccount } = require('./agent-core');
+    const creds = getCredentialsForAccount(account);
+    const { uids, folder } = req.body;
+    const result = await cleanupScanner.bulkFlag(uids, folder || 'INBOX', creds, acctId);
+    res.json(result);
+  });
+
+  app.post('/api/cleanup/undo', async (req, res) => {
+    const acctId = reqAccountId(req);
+    const account = modeEngine.getAccountById(acctId);
+    if (!account) return res.status(404).json({ error: 'Account not found' });
+
+    const { getCredentialsForAccount } = require('./agent-core');
+    const creds = getCredentialsForAccount(account);
+    const result = await cleanupScanner.undoLastOperation(creds);
+    res.json(result);
+  });
+
+  app.post('/api/cleanup/search', async (req, res) => {
+    const acctId = reqAccountId(req);
+    const { query } = req.body;
+    if (!query) return res.status(400).json({ error: 'query required' });
+
+    const result = await cleanupScanner.agenticSearch(query, acctId);
+    res.json(result);
   });
 
   // ── Bulk Actions ───────────────────────────────────────

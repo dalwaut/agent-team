@@ -1,34 +1,89 @@
 {
   "version": "1.0.0",
   "workers": {
+    "eliza-runtime": {
+      "name": "Eliza Runtime",
+      "type": "long-running",
+      "runtime": "bun",
+      "entry": "tools/opai-eliza/src/index.ts",
+      "managed": true,
+      "disabled": false,
+      "port": 8085,
+      "trigger": {
+        "mode": "always-on"
+      },
+      "permissions": {
+        "read_paths": ["tools/opai-eliza/characters/"],
+        "write_paths": [],
+        "network": true
+      },
+      "guardrails": {
+        "read_only": false,
+        "max_turns": null,
+        "timeout_seconds": null,
+        "git_push": false
+      },
+      "intent": "Manages ElizaOS autonomous agent runtime instances",
+      "success_criteria": {
+        "health_endpoint": "http://127.0.0.1:8085/health"
+      }
+    },
     "email-manager": {
       "name": "Email Manager",
       "type": "long-running",
       "runtime": "node",
       "entry": "tools/opai-email-agent/index.js",
       "managed": true,
+      "disabled": false,
       "port": null,
       "trigger": {
         "mode": "internal-polling",
         "interval_minutes": 30
       },
-      "vault_keys": ["opai-email-agent"],
+      "vault_keys": [
+        "opai-email-agent"
+      ],
       "permissions": {
-        "file_access": ["tools/opai-email-agent/data/"],
-        "supabase_tables": ["audit_log"],
-        "can_send": true
+        "file_access": [
+          "tools/opai-email-agent/data/"
+        ],
+        "supabase_tables": [
+          "audit_log"
+        ],
+        "can_send": false
       },
       "guardrails": {
-        "requires_approval": ["send_email", "delete_email"],
+        "requires_approval": [
+          "send_email",
+          "delete_email"
+        ],
         "max_actions_per_hour": 20,
         "prompt_protection": true
       },
       "health_check": null,
       "restart_on_failure": true,
-      "max_restarts": 5,
-      "restart_delay_sec": 30
+      "max_restarts": 3,
+      "restart_delay_sec": 30,
+      "note": "Re-enabled 2026-03-06 after loop fix (4 defense layers in arl-engine.js).",
+      "intent": {
+        "purpose": "Manage email operations",
+        "goals": [
+          "triage incoming email",
+          "draft accurate responses",
+          "send on schedule"
+        ],
+        "capabilities": [
+          "email-triage",
+          "email-drafting",
+          "email-sending",
+          "transcript-processing"
+        ],
+        "anti_goals": [
+          "sending without approval",
+          "deleting emails without confirmation"
+        ]
+      }
     },
-
     "discord-bot": {
       "name": "Discord Bridge",
       "type": "long-running",
@@ -40,10 +95,17 @@
         "mode": "event-driven",
         "source": "discord-gateway"
       },
-      "vault_keys": ["discord-bridge"],
+      "vault_keys": [
+        "discord-bridge"
+      ],
       "permissions": {
-        "file_access": ["tools/discord-bridge/data/"],
-        "supabase_tables": ["audit_log", "conversations"],
+        "file_access": [
+          "tools/discord-bridge/data/"
+        ],
+        "supabase_tables": [
+          "audit_log",
+          "conversations"
+        ],
         "can_send": true
       },
       "guardrails": {
@@ -54,9 +116,24 @@
       "health_check": null,
       "restart_on_failure": true,
       "max_restarts": 10,
-      "restart_delay_sec": 10
+      "restart_delay_sec": 10,
+      "intent": {
+        "purpose": "Discord community bridge",
+        "goals": [
+          "relay messages accurately",
+          "maintain community presence",
+          "bridge Discord to OPAI"
+        ],
+        "capabilities": [
+          "discord-messaging",
+          "community-management"
+        ],
+        "anti_goals": [
+          "spamming channels",
+          "responding without context"
+        ]
+      }
     },
-
     "wordpress-manager": {
       "name": "WordPress Manager",
       "type": "hybrid",
@@ -68,14 +145,27 @@
         "mode": "cron+manual",
         "schedule": "0 */6 * * *"
       },
-      "vault_keys": ["opai-wordpress"],
+      "vault_keys": [
+        "opai-wordpress"
+      ],
       "permissions": {
-        "file_access": ["tools/opai-wordpress/"],
-        "supabase_tables": ["audit_log"],
-        "external_apis": ["wordpress", "woocommerce", "managewp"]
+        "file_access": [
+          "tools/opai-wordpress/"
+        ],
+        "supabase_tables": [
+          "audit_log"
+        ],
+        "external_apis": [
+          "wordpress",
+          "woocommerce",
+          "managewp"
+        ]
       },
       "guardrails": {
-        "requires_approval": ["deploy_production", "update_plugins"],
+        "requires_approval": [
+          "deploy_production",
+          "update_plugins"
+        ],
         "max_actions_per_hour": 50,
         "prompt_protection": true
       },
@@ -83,36 +173,25 @@
       "restart_on_failure": true,
       "max_restarts": 5,
       "restart_delay_sec": 30,
-      "note": "Dual-role: independent app (portal tile) + registered worker for Engine scheduling"
+      "note": "Dual-role: independent app (portal tile) + registered worker for Engine scheduling",
+      "intent": {
+        "purpose": "WordPress site management",
+        "goals": [
+          "keep sites healthy",
+          "publish content on schedule",
+          "manage plugins safely"
+        ],
+        "capabilities": [
+          "wordpress-admin",
+          "content-publishing",
+          "plugin-management"
+        ],
+        "anti_goals": [
+          "deploying to production without approval",
+          "updating plugins without testing"
+        ]
+      }
     },
-
-    "forumbot": {
-      "name": "Forum Bot",
-      "type": "hybrid",
-      "runtime": "python",
-      "entry": "tools/opai-forumbot/app.py",
-      "systemd_unit": "opai-forumbot",
-      "port": 8095,
-      "trigger": {
-        "mode": "cron",
-        "schedule": "0 */4 * * *"
-      },
-      "vault_keys": ["opai-forumbot"],
-      "permissions": {
-        "file_access": ["tools/opai-forumbot/"],
-        "supabase_tables": ["audit_log"]
-      },
-      "guardrails": {
-        "requires_approval": [],
-        "max_actions_per_hour": 30,
-        "prompt_protection": true
-      },
-      "health_check": "http://127.0.0.1:8095/health",
-      "restart_on_failure": true,
-      "max_restarts": 5,
-      "restart_delay_sec": 30
-    },
-
     "project-reviewer": {
       "name": "Project Reviewer",
       "type": "task",
@@ -123,18 +202,47 @@
         "also": "squad:audit"
       },
       "permissions": {
-        "file_access": ["read-only"],
+        "file_access": [
+          "read-only"
+        ],
         "can_send": false
       },
       "guardrails": {
         "read_only": true,
-        "max_turns": 15,
-        "timeout_minutes": 10,
+        "max_turns": 25,
+        "timeout_minutes": 15,
         "model": "sonnet"
       },
-      "output": "reports/{date}/{worker-name}.md"
+      "output": "reports/{date}/{worker-name}.md",
+      "intent": {
+        "purpose": "Review code for quality and correctness",
+        "goals": [
+          "catch bugs before merge",
+          "enforce coding standards",
+          "identify security issues"
+        ],
+        "capabilities": [
+          "code-review",
+          "security-review",
+          "quality-audit"
+        ],
+        "anti_goals": [
+          "rewriting code",
+          "implementing fixes"
+        ]
+      },
+      "success_criteria": {
+        "min_output_length": 200,
+        "must_contain": [
+          "Findings",
+          "Recommendations"
+        ],
+        "must_not_contain": [
+          "FATAL ERROR"
+        ],
+        "exit_code_zero": true
+      }
     },
-
     "project-builder": {
       "name": "Project Builder",
       "type": "task",
@@ -144,38 +252,104 @@
         "mode": "manual"
       },
       "permissions": {
-        "file_access": ["task-context-path"],
+        "file_access": [
+          "task-context-path"
+        ],
         "can_send": false
       },
       "guardrails": {
         "read_only": false,
-        "max_turns": 25,
-        "timeout_minutes": 15,
+        "max_turns": 40,
+        "timeout_minutes": 20,
         "model": "sonnet",
-        "requires_approval": ["write_file", "delete_file"]
+        "requires_approval": [
+          "write_file",
+          "delete_file"
+        ]
       },
-      "output": "reports/{date}/{worker-name}.md"
+      "output": "reports/{date}/{worker-name}.md",
+      "intent": {
+        "purpose": "Implement code changes from task specifications",
+        "goals": [
+          "ship working code",
+          "follow project conventions",
+          "minimize scope creep"
+        ],
+        "capabilities": [
+          "code-build",
+          "feature-implementation",
+          "bug-fix",
+          "refactor",
+          "spec-generation"
+        ],
+        "anti_goals": [
+          "refactoring unrelated code",
+          "adding unasked features"
+        ]
+      },
+      "success_criteria": {
+        "min_output_length": 150,
+        "must_contain": [
+          "Build Complete",
+          "Files"
+        ],
+        "must_not_contain": [
+          "FATAL ERROR"
+        ],
+        "exit_code_zero": true
+      }
     },
-
     "researcher": {
       "name": "Researcher",
       "type": "task",
       "runtime": "claude-cli",
       "prompt_file": "scripts/prompt_researcher.txt",
-      "trigger": { "mode": "manual" },
+      "trigger": {
+        "mode": "manual"
+      },
       "permissions": {
-        "file_access": ["read-only"],
+        "file_access": [
+          "read-only"
+        ],
         "can_send": false
       },
       "guardrails": {
         "read_only": true,
-        "max_turns": 20,
-        "timeout_minutes": 15,
+        "max_turns": 30,
+        "timeout_minutes": 20,
         "model": "sonnet"
       },
-      "output": "reports/{date}/{worker-name}.md"
+      "output": "reports/{date}/{worker-name}.md",
+      "intent": {
+        "purpose": "Deep research and technical analysis",
+        "goals": [
+          "thorough investigation",
+          "evidence-based conclusions",
+          "actionable recommendations"
+        ],
+        "capabilities": [
+          "research",
+          "investigation",
+          "analysis",
+          "evaluation"
+        ],
+        "anti_goals": [
+          "making changes",
+          "taking action on findings"
+        ]
+      },
+      "success_criteria": {
+        "min_output_length": 300,
+        "must_contain": [
+          "Findings",
+          "Analysis"
+        ],
+        "must_not_contain": [
+          "FATAL ERROR"
+        ],
+        "exit_code_zero": true
+      }
     },
-
     "wiki-librarian": {
       "name": "Wiki Librarian",
       "type": "task",
@@ -186,19 +360,50 @@
         "schedule": "0 4 * * *"
       },
       "permissions": {
-        "file_access": ["Library/opai-wiki/"],
+        "file_access": [
+          "Library/opai-wiki/"
+        ],
         "can_send": false
       },
       "guardrails": {
         "read_only": false,
-        "allowed_paths": ["Library/opai-wiki/"],
+        "allowed_paths": [
+          "Library/opai-wiki/"
+        ],
         "max_turns": 15,
         "timeout_minutes": 10,
         "model": "haiku"
       },
-      "output": "reports/{date}/{worker-name}.md"
+      "output": "reports/{date}/{worker-name}.md",
+      "intent": {
+        "purpose": "Maintain wiki accuracy and completeness",
+        "goals": [
+          "keep docs current",
+          "fill documentation gaps",
+          "maintain consistent structure"
+        ],
+        "capabilities": [
+          "wiki-update",
+          "documentation",
+          "knowledge-management"
+        ],
+        "anti_goals": [
+          "deleting documentation",
+          "changing code"
+        ]
+      },
+      "success_criteria": {
+        "min_output_length": 100,
+        "must_contain": [
+          "Changes",
+          "Summary"
+        ],
+        "must_not_contain": [
+          "FATAL ERROR"
+        ],
+        "exit_code_zero": true
+      }
     },
-
     "self-assessor": {
       "name": "Self Assessor",
       "type": "task",
@@ -209,7 +414,9 @@
         "schedule": "0 2 * * *"
       },
       "permissions": {
-        "file_access": ["read-only"],
+        "file_access": [
+          "read-only"
+        ],
         "can_send": false
       },
       "guardrails": {
@@ -218,9 +425,89 @@
         "timeout_minutes": 15,
         "model": "sonnet"
       },
-      "output": "reports/{date}/{worker-name}.md"
+      "output": "reports/{date}/{worker-name}.md",
+      "intent": {
+        "purpose": "Evaluate OPAI platform health",
+        "goals": [
+          "honest self-assessment",
+          "detect degradation early",
+          "recommend improvements"
+        ],
+        "capabilities": [
+          "system-health",
+          "diagnostics",
+          "self-assessment"
+        ],
+        "anti_goals": [
+          "making changes",
+          "hiding problems"
+        ]
+      },
+      "success_criteria": {
+        "min_output_length": 300,
+        "must_contain": [
+          "System Health",
+          "Action Item"
+        ],
+        "must_not_contain": [
+          "FATAL ERROR"
+        ],
+        "exit_code_zero": true
+      }
     },
-
+    "meta-assessor": {
+      "name": "Meta Assessor",
+      "type": "task",
+      "runtime": "claude-cli",
+      "prompt_file": "scripts/prompt_meta_assessment.txt",
+      "trigger": {
+        "mode": "after-squad",
+        "also": "squad:evolve"
+      },
+      "permissions": {
+        "file_access": [
+          "read-only"
+        ],
+        "can_send": false
+      },
+      "guardrails": {
+        "read_only": true,
+        "max_turns": 20,
+        "timeout_minutes": 10,
+        "model": "sonnet"
+      },
+      "output": "reports/{date}/meta_assessment.md",
+      "intent": {
+        "purpose": "Verify the self-improvement pipeline is functioning",
+        "goals": [
+          "verify fix pipeline lands fixes",
+          "cross-validate agent outputs",
+          "measure token efficiency",
+          "audit prompt quality"
+        ],
+        "capabilities": [
+          "pipeline-verification",
+          "cross-validation",
+          "efficiency-measurement"
+        ],
+        "anti_goals": [
+          "auditing codebase for bugs",
+          "reading source code",
+          "making changes"
+        ]
+      },
+      "success_criteria": {
+        "min_output_length": 200,
+        "must_contain": [
+          "Fix Pipeline Status",
+          "Priority Actions"
+        ],
+        "must_not_contain": [
+          "FATAL ERROR"
+        ],
+        "exit_code_zero": true
+      }
+    },
     "security-scanner": {
       "name": "Security Scanner",
       "type": "task",
@@ -231,7 +518,9 @@
         "schedule": "0 3 * * 0"
       },
       "permissions": {
-        "file_access": ["read-only"],
+        "file_access": [
+          "read-only"
+        ],
         "can_send": false
       },
       "guardrails": {
@@ -240,9 +529,35 @@
         "timeout_minutes": 15,
         "model": "sonnet"
       },
-      "output": "reports/{date}/{worker-name}.md"
+      "output": "reports/{date}/{worker-name}.md",
+      "intent": {
+        "purpose": "Find security issues and vulnerabilities",
+        "goals": [
+          "detect vulnerabilities",
+          "find exposed secrets",
+          "assess attack surface"
+        ],
+        "capabilities": [
+          "security-scan",
+          "vulnerability-detection",
+          "secrets-detection"
+        ],
+        "anti_goals": [
+          "fixing vulnerabilities directly",
+          "modifying security configs"
+        ]
+      },
+      "success_criteria": {
+        "min_output_length": 200,
+        "must_contain": [
+          "Findings"
+        ],
+        "must_not_contain": [
+          "FATAL ERROR"
+        ],
+        "exit_code_zero": true
+      }
     },
-
     "report-dispatcher": {
       "name": "Report Dispatcher",
       "type": "task",
@@ -252,7 +567,9 @@
         "mode": "after-squad"
       },
       "permissions": {
-        "file_access": ["reports/"],
+        "file_access": [
+          "reports/"
+        ],
         "can_send": true
       },
       "guardrails": {
@@ -261,17 +578,47 @@
         "timeout_minutes": 5,
         "model": "haiku"
       },
-      "output": "reports/{date}/{worker-name}.md"
+      "output": "reports/{date}/{worker-name}.md",
+      "intent": {
+        "purpose": "Read reports and dispatch agent instructions",
+        "goals": [
+          "triage reports accurately",
+          "dispatch appropriate follow-up",
+          "brief humans on findings"
+        ],
+        "capabilities": [
+          "report-triage",
+          "agent-orchestration",
+          "hitl-briefing"
+        ],
+        "anti_goals": [
+          "modifying reports",
+          "taking direct action on findings"
+        ]
+      },
+      "success_criteria": {
+        "min_output_length": 100,
+        "must_contain": [
+          "Dispatch Summary"
+        ],
+        "must_not_contain": [
+          "FATAL ERROR"
+        ],
+        "exit_code_zero": true
+      }
     },
-
     "browser-agent": {
       "name": "Browser Agent",
       "type": "task",
       "runtime": "claude-cli",
-      "trigger": { "mode": "manual" },
+      "trigger": {
+        "mode": "manual"
+      },
       "permissions": {
         "browser_access": true,
-        "file_access": ["read-only"],
+        "file_access": [
+          "read-only"
+        ],
         "can_send": false
       },
       "guardrails": {
@@ -281,7 +628,228 @@
         "model": "sonnet",
         "allowed_domains": []
       },
-      "output": "reports/{date}/{worker-name}.md"
+      "output": "reports/{date}/{worker-name}.md",
+      "intent": {
+        "purpose": "Browser-based research and automation",
+        "goals": [
+          "accurate web data extraction",
+          "reliable UI testing",
+          "thorough browsing"
+        ],
+        "capabilities": [
+          "web-browsing",
+          "web-scraping",
+          "ui-testing"
+        ],
+        "anti_goals": [
+          "submitting forms without approval",
+          "making purchases"
+        ]
+      },
+      "success_criteria": {
+        "min_output_length": 100,
+        "must_contain": [
+          "Results"
+        ],
+        "must_not_contain": [
+          "FATAL ERROR"
+        ],
+        "exit_code_zero": true
+      }
+    },
+    "context-harvester": {
+      "name": "Context Harvester",
+      "type": "task",
+      "runtime": "claude-cli",
+      "prompt_file": "scripts/prompt_context_harvester.txt",
+      "trigger": {
+        "mode": "cron",
+        "schedule": "0 */4 * * *"
+      },
+      "permissions": {
+        "file_access": [
+          "read-only"
+        ],
+        "can_send": false
+      },
+      "guardrails": {
+        "read_only": true,
+        "max_turns": 15,
+        "timeout_minutes": 10,
+        "model": "haiku"
+      },
+      "output": "reports/{date}/{worker-name}.md",
+      "intent": {
+        "purpose": "Synthesize operational context into a journal for other workers",
+        "goals": [
+          "capture operational patterns",
+          "inform future dispatches",
+          "detect emerging issues"
+        ],
+        "capabilities": [
+          "context-synthesis",
+          "pattern-detection",
+          "operational-journaling"
+        ],
+        "anti_goals": [
+          "taking action",
+          "modifying files",
+          "making decisions"
+        ]
+      },
+      "success_criteria": {
+        "min_output_length": 200,
+        "must_contain": [
+          "Operational Summary",
+          "Context for Next Workers"
+        ],
+        "must_not_contain": [
+          "FATAL ERROR"
+        ],
+        "exit_code_zero": true
+      }
+    },
+    "project-lead": {
+      "name": "Project Lead",
+      "type": "task",
+      "runtime": "claude-cli",
+      "prompt_file": "scripts/prompt_project_lead.txt",
+      "trigger": {
+        "mode": "manual"
+      },
+      "permissions": {
+        "file_access": [
+          "read-only"
+        ],
+        "can_send": false
+      },
+      "guardrails": {
+        "read_only": true,
+        "delegation_capable": true,
+        "max_turns": 20,
+        "timeout_minutes": 15,
+        "model": "sonnet",
+        "max_sub_workers": 3
+      },
+      "output": "reports/{date}/{worker-name}.md",
+      "intent": {
+        "purpose": "Decompose complex tasks and coordinate sub-workers",
+        "goals": [
+          "break down tasks into sub-tasks",
+          "assign to appropriate workers",
+          "synthesize results"
+        ],
+        "capabilities": [
+          "task-decomposition",
+          "coordination",
+          "synthesis",
+          "code-build",
+          "research",
+          "spec-generation"
+        ],
+        "anti_goals": [
+          "implementing code directly",
+          "modifying files"
+        ]
+      },
+      "success_criteria": {
+        "min_output_length": 200,
+        "must_contain": [
+          "Task Decomposition",
+          "Dispatch"
+        ],
+        "exit_code_zero": true
+      }
+    },
+    "email-migration": {
+      "name": "Email Migration",
+      "type": "task",
+      "runtime": "python",
+      "entry": "tools/opai-email-migration/migrate.py",
+      "managed": false,
+      "trigger": {
+        "mode": "manual"
+      },
+      "vault_keys": [
+        "opai-email-migration"
+      ],
+      "permissions": {
+        "file_access": [
+          "tools/opai-email-migration/"
+        ],
+        "can_send": false
+      },
+      "guardrails": {
+        "requires_approval": [
+          "start_migration",
+          "dns_cutover",
+          "delete_source"
+        ],
+        "timeout_minutes": 120
+      },
+      "intent": {
+        "purpose": "Migrate email accounts between IMAP providers",
+        "goals": [
+          "migrate mailbox data accurately",
+          "preserve folders and flags",
+          "resume on failure"
+        ],
+        "capabilities": [
+          "email-migration",
+          "mailbox-archival",
+          "dns-guidance"
+        ],
+        "anti_goals": [
+          "deleting source without approval",
+          "changing DNS without approval",
+          "sending emails from migrated accounts"
+        ]
+      },
+      "success_criteria": {
+        "min_output_length": 100,
+        "must_contain": [
+          "MIGRATION"
+        ],
+        "exit_code_zero": true
+      }
+    },
+    "nfs-external": {
+      "name": "NFS External Worker",
+      "type": "nfs-external",
+      "runtime": "claude-code-remote",
+      "trigger": {
+        "mode": "nfs-drop"
+      },
+      "note": "Template for external ClaudeClaw workers communicating via NFS inbox/outbox. Each registered worker gets its own slug under _clawbots/.",
+      "permissions": {
+        "file_access": [
+          "worker-sandbox"
+        ],
+        "can_send": false
+      },
+      "guardrails": {
+        "max_turns": 50,
+        "timeout_minutes": 30,
+        "requires_approval": []
+      },
+      "nfs": {
+        "base_path": "/workspace/users/_clawbots",
+        "inbox_sentinel": "READY",
+        "outbox_sentinel": "DONE",
+        "heartbeat_file": "status/heartbeat.json",
+        "capabilities_file": "status/capabilities.json"
+      },
+      "registered_workers": {
+        "test-nas-01": {
+          "name": "Test NAS Worker",
+          "enabled": true,
+          "capabilities": [
+            "research",
+            "code_review"
+          ],
+          "max_concurrent": 1
+        }
+      }
     }
   }
 }

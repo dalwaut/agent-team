@@ -15,8 +15,6 @@
 # v2 restructure (2026-02-25): Engine replaces Orchestrator + Monitor + TCP.
 # 10 active services down from 28.
 
-set -e
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPAI_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
@@ -32,13 +30,12 @@ SERVICES=(
     "opai-team-hub"       # Project/task management
     "opai-users"          # User management
     "opai-wordpress"      # Client site management
-    "opai-oc-broker"      # OpenClaw container broker (vault credential bridge)
     "opai-browser"        # Browser automation (headless Playwright via Claude CLI)
     "opai-discord-bot"    # Discord bridge
     # opai-email-agent removed — now engine-managed (spawned by WorkerManager)
 )
 
-TIMERS=("opai-docker-cleanup" "opai-journal-cleanup" "opai-farmos-sync")
+TIMERS=("opai-docker-cleanup" "opai-journal-cleanup")
 
 # Core services — agents can't restart these
 CORE_SERVICES=("opai-caddy" "opai-portal" "opai-engine" "opai-vault")
@@ -136,16 +133,14 @@ restart_one_service() {
     # Normalize: allow "engine", "opai-engine", etc.
     [[ "$service" != opai-* ]] && service="opai-$service"
 
-    # Block core services from non-interactive shells
-    for core in "${CORE_SERVICES[@]}"; do
-        if [ "$service" = "$core" ] && [ ! -t 0 ] && [ "${OPAI_FORCE:-}" != "1" ]; then
-            log_error "BLOCKED: Cannot restart core service '$service' from non-interactive shell"
-            exit 1
-        fi
-    done
-
     log_info "Restarting $service..."
-    systemctl --user restart "$service" 2>/dev/null && log_success "Restarted $service" || log_error "Failed to restart $service"
+    if systemctl --user restart "$service" 2>&1; then
+        log_success "Restarted $service"
+    else
+        log_error "Failed to restart $service"
+        systemctl --user status "$service" --no-pager -l 2>&1 | tail -5
+        return 1
+    fi
 }
 
 enable_services() {
@@ -225,6 +220,25 @@ show_status() {
     echo ""
 }
 
+install_services() {
+    local template_dir="$OPAI_ROOT/config/service-templates"
+    local dest_dir="$HOME/.config/systemd/user"
+    mkdir -p "$dest_dir"
+
+    log_info "Installing service templates from $template_dir..."
+
+    local count=0
+    for template in "$template_dir"/*.service "$template_dir"/*.timer; do
+        [ -f "$template" ] || continue
+        local filename=$(basename "$template")
+        cp "$template" "$dest_dir/$filename"
+        count=$((count + 1))
+    done
+
+    systemctl --user daemon-reload
+    log_success "Installed $count unit files and reloaded systemd"
+}
+
 show_logs() {
     local service="$1"
 
@@ -245,33 +259,43 @@ show_logs() {
 case "${1:-}" in
     start)       start_services ;;
     stop)        stop_services ;;
-    restart)     restart_services ;;
+    restart)
+        if [ -n "${2:-}" ]; then
+            restart_one_service "$2"
+        else
+            restart_services
+        fi
+        ;;
     restart-one) restart_one_service "$2" ;;
     enable)      enable_services ;;
     disable)     disable_services ;;
     status)      show_status ;;
     logs)        show_logs "$2" ;;
+    install)     install_services ;;
     *)
         echo "OPAI Control Script v2"
         echo ""
-        echo "Usage: $0 {start|stop|restart|restart-one <svc>|enable|disable|status|logs [svc]}"
+        echo "Usage: $0 {start|stop|restart [svc]|enable|disable|status|logs [svc]|install}"
         echo ""
         echo "Commands:"
-        echo "  start              Start all v2 services"
+        echo "  start              Start all services"
         echo "  stop               Stop all services (INTERACTIVE ONLY)"
         echo "  restart            Restart all services (INTERACTIVE ONLY)"
-        echo "  restart-one <svc>  Restart a single service (agent-safe)"
+        echo "  restart <svc>      Restart a single service (agent-safe)"
+        echo "  restart-one <svc>  Alias for restart <svc>"
         echo "  enable             Enable auto-start on boot"
         echo "  disable            Disable auto-start"
         echo "  status             Show status of all services"
         echo "  logs [service]     View logs (all or specific)"
+        echo "  install            Copy templates to systemd and daemon-reload"
         echo ""
         echo "Active services (${#SERVICES[@]}):"
         for s in "${SERVICES[@]}"; do echo "  $s"; done
         echo ""
         echo "Safety:"
-        echo "  stop/restart blocked in non-interactive shells."
+        echo "  stop/restart-all blocked in non-interactive shells."
         echo "  Override with: OPAI_FORCE=1 ./opai-control.sh stop"
+        echo "  Single-service restart is always allowed."
         exit 1
         ;;
 esac

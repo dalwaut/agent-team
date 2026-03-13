@@ -1,5 +1,5 @@
 # Auth & Network Architecture
-> Last updated: 2026-02-26 | Source: `tools/shared/auth.py`, `config/Caddyfile`, `config/network.json`
+> Last updated: 2026-03-05 | Source: `tools/shared/auth.py`, `config/Caddyfile`, `config/network.json`
 
 ## Overview
 
@@ -48,7 +48,7 @@ Tailscale creates a flat WireGuard mesh so every device sees `opai-server` regar
 
 ### NFS Storage
 
-The Synology DS418 NAS (192.168.2.138) exports `/volume2/opai-users` via NFS v4.1, mounted at `/workspace/users` on the OPAI server. This provides per-user sandbox storage. See [Sandbox System](sandbox-system.md) for details.
+The Synology DS418 NAS (`ds418.local` / `192.168.1.200`) exports `/volume2/opai-users` via NFS v4.1, mounted at `/workspace/users` on the OPAI server. This provides per-user sandbox storage. NFS permissions allow the `192.168.1.0/24` subnet. See [Sandbox System](sandbox-system.md) for details.
 
 ## Auth Flow
 
@@ -80,7 +80,7 @@ Access is now a two-tier system:
 
 **Enforcement**: Every app frontend calls `opaiAuth.init({ requireApp: '<app_id>' })` on page load. For non-admins, auth.js fetches `GET /api/me/apps` (portal backend) and redirects to `/` if the app is not in the user's list. Empty list = fail open (server couldn't verify). Admins skip the check entirely.
 
-**App IDs**: `chat`, `monitor`, `tasks`, `terminal`, `messenger`, `users`, `dev`, `files`, `forum`, `claude`, `rustdesk`
+**App IDs**: `chat`, `monitor`, `tasks`, `terminal`, `messenger`, `users`, `dev`, `files`, `forum`, `claude`, `rustdesk`, `vault`, `studio`, `team-hub`, `brain`
 
 **App registry**: Defined in `tools/opai-users/app.py` (`APP_REGISTRY` list with id/label/category). Served at `GET /api/apps` for dynamic checkbox rendering in invite/edit modals.
 
@@ -129,19 +129,61 @@ On every authenticated request, the backend fetches the user's `profiles` row (c
 
 Dev mode: set `OPAI_AUTH_DISABLED=1` in any service's `.env` to bypass all auth (treats all requests as admin).
 
+### Engine Auth Hardening (2026-03-05)
+
+As of 2026-03-05, all Engine route modules enforce `require_admin` on mutation and most read endpoints. The pattern applied across 8 newly-protected modules (40 endpoints total):
+
+```python
+router = APIRouter(prefix="/api/example", dependencies=[Depends(require_admin)])
+```
+
+Three endpoints are intentionally left public (no auth): demo list (`GET /api/demos/`), NFS monitoring (`GET /api/nfs/*`), and Google Chat status (`GET /api/google-chat/status`). These are read-only status endpoints with no sensitive data. See [Orchestrator > Endpoint Security](orchestrator.md#endpoint-security-2026-03-05) for the full breakdown.
+
 ## Frontend Auth Client (`auth-v3.js`)
 
 | Method | Purpose |
 |--------|---------|
 | `opaiAuth.init(opts)` | Check session, redirect to login if missing. `opts.requireApp` checks `allowed_apps` via `/api/me/apps` (takes precedence over `requireAdmin`). `opts.requireAdmin` enforces admin role. `opts.allowAnonymous` skips redirect. |
-| `opaiAuth.fetchWithAuth(url, opts)` | `fetch()` wrapper that adds Bearer token |
+| `opaiAuth.fetchWithAuth(url, opts)` | `fetch()` wrapper that adds Bearer token. **Redirects to `/auth/login` if no token and auth is not disabled** — callers must ensure `init()` has completed first |
 | `opaiAuth.fetchJSON(url, opts)` | JSON fetch with auth + error handling |
 | `opaiAuth.getAuthMessage()` | Returns WebSocket auth payload string |
 | `opaiAuth.getToken()` | Get current JWT (auto-refreshes) |
+| `opaiAuth.getSession()` | Returns current session object (`{ user, access_token }`) or `null`. Used by `navbar.js` for permission checks |
+| `opaiAuth.getUser()` | Get current user object |
 | `opaiAuth.signOut()` | Sign out + redirect to login |
 | `opaiAuth.isAdmin()` | Check admin role |
 
 Config is read at `init()` call time from `window.OPAI_SUPABASE_URL` / `window.OPAI_SUPABASE_ANON_KEY` (set by each app's config fetch).
+
+### Auth Init Race Condition (Fixed 2026-03-05)
+
+**Problem**: The Command Center (`/tasks/`, `/engine/`) was stuck in an auth redirect loop when accessed remotely (via Tailscale). Localhost access worked fine.
+
+**Root cause — two bugs compounding**:
+
+1. **Missing `getSession()` export** — `navbar.js` called `window.opaiAuth.getSession()` which didn't exist in `auth-v3.js`. Returned `undefined`, silently broke permission checks.
+
+2. **Data loading before auth init** — `app.js` fired `loadCommandCenter()` immediately at module load without waiting for `opaiAuth.init()` to complete. On remote access, `auth_disabled` is `false` (the `/auth/config` endpoint only returns `auth_disabled: true` for `127.0.0.1` requests). So `fetchWithAuth()` found no token (auth not initialized yet) → redirected to `/auth/login` → portal → back to engine → same redirect → **infinite loop**.
+
+**Why localhost worked**: The portal's `/auth/config` endpoint checks `request.client.host` — localhost returns `auth_disabled: true`, which makes `auth-v3.js` create a mock admin session immediately (no async Supabase call). Remote IPs (Tailscale `100.x.x.x`) get `auth_disabled: false`, requiring a real Supabase session that takes time to initialize.
+
+**Fix**:
+- Added `getSession()` to `auth-v3.js` exports
+- Changed `app.js` init to store auth promise as `window.OPAI_AUTH_INIT` and await it before calling `loadCommandCenter()` or `connectStatsWS()`
+
+**Pattern for all frontends**: Any `app.js` that uses `fetchWithAuth` must wait for auth init before making API calls:
+
+```javascript
+// Store auth init as a promise
+window.OPAI_AUTH_INIT = (window.OPAI_AUTH_READY || Promise.resolve())
+  .then(() => opaiAuth.init({ allowAnonymous: true }))
+  .catch(e => { console.warn('Auth init:', e); return null; });
+
+// Wait before loading data
+window.OPAI_AUTH_INIT.then(() => {
+  loadDashboard();
+});
+```
 
 ## Supabase Schema
 

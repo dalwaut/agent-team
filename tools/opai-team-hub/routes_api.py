@@ -15,6 +15,7 @@ from pydantic import BaseModel
 import config
 from auth import get_current_user, require_admin, AuthUser
 from audit import log_audit
+from routes_comments import _parse_mentions
 
 router = APIRouter(prefix="/api")
 
@@ -47,6 +48,41 @@ async def _log_activity(client: httpx.AsyncClient, workspace_id: str, action: st
             "details": details or {},
         },
     )
+
+
+async def _notify(client: httpx.AsyncClient, user_id: str, notify_type: str,
+                  title: str, body: str, item_id: str = None,
+                  workspace_id: str = None, skip_user_id: str = None):
+    """Create a notification for a user (skip if user == skip_user_id)."""
+    if user_id == skip_user_id:
+        return
+    payload = {
+        "user_id": user_id,
+        "type": notify_type,
+        "title": title,
+        "body": body,
+    }
+    if item_id:
+        payload["item_id"] = item_id
+    if workspace_id:
+        payload["workspace_id"] = workspace_id
+    await client.post(
+        _sb_url("team_notifications"),
+        headers=_sb_headers_service(),
+        json=payload,
+    )
+
+
+async def _get_item_assignees(client: httpx.AsyncClient, item_id: str) -> list[str]:
+    """Return list of assignee_id for an item."""
+    resp = await client.get(
+        _sb_url("team_assignments"),
+        headers=_sb_headers_service(),
+        params={"item_id": f"eq.{item_id}", "select": "assignee_id"},
+    )
+    if resp.status_code >= 400:
+        return []
+    return [a["assignee_id"] for a in resp.json()]
 
 
 async def _spawn_recurring_task(client: httpx.AsyncClient, headers: dict, item: dict, actor_id: str):
@@ -185,6 +221,7 @@ def auth_config():
 class CreateWorkspace(BaseModel):
     name: str
     icon: str = "📁"
+    hub_id: Optional[str] = None
 
 
 class UpdateWorkspace(BaseModel):
@@ -198,8 +235,11 @@ class CreateItem(BaseModel):
     description: str = ""
     priority: str = "medium"
     due_date: Optional[str] = None
+    start_date: Optional[str] = None
     follow_up_date: Optional[str] = None
+    time_estimate: Optional[int] = None
     source: str = "web"
+    parent_id: Optional[str] = None
 
 
 class UpdateItem(BaseModel):
@@ -208,7 +248,9 @@ class UpdateItem(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
     due_date: Optional[str] = None
+    start_date: Optional[str] = None
     follow_up_date: Optional[str] = None
+    time_estimate: Optional[int] = None
     list_id: Optional[str] = None
     folder_id: Optional[str] = None
     links: Optional[list] = None
@@ -260,6 +302,10 @@ class UpdateDiscordSettings(BaseModel):
     bot_prompt: Optional[str] = None
 
 
+class ReorderWorkspaces(BaseModel):
+    workspace_ids: list[str]
+
+
 # ── Workspaces ───────────────────────────────────────────────
 
 def _slugify(name: str) -> str:
@@ -276,25 +322,54 @@ async def list_workspaces(user: AuthUser = Depends(get_current_user)):
         mem_resp = await client.get(
             _sb_url("team_membership"),
             headers=headers,
-            params={"user_id": f"eq.{user.id}", "select": "workspace_id,role"},
+            params={"user_id": f"eq.{user.id}", "select": "workspace_id,role,orderindex"},
         )
         if mem_resp.status_code >= 400:
             raise HTTPException(status_code=mem_resp.status_code, detail=mem_resp.text)
 
         memberships = mem_resp.json()
-        if not memberships:
-            return {"workspaces": []}
-
-        ws_ids = [m["workspace_id"] for m in memberships]
+        ws_ids = [m["workspace_id"] for m in memberships] if memberships else []
         role_map = {m["workspace_id"]: m["role"] for m in memberships}
+        order_map = {m["workspace_id"]: m.get("orderindex", 0) or 0 for m in memberships}
+
+        # Also get hub workspaces user can see via hub membership
+        hub_resp = await client.get(
+            _sb_url("team_hub_membership"),
+            headers=headers,
+            params={"user_id": f"eq.{user.id}", "select": "hub_id,role"},
+        )
+        hub_memberships = hub_resp.json() if hub_resp.status_code < 400 else []
+        hub_ids = [h["hub_id"] for h in hub_memberships]
+        hub_role_map = {h["hub_id"]: h["role"] for h in hub_memberships}
+
+        # Get hub workspaces not already in user's direct membership
+        hub_ws_ids = []
+        if hub_ids:
+            hub_ws_resp = await client.get(
+                _sb_url("team_workspaces"),
+                headers=headers,
+                params={
+                    "hub_id": f"in.({','.join(hub_ids)})",
+                    "select": "id",
+                },
+            )
+            if hub_ws_resp.status_code < 400:
+                hub_ws_ids = [w["id"] for w in hub_ws_resp.json() if w["id"] not in ws_ids]
+                for wid in hub_ws_ids:
+                    if wid not in role_map:
+                        role_map[wid] = "member"
+                        order_map[wid] = 999
+
+        all_ids = list(set(ws_ids + hub_ws_ids))
+        if not all_ids:
+            return {"workspaces": [], "hubs": []}
 
         ws_resp = await client.get(
             _sb_url("team_workspaces"),
             headers=headers,
             params={
-                "id": f"in.({','.join(ws_ids)})",
-                "select": "id,name,slug,icon,owner_id,is_personal,color,description,created_at",
-                "order": "is_personal.desc,name.asc",
+                "id": f"in.({','.join(all_ids)})",
+                "select": "id,name,slug,icon,owner_id,is_personal,color,description,hub_id,created_at",
             },
         )
         if ws_resp.status_code >= 400:
@@ -303,8 +378,46 @@ async def list_workspaces(user: AuthUser = Depends(get_current_user)):
         workspaces = ws_resp.json()
         for ws in workspaces:
             ws["my_role"] = role_map.get(ws["id"], "member")
+            ws["orderindex"] = order_map.get(ws["id"], 0)
+            # If workspace is in a hub, include hub role
+            if ws.get("hub_id") and ws["hub_id"] in hub_role_map:
+                ws["hub_role"] = hub_role_map[ws["hub_id"]]
 
-        return {"workspaces": workspaces}
+        # Sort: by orderindex first, then personal spaces, then name
+        workspaces.sort(key=lambda w: (w["orderindex"], not w.get("is_personal", False), w["name"].lower()))
+
+        # Include hub info
+        hubs = []
+        if hub_ids:
+            hubs_resp = await client.get(
+                _sb_url("team_hubs"),
+                headers=headers,
+                params={"id": f"in.({','.join(hub_ids)})", "select": "id,name,slug,icon,color"},
+            )
+            if hubs_resp.status_code < 400:
+                hubs = hubs_resp.json()
+                for h in hubs:
+                    h["my_role"] = hub_role_map.get(h["id"], "member")
+
+        return {"workspaces": workspaces, "hubs": hubs}
+
+
+@router.post("/workspaces/reorder")
+async def reorder_workspaces(req: ReorderWorkspaces, user: AuthUser = Depends(get_current_user)):
+    """Update the display order of workspaces for the current user."""
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for idx, ws_id in enumerate(req.workspace_ids):
+            await client.patch(
+                _sb_url("team_membership"),
+                headers=headers,
+                params={
+                    "user_id": f"eq.{user.id}",
+                    "workspace_id": f"eq.{ws_id}",
+                },
+                json={"orderindex": idx},
+            )
+    return {"ok": True}
 
 
 @router.post("/workspaces")
@@ -315,17 +428,31 @@ async def create_workspace(req: CreateWorkspace, user: AuthUser = Depends(get_cu
     import time
     slug = f"{slug}-{int(time.time()) % 100000}"
 
+    # If no explicit hub_id, auto-detect from user's hub membership
+    hub_id = req.hub_id
+    if not hub_id:
+        hub_resp = await httpx.AsyncClient(timeout=5.0).get(
+            _sb_url("team_hub_membership"), headers=headers,
+            params={"user_id": f"eq.{user.id}", "select": "hub_id", "limit": "1"},
+        )
+        if hub_resp.status_code < 400 and hub_resp.json():
+            hub_id = hub_resp.json()[0]["hub_id"]
+
     async with httpx.AsyncClient(timeout=10.0) as client:
+        ws_payload = {
+            "name": req.name,
+            "slug": slug,
+            "icon": req.icon,
+            "owner_id": user.id,
+            "is_personal": False,
+        }
+        if hub_id:
+            ws_payload["hub_id"] = hub_id
+
         ws_resp = await client.post(
             _sb_url("team_workspaces"),
             headers=headers,
-            json={
-                "name": req.name,
-                "slug": slug,
-                "icon": req.icon,
-                "owner_id": user.id,
-                "is_personal": False,
-            },
+            json=ws_payload,
         )
         if ws_resp.status_code >= 400:
             raise HTTPException(status_code=ws_resp.status_code, detail=ws_resp.text)
@@ -343,8 +470,20 @@ async def create_workspace(req: CreateWorkspace, user: AuthUser = Depends(get_cu
             },
         )
 
+        # If hub-bound, add all other hub members to this workspace
+        if hub_id:
+            hub_mem_resp = await client.get(
+                _sb_url("team_hub_membership"), headers=headers,
+                params={"hub_id": f"eq.{hub_id}", "user_id": f"neq.{user.id}", "select": "user_id"},
+            )
+            for hm in (hub_mem_resp.json() if hub_mem_resp.status_code < 400 else []):
+                await client.post(
+                    _sb_url("team_membership"), headers=headers,
+                    json={"user_id": hm["user_id"], "workspace_id": workspace["id"], "role": "member"},
+                )
+
         await _log_activity(client, workspace["id"], "workspace_created", user.id,
-                            details={"name": req.name})
+                            details={"name": req.name, "hub_id": hub_id})
 
         return workspace
 
@@ -779,8 +918,14 @@ async def create_item(ws_id: str, req: CreateItem, user: AuthUser = Depends(get_
         }
         if req.due_date:
             item_data["due_date"] = req.due_date
+        if req.start_date:
+            item_data["start_date"] = req.start_date
         if req.follow_up_date:
             item_data["follow_up_date"] = req.follow_up_date
+        if req.time_estimate is not None:
+            item_data["time_estimate"] = req.time_estimate
+        if req.parent_id:
+            item_data["parent_id"] = req.parent_id
 
         resp = await client.post(
             _sb_url("team_items"),
@@ -791,6 +936,17 @@ async def create_item(ws_id: str, req: CreateItem, user: AuthUser = Depends(get_
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
 
         item = resp.json()[0]
+
+        # Auto-assign creator so the item appears in their dashboard tiles
+        try:
+            await client.post(
+                _sb_url("team_assignments"), headers=headers,
+                json={"item_id": item["id"], "assignee_type": "user",
+                      "assignee_id": user.id, "assigned_by": user.id},
+            )
+        except Exception:
+            pass  # non-critical — item still created
+
         await _log_activity(client, ws_id, "item_created", user.id, item["id"],
                             {"type": req.type, "title": req.title})
         try:
@@ -804,6 +960,14 @@ async def create_item(ws_id: str, req: CreateItem, user: AuthUser = Depends(get_
             )
         except Exception:
             pass
+
+        # Evaluate automations (item_created trigger)
+        try:
+            from routes_automations import evaluate_automations
+            await evaluate_automations(client, headers, ws_id, None, item, {}, user.id)
+        except Exception:
+            pass
+
         return item
 
 
@@ -855,6 +1019,18 @@ async def get_item(item_id: str, user: AuthUser = Depends(get_current_user)):
         else:
             item["tags"] = []
 
+        # Fetch subtasks
+        sub_resp = await client.get(
+            _sb_url("team_items"),
+            headers=headers,
+            params={
+                "parent_id": f"eq.{item_id}",
+                "select": "id,title,status,priority,due_date,orderindex,custom_id",
+                "order": "orderindex.asc,created_at.asc",
+            },
+        )
+        item["subtasks"] = sub_resp.json() if sub_resp.status_code < 400 else []
+
         return item
 
 
@@ -881,8 +1057,8 @@ async def update_item(item_id: str, req: UpdateItem, user: AuthUser = Depends(ge
         if not mem_check.json():
             raise HTTPException(status_code=404, detail="Item not found")
 
-        # Allow explicitly nullable fields (recurrence, links) to pass through as None
-        _nullable_fields = {"recurrence", "links"}
+        # Allow explicitly nullable fields to pass through as None
+        _nullable_fields = {"recurrence", "links", "due_date", "start_date", "follow_up_date"}
         raw = req.model_dump()
         update = {}
         for k, v in raw.items():
@@ -891,6 +1067,19 @@ async def update_item(item_id: str, req: UpdateItem, user: AuthUser = Depends(ge
             elif k in _nullable_fields and req.model_fields_set and k in req.model_fields_set:
                 update[k] = None
         update["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        # If list_id changed, sync workspace_id to the new list's workspace so
+        # the task does not continue to appear in the old workspace.
+        if "list_id" in update and update["list_id"]:
+            list_resp = await client.get(
+                _sb_url("team_lists"),
+                headers=headers,
+                params={"id": f"eq.{update['list_id']}", "select": "workspace_id"},
+            )
+            if list_resp.status_code < 400 and list_resp.json():
+                new_ws_id = list_resp.json()[0].get("workspace_id")
+                if new_ws_id and new_ws_id != item.get("workspace_id"):
+                    update["workspace_id"] = new_ws_id
 
         resp = await client.patch(
             _sb_url("team_items"),
@@ -903,6 +1092,33 @@ async def update_item(item_id: str, req: UpdateItem, user: AuthUser = Depends(ge
 
         await _log_activity(client, item["workspace_id"], "item_updated", user.id, item_id,
                             {"changes": list(update.keys())})
+
+        # Notify assignees of meaningful changes
+        _notify_fields = {"status", "priority", "due_date", "title"}
+        changed_fields = set(update.keys()) & _notify_fields
+        if changed_fields:
+            try:
+                assignees = await _get_item_assignees(client, item_id)
+                parts = []
+                if "status" in changed_fields:
+                    parts.append(f"Status \u2192 {update['status']}")
+                if "priority" in changed_fields:
+                    parts.append(f"Priority \u2192 {update['priority']}")
+                if "due_date" in changed_fields:
+                    parts.append(f"Due date changed")
+                if "title" in changed_fields:
+                    parts.append(f"Title changed")
+                body_text = ", ".join(parts)
+                item_title = item.get("title", "")
+                for uid in assignees:
+                    await _notify(client, uid, "update",
+                                  f"Updated: {item_title}" if item_title else "Task updated",
+                                  body_text,
+                                  item_id=item_id, workspace_id=item["workspace_id"],
+                                  skip_user_id=user.id)
+            except Exception:
+                pass  # non-critical
+
         if "status" in update:
             try:
                 log_audit(
@@ -919,11 +1135,19 @@ async def update_item(item_id: str, req: UpdateItem, user: AuthUser = Depends(ge
         updated_item = resp.json()[0]
 
         # ── Recurrence: spawn next instance when completed ──
-        if "status" in update and update["status"] in ("done", "closed"):
+        if "status" in update and update["status"] in ("done", "closed", "Complete"):
             try:
                 await _spawn_recurring_task(client, headers, updated_item, user.id)
             except Exception:
                 pass  # Non-fatal — don't block the update
+
+        # ── Evaluate automations ──
+        try:
+            from routes_automations import evaluate_automations
+            changes = {k: v for k, v in update.items() if k != "updated_at"}
+            await evaluate_automations(client, headers, item["workspace_id"], item, updated_item, changes, user.id)
+        except Exception:
+            pass
 
         return updated_item
 
@@ -1080,11 +1304,12 @@ async def assign_item(item_id: str, req: AssignItem, user: AuthUser = Depends(ge
         item_resp = await client.get(
             _sb_url("team_items"),
             headers=headers,
-            params={"id": f"eq.{item_id}", "select": "workspace_id"},
+            params={"id": f"eq.{item_id}", "select": "workspace_id,title"},
         )
         if item_resp.status_code >= 400 or not item_resp.json():
             raise HTTPException(status_code=404, detail="Item not found")
-        ws_id = item_resp.json()[0]["workspace_id"]
+        item_data = item_resp.json()[0]
+        ws_id = item_data["workspace_id"]
 
         mem_check = await client.get(
             _sb_url("team_membership"),
@@ -1109,6 +1334,17 @@ async def assign_item(item_id: str, req: AssignItem, user: AuthUser = Depends(ge
 
         await _log_activity(client, ws_id, "item_assigned", user.id, item_id,
                             {"assignee_type": req.assignee_type, "assignee_id": req.assignee_id})
+
+        # Notify the assignee
+        try:
+            item_title = item_data.get("title", "")
+            await _notify(client, req.assignee_id, "assignment",
+                          f"Assigned to: {item_title}" if item_title else "You were assigned a task",
+                          "You have been assigned to this task.",
+                          item_id=item_id, workspace_id=ws_id, skip_user_id=user.id)
+        except Exception:
+            pass  # non-critical
+
         return resp.json()[0]
 
 
@@ -1132,14 +1368,30 @@ async def unassign_item(item_id: str, assign_id: str, user: AuthUser = Depends(g
 async def list_tags(ws_id: str, user: AuthUser = Depends(get_current_user)):
     headers = _sb_headers_service()
     async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(
-            _sb_url("team_tags"),
-            headers=headers,
-            params={"workspace_id": f"eq.{ws_id}", "order": "name.asc"},
+        # Check if workspace belongs to a hub
+        ws_resp = await client.get(
+            _sb_url("team_workspaces"), headers=headers,
+            params={"id": f"eq.{ws_id}", "select": "hub_id"},
         )
+        hub_id = None
+        if ws_resp.status_code < 400 and ws_resp.json():
+            hub_id = ws_resp.json()[0].get("hub_id")
+
+        if hub_id:
+            # Return hub-level tags
+            resp = await client.get(
+                _sb_url("team_tags"), headers=headers,
+                params={"hub_id": f"eq.{hub_id}", "workspace_id": "is.null", "order": "name.asc"},
+            )
+        else:
+            resp = await client.get(
+                _sb_url("team_tags"), headers=headers,
+                params={"workspace_id": f"eq.{ws_id}", "order": "name.asc"},
+            )
+
         if resp.status_code >= 400:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
-        return {"tags": resp.json()}
+        return {"tags": resp.json(), "hub_id": hub_id}
 
 
 @router.post("/workspaces/{ws_id}/tags")
@@ -1257,42 +1509,67 @@ async def remove_item_tag(item_id: str, tag_id: str, user: AuthUser = Depends(ge
 
 @router.post("/settings/sync")
 async def sync_settings(user: AuthUser = Depends(get_current_user)):
-    """Sync statuses and tags from user's personal workspace to all other owned workspaces."""
+    """Sync statuses and tags from hub (if member) or personal workspace to all other owned workspaces."""
     headers = _sb_headers_service()
     async with httpx.AsyncClient(timeout=30.0) as client:
-        # Find personal workspace
-        ps_resp = await client.get(
-            _sb_url("team_workspaces"), headers=headers,
-            params={"owner_id": f"eq.{user.id}", "is_personal": "eq.true", "select": "id"},
+        # Check if user belongs to a hub — use hub statuses/tags as canonical source
+        hub_resp = await client.get(
+            _sb_url("team_hub_membership"), headers=headers,
+            params={"user_id": f"eq.{user.id}", "select": "hub_id,role", "limit": "1"},
         )
-        ps_rows = ps_resp.json() if ps_resp.status_code < 400 else []
-        if not ps_rows:
-            raise HTTPException(status_code=404, detail="Personal workspace not found")
-        personal_id = ps_rows[0]["id"]
+        hub_rows = hub_resp.json() if hub_resp.status_code < 400 else []
+        hub_id = hub_rows[0]["hub_id"] if hub_rows else None
 
-        # Get all workspaces user owns (excluding personal)
-        mem_resp = await client.get(
-            _sb_url("team_membership"), headers=headers,
-            params={"user_id": f"eq.{user.id}", "role": "eq.owner", "select": "workspace_id"},
-        )
-        other_ids = [m["workspace_id"] for m in (mem_resp.json() or [])
-                     if m["workspace_id"] != personal_id]
+        if hub_id:
+            # Hub mode: canonical from hub-level statuses/tags
+            st_resp = await client.get(
+                _sb_url("team_statuses"), headers=headers,
+                params={"hub_id": f"eq.{hub_id}", "workspace_id": "is.null", "order": "orderindex.asc"},
+            )
+            canonical_statuses = st_resp.json() if st_resp.status_code < 400 else []
+            tg_resp = await client.get(
+                _sb_url("team_tags"), headers=headers,
+                params={"hub_id": f"eq.{hub_id}", "workspace_id": "is.null", "order": "name.asc"},
+            )
+            canonical_tags = tg_resp.json() if tg_resp.status_code < 400 else []
+
+            # Target: all hub workspaces (not personal)
+            ws_resp = await client.get(
+                _sb_url("team_workspaces"), headers=headers,
+                params={"hub_id": f"eq.{hub_id}", "is_personal": "eq.false", "select": "id"},
+            )
+            other_ids = [w["id"] for w in (ws_resp.json() if ws_resp.status_code < 400 else [])]
+        else:
+            # Legacy mode: sync from personal workspace
+            ps_resp = await client.get(
+                _sb_url("team_workspaces"), headers=headers,
+                params={"owner_id": f"eq.{user.id}", "is_personal": "eq.true", "select": "id"},
+            )
+            ps_rows = ps_resp.json() if ps_resp.status_code < 400 else []
+            if not ps_rows:
+                raise HTTPException(status_code=404, detail="Personal workspace not found")
+            personal_id = ps_rows[0]["id"]
+
+            mem_resp = await client.get(
+                _sb_url("team_membership"), headers=headers,
+                params={"user_id": f"eq.{user.id}", "role": "eq.owner", "select": "workspace_id"},
+            )
+            other_ids = [m["workspace_id"] for m in (mem_resp.json() or [])
+                         if m["workspace_id"] != personal_id]
+
+            st_resp = await client.get(
+                _sb_url("team_statuses"), headers=headers,
+                params={"workspace_id": f"eq.{personal_id}", "order": "orderindex.asc"},
+            )
+            canonical_statuses = st_resp.json() if st_resp.status_code < 400 else []
+            tg_resp = await client.get(
+                _sb_url("team_tags"), headers=headers,
+                params={"workspace_id": f"eq.{personal_id}", "order": "name.asc"},
+            )
+            canonical_tags = tg_resp.json() if tg_resp.status_code < 400 else []
+
         if not other_ids:
             return {"ok": True, "synced": 0}
-
-        # Canonical statuses from personal workspace
-        st_resp = await client.get(
-            _sb_url("team_statuses"), headers=headers,
-            params={"workspace_id": f"eq.{personal_id}", "order": "orderindex.asc"},
-        )
-        canonical_statuses = st_resp.json() if st_resp.status_code < 400 else []
-
-        # Canonical tags from personal workspace
-        tg_resp = await client.get(
-            _sb_url("team_tags"), headers=headers,
-            params={"workspace_id": f"eq.{personal_id}", "order": "name.asc"},
-        )
-        canonical_tags = tg_resp.json() if tg_resp.status_code < 400 else []
 
         for ws_id in other_ids:
             # ── Sync statuses ──
@@ -1430,30 +1707,29 @@ async def search_items(
         if not ws_ids:
             return {"items": [], "total": 0}
 
-        # Search by title/description — split query into words so
+        # Search by title/description/custom_id — split query into words so
         # "VEC Quotes" matches tasks containing both words in any order
+        select_fields = "id,type,title,status,priority,workspace_id,custom_id,created_at"
         words = q.strip().split()
         if len(words) <= 1:
-            or_filter = f"(title.ilike.%{q}%,description.ilike.%{q}%)"
+            or_filter = f"(title.ilike.%{q}%,description.ilike.%{q}%,custom_id.ilike.%{q}%)"
             params = {
                 "workspace_id": f"in.({','.join(ws_ids)})",
                 "or": or_filter,
                 "order": "updated_at.desc,created_at.desc",
                 "limit": str(limit),
-                "select": "id,type,title,status,priority,workspace_id,created_at",
+                "select": select_fields,
             }
         else:
-            # Each word must appear in title OR description
-            # PostgREST and= nesting: and=(or(title.ilike.%w1%,...),or(title.ilike.%w2%,...))
             clauses = ",".join(
-                f"or(title.ilike.%{w}%,description.ilike.%{w}%)" for w in words
+                f"or(title.ilike.%{w}%,description.ilike.%{w}%,custom_id.ilike.%{w}%)" for w in words
             )
             params = {
                 "workspace_id": f"in.({','.join(ws_ids)})",
                 "and": f"({clauses})",
                 "order": "updated_at.desc,created_at.desc",
                 "limit": str(limit),
-                "select": "id,type,title,status,priority,workspace_id,created_at",
+                "select": select_fields,
             }
         resp = await client.get(_sb_url("team_items"), headers=headers, params=params)
         if resp.status_code >= 400:
@@ -1547,6 +1823,20 @@ async def mark_notifications_read(req: MarkRead, user: AuthUser = Depends(get_cu
         return {"ok": True}
 
 
+@router.delete("/my/notifications/{notification_id}")
+async def delete_notification(notification_id: str, user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.delete(
+            _sb_url("team_notifications"),
+            headers=headers,
+            params={"id": f"eq.{notification_id}", "user_id": f"eq.{user.id}"},
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return {"ok": True}
+
+
 # ── Home Dashboard ────────────────────────────────────────────
 
 @router.get("/my/home")
@@ -1567,8 +1857,8 @@ async def my_home(user: AuthUser = Depends(get_current_user)):
         ws_ids = [m["workspace_id"] for m in memberships]
         if not ws_ids:
             return {"top_items": [], "recent_todos": [], "overdue": [],
-                    "mentions": [], "workspace_summary": [], "due_this_week": [],
-                    "follow_ups_due": [], "recent_activity": []}
+                    "priorities": [], "mentions": [], "workspace_summary": [],
+                    "due_this_week": [], "follow_ups_due": [], "recent_activity": []}
 
         ws_filter = f"in.({','.join(ws_ids)})"
 
@@ -1584,7 +1874,7 @@ async def my_home(user: AuthUser = Depends(get_current_user)):
             _sb_url("team_items"), headers=headers,
             params={
                 "workspace_id": ws_filter,
-                "select": "id,type,title,status,priority,due_date,follow_up_date,workspace_id,created_at,updated_at",
+                "select": "id,type,title,status,priority,due_date,follow_up_date,workspace_id,created_by,created_at,updated_at",
                 "order": "updated_at.desc",
                 "limit": "200",
             },
@@ -1592,17 +1882,19 @@ async def my_home(user: AuthUser = Depends(get_current_user)):
         all_items = all_items_resp.json() if all_items_resp.status_code < 400 else []
 
         assigned_set = set(assigned_ids)
-        my_items = [i for i in all_items if i["id"] in assigned_set]
+        # Include items assigned to user OR created by user (creator should always see their own items)
+        my_items = [i for i in all_items
+                     if i["id"] in assigned_set or i.get("created_by") == user.id]
 
-        # Fall back to all workspace items when user has no assignments
-        # This ensures tiles populate even if items aren't explicitly assigned
+        # Fall back to all workspace items when user has no assignments/created items
         effective_items = my_items if my_items else all_items
 
         # Priority order for sorting
         pri_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "none": 4}
 
         # All active (non-done) items from the effective set
-        active_items = [i for i in effective_items if i.get("status") not in ("done", "closed", "archived")]
+        _closed_statuses = {"done", "closed", "archived", "Complete"}
+        active_items = [i for i in effective_items if i.get("status") not in _closed_statuses]
         active_items.sort(key=lambda x: (pri_order.get(x.get("priority", "none"), 4), x.get("due_date") or "9999"))
 
         # top_items: highest-priority items not done (up to 25 for 3x2 tiles)
@@ -1611,9 +1903,87 @@ async def my_home(user: AuthUser = Depends(get_current_user)):
         # recent_todos: recent items by updated_at (up to 40 for 3x2 tiles)
         recent_todos = effective_items[:40]
 
-        # overdue: items with due_date < today, not done
-        overdue = [i for i in active_items if i.get("due_date") and i["due_date"] < today]
-        overdue.sort(key=lambda x: x.get("due_date", ""))
+        # priorities: "most important tasks to focus on" — composite urgency score
+        # Combines: overdue urgency, due-date proximity, priority level, recency
+        def _priority_score(item):
+            score = 0
+            due = item.get("due_date")
+            pri = item.get("priority", "none")
+            updated = item.get("updated_at", "")
+
+            # Urgency: due date proximity (biggest weight)
+            if due:
+                try:
+                    days_until = (datetime.strptime(due, "%Y-%m-%d").date()
+                                  - datetime.now(timezone.utc).date()).days
+                except (ValueError, TypeError):
+                    days_until = 999
+                if days_until < 0:       # overdue
+                    score += 500 + min(abs(days_until), 30) * 10  # more overdue = higher
+                elif days_until == 0:    # due today
+                    score += 400
+                elif days_until <= 3:    # due in 1-3 days
+                    score += 300 - days_until * 20
+                elif days_until <= 7:    # due this week
+                    score += 200 - days_until * 10
+                elif days_until <= 14:   # due in 2 weeks
+                    score += 100 - days_until * 3
+                # else: no due-date urgency boost
+
+            # Priority level weight
+            pri_scores = {"critical": 150, "high": 100, "medium": 50, "low": 20, "none": 0}
+            score += pri_scores.get(pri, 0)
+
+            # Recency boost: recently updated items get a small bump
+            if updated:
+                try:
+                    days_since = (datetime.now(timezone.utc)
+                                  - datetime.fromisoformat(updated.replace("Z", "+00:00"))).days
+                    if days_since <= 1:
+                        score += 30
+                    elif days_since <= 3:
+                        score += 15
+                    elif days_since <= 7:
+                        score += 5
+                except (ValueError, TypeError):
+                    pass
+
+            return score
+
+        # Score all active items and take the top ones (score > 0 means actionable)
+        scored = [(i, _priority_score(i)) for i in active_items]
+        scored = [(i, s) for i, s in scored if s > 0]
+        scored.sort(key=lambda x: -x[1])
+        priorities = [i for i, s in scored[:25]]
+
+        # overdue: ALL items with due_date < today assigned to/created by user, not done
+        # Use a separate targeted query to avoid the 200-item limit
+        # Sort by most recently overdue first so new tasks aren't buried under old imports
+        overdue = []
+        try:
+            overdue_params = {
+                "workspace_id": ws_filter,
+                "due_date": f"lt.{today}",
+                "status": "not.in.(done,closed,archived,Complete)",
+                "select": "id,type,title,status,priority,due_date,follow_up_date,workspace_id,created_by,created_at,updated_at",
+                "order": "due_date.desc",
+                "limit": "500",
+            }
+            overdue_resp = await client.get(
+                _sb_url("team_items"), headers=headers, params=overdue_params,
+            )
+            if overdue_resp.status_code < 400:
+                all_overdue = overdue_resp.json()
+                # Filter to user's assigned or created items (or all if no assignments)
+                if assigned_set:
+                    overdue = [i for i in all_overdue
+                               if i["id"] in assigned_set or i.get("created_by") == user.id]
+                else:
+                    overdue = all_overdue
+        except Exception:
+            # Fall back to the limited set
+            overdue = [i for i in active_items if i.get("due_date") and i["due_date"] < today]
+            overdue.sort(key=lambda x: x.get("due_date", ""), reverse=True)
 
         # due_this_week: items due within next 7 days
         due_this_week = [i for i in active_items
@@ -1668,7 +2038,7 @@ async def my_home(user: AuthUser = Depends(get_current_user)):
         ws_summary = []
         for ws in workspaces:
             ws_items = [i for i in all_items if i.get("workspace_id") == ws["id"]]
-            done_count = sum(1 for i in ws_items if i.get("status") in ("done", "closed"))
+            done_count = sum(1 for i in ws_items if i.get("status") in ("done", "closed", "Complete"))
             ws_summary.append({
                 "id": ws["id"], "name": ws["name"], "icon": ws.get("icon", ""),
                 "color": ws.get("color", "#6c5ce7"),
@@ -1696,6 +2066,7 @@ async def my_home(user: AuthUser = Depends(get_current_user)):
             "top_items": top_items,
             "recent_todos": recent_todos,
             "overdue": overdue,
+            "priorities": priorities,
             "mentions": mentions,
             "workspace_summary": ws_summary,
             "due_this_week": due_this_week,
@@ -1717,6 +2088,7 @@ async def my_all_items(
     assignee: Optional[str] = None,
     tag: Optional[str] = None,
     show_all: bool = False,
+    hide_completed: bool = False,
     limit: int = 200,
 ):
     """Return all items across user's workspaces for the home list view."""
@@ -1751,10 +2123,24 @@ async def my_all_items(
             "order": f"{sort_col}.{sort_dir}.nullslast",
             "limit": str(min(limit, 500)),
         }
+        # Status filter (supports comma-separated multi-values)
         if status:
-            params["status"] = f"eq.{status}"
+            status_list = [s.strip() for s in status.split(",") if s.strip()]
+            if len(status_list) == 1:
+                params["status"] = f"eq.{status_list[0]}"
+            elif status_list:
+                params["status"] = f"in.({','.join(status_list)})"
+        elif hide_completed:
+            # Exclude completed statuses by default
+            params["status"] = "not.in.(Complete,done,closed)"
+
+        # Priority filter (supports comma-separated multi-values)
         if priority:
-            params["priority"] = f"eq.{priority}"
+            prio_list = [p.strip() for p in priority.split(",") if p.strip()]
+            if len(prio_list) == 1:
+                params["priority"] = f"eq.{prio_list[0]}"
+            elif prio_list:
+                params["priority"] = f"in.({','.join(prio_list)})"
 
         resp = await client.get(_sb_url("team_items"), headers=headers, params=params)
         items = resp.json() if resp.status_code < 400 else []
@@ -1801,17 +2187,14 @@ async def my_all_items(
             items = [i for i in items
                      if any(a.get("assignee_id") == assignee for a in i.get("assignees", []))]
         if tag and items:
+            tag_list = {t.strip().lower() for t in tag.split(",") if t.strip()}
             items = [i for i in items
-                     if any(t.get("name", "").lower() == tag.lower() for t in i.get("tags", []))]
+                     if any(t.get("name", "").lower() in tag_list for t in i.get("tags", []))]
 
         # "My Tasks" filter: only show items assigned to current user (default)
         if not show_all and not assignee and items:
             my_assigned_ids = {a["item_id"] for a in assigns if a.get("assignee_id") == user.id}
-            if my_assigned_ids:
-                my_items = [i for i in items if i["id"] in my_assigned_ids]
-                # Fall back to all items if user has zero assignments
-                if my_items:
-                    items = my_items
+            items = [i for i in items if i["id"] in my_assigned_ids]
 
         # Fetch all workspace info (not just filtered subset) for dropdown options
         all_ws_resp = await client.get(
@@ -1881,6 +2264,273 @@ async def save_home_layout(request: Request, user: AuthUser = Depends(get_curren
         if resp.status_code >= 400:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
         return {"ok": True}
+
+
+# ── Custom Tile Endpoints ────────────────────────────────────
+
+def _resolve_date(value: str) -> str:
+    """Convert relative/named date values to ISO date strings."""
+    now = datetime.now(timezone.utc)
+    if value == "today":
+        return now.strftime("%Y-%m-%d")
+    if value == "this_week":
+        end = now + timedelta(days=(6 - now.weekday()))
+        return end.strftime("%Y-%m-%d")
+    if value == "this_month":
+        import calendar
+        last_day = calendar.monthrange(now.year, now.month)[1]
+        return now.replace(day=last_day).strftime("%Y-%m-%d")
+    if value.startswith("relative:"):
+        days_str = value.split(":")[1].rstrip("d")
+        days = int(days_str)
+        target = now + timedelta(days=days)
+        return target.strftime("%Y-%m-%d")
+    return value  # already ISO
+
+
+@router.post("/my/custom-tile")
+async def compute_custom_tile(request: Request, user: AuthUser = Depends(get_current_user)):
+    """Compute tile data from custom criteria (conditions, sort, limit)."""
+    body = await request.json()
+    conditions = body.get("conditions", [])
+    sort_field = body.get("sort", "updated_at")
+    sort_dir = body.get("sort_dir", "desc")
+    limit = min(body.get("limit", 25), 100)
+
+    headers = _sb_headers_service()
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        # Security boundary: always intersect with user's workspace memberships
+        mem_resp = await client.get(
+            _sb_url("team_membership"), headers=headers,
+            params={"user_id": f"eq.{user.id}", "select": "workspace_id"},
+        )
+        memberships = mem_resp.json() if mem_resp.status_code < 400 else []
+        ws_ids = [m["workspace_id"] for m in memberships]
+        if not ws_ids:
+            return {"items": [], "total": 0}
+
+        # Build PostgREST query params
+        allowed_sorts = {"updated_at", "created_at", "title", "status", "priority", "due_date", "follow_up_date"}
+        sort_col = sort_field if sort_field in allowed_sorts else "updated_at"
+        safe_dir = "asc" if sort_dir == "asc" else "desc"
+
+        params = {
+            "select": "id,type,title,status,priority,due_date,follow_up_date,workspace_id,list_id,created_at,updated_at",
+            "order": f"{sort_col}.{safe_dir}.nullslast",
+            "limit": str(limit + 50),  # fetch extra for post-filters
+        }
+
+        # Track fields that need post-filtering (assignee, tag)
+        post_filter_assignee = None
+        post_filter_tag = None
+
+        # Apply workspace filter: start with user's memberships, narrow if criteria specifies
+        criteria_ws_ids = None
+        for cond in conditions:
+            field = cond.get("field")
+            op = cond.get("op")
+            value = cond.get("value")
+            if not field or not op:
+                continue
+
+            if field == "assignee_id":
+                post_filter_assignee = {"op": op, "value": value}
+                continue
+            if field == "tag":
+                post_filter_tag = {"op": op, "value": value}
+                continue
+
+            # Resolve date values
+            if field in ("due_date", "follow_up_date", "created_at", "updated_at"):
+                if isinstance(value, str):
+                    value = _resolve_date(value)
+                elif isinstance(value, list):
+                    value = [_resolve_date(v) for v in value]
+
+            # Workspace ID: intersect with user's memberships
+            if field == "workspace_id":
+                if op in ("eq", "in"):
+                    filter_ids = [value] if isinstance(value, str) else value
+                    criteria_ws_ids = [wid for wid in filter_ids if wid in ws_ids]
+                    if not criteria_ws_ids:
+                        return {"items": [], "total": 0}
+                continue  # workspace filter applied separately below
+
+            # Map operators to PostgREST syntax
+            pg_op_map = {
+                "eq": "eq", "neq": "neq", "lt": "lt", "lte": "lte",
+                "gt": "gt", "gte": "gte", "in": "in", "not_in": "not.in",
+            }
+            pg_op = pg_op_map.get(op)
+            if not pg_op:
+                continue
+
+            if op in ("in", "not_in") and isinstance(value, list):
+                params[field] = f"{pg_op}.({','.join(str(v) for v in value)})"
+            else:
+                params[field] = f"{pg_op}.{value}"
+
+        # Apply workspace filter
+        if criteria_ws_ids:
+            if len(criteria_ws_ids) == 1:
+                params["workspace_id"] = f"eq.{criteria_ws_ids[0]}"
+            else:
+                params["workspace_id"] = f"in.({','.join(criteria_ws_ids)})"
+        else:
+            params["workspace_id"] = f"in.({','.join(ws_ids)})"
+
+        resp = await client.get(_sb_url("team_items"), headers=headers, params=params)
+        items = resp.json() if resp.status_code < 400 else []
+
+        # Post-filter: assignee
+        if post_filter_assignee and items:
+            item_ids = [i["id"] for i in items]
+            assign_resp = await client.get(
+                _sb_url("team_assignments"), headers=headers,
+                params={"item_id": f"in.({','.join(item_ids)})", "select": "item_id,assignee_id"},
+            )
+            assigns = assign_resp.json() if assign_resp.status_code < 400 else []
+            assign_map = {}
+            for a in assigns:
+                assign_map.setdefault(a["item_id"], []).append(a["assignee_id"])
+
+            pf = post_filter_assignee
+            if pf["op"] in ("eq", "in"):
+                target_ids = [pf["value"]] if isinstance(pf["value"], str) else pf["value"]
+                items = [i for i in items if any(aid in target_ids for aid in assign_map.get(i["id"], []))]
+            elif pf["op"] in ("neq", "not_in"):
+                target_ids = [pf["value"]] if isinstance(pf["value"], str) else pf["value"]
+                items = [i for i in items if not any(aid in target_ids for aid in assign_map.get(i["id"], []))]
+
+        # Post-filter: tag
+        if post_filter_tag and items:
+            item_ids = [i["id"] for i in items]
+            tags_resp = await client.get(
+                _sb_url("team_item_tags"), headers=headers,
+                params={"item_id": f"in.({','.join(item_ids)})", "select": "item_id,tag_id"},
+            )
+            item_tag_map = {}
+            for it in (tags_resp.json() if tags_resp.status_code < 400 else []):
+                item_tag_map.setdefault(it["item_id"], []).append(it["tag_id"])
+
+            # Resolve tag names to IDs if values are names
+            pf = post_filter_tag
+            tag_values = [pf["value"]] if isinstance(pf["value"], str) else pf["value"]
+            # Check if values look like UUIDs or names
+            if tag_values and len(tag_values[0]) < 36:
+                # Look up tag IDs by name
+                or_parts = ",".join(f"name.ilike.{v}" for v in tag_values)
+                tg_resp = await client.get(
+                    _sb_url("team_tags"), headers=headers,
+                    params={"or": f"({or_parts})", "select": "id,name"},
+                )
+                tag_id_list = [t["id"] for t in (tg_resp.json() if tg_resp.status_code < 400 else [])]
+            else:
+                tag_id_list = tag_values
+
+            if pf["op"] in ("eq", "in"):
+                items = [i for i in items if any(tid in tag_id_list for tid in item_tag_map.get(i["id"], []))]
+            elif pf["op"] in ("neq", "not_in"):
+                items = [i for i in items if not any(tid in tag_id_list for tid in item_tag_map.get(i["id"], []))]
+
+        total = len(items)
+        items = items[:limit]
+        return {"items": items, "total": total}
+
+
+@router.post("/my/custom-tile/ai-generate")
+async def ai_generate_custom_tile(request: Request, user: AuthUser = Depends(get_current_user)):
+    """Use AI to generate custom tile criteria from natural language description."""
+    from claude_api import call_claude
+
+    body = await request.json()
+    description = body.get("description", "").strip()
+    if not description:
+        raise HTTPException(status_code=400, detail="Description is required")
+
+    headers = _sb_headers_service()
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        # Gather context: workspaces, profiles, tags
+        mem_resp = await client.get(
+            _sb_url("team_membership"), headers=headers,
+            params={"user_id": f"eq.{user.id}", "select": "workspace_id"},
+        )
+        ws_ids = [m["workspace_id"] for m in (mem_resp.json() if mem_resp.status_code < 400 else [])]
+
+        ws_names = {}
+        if ws_ids:
+            ws_resp = await client.get(
+                _sb_url("team_workspaces"), headers=headers,
+                params={"id": f"in.({','.join(ws_ids)})", "select": "id,name"},
+            )
+            ws_names = {w["id"]: w["name"] for w in (ws_resp.json() if ws_resp.status_code < 400 else [])}
+
+        profiles_resp = await client.get(
+            _sb_url("profiles"), headers=headers,
+            params={"select": "id,display_name,email", "limit": "50"},
+        )
+        profiles = profiles_resp.json() if profiles_resp.status_code < 400 else []
+
+        tags_resp = await client.get(
+            _sb_url("team_tags"), headers=headers,
+            params={"workspace_id": f"in.({','.join(ws_ids)})", "select": "id,name"} if ws_ids else {"select": "id,name", "limit": "0"},
+        )
+        tags = tags_resp.json() if tags_resp.status_code < 400 else []
+
+    prompt = f"""You are a filter criteria generator for a task management dashboard.
+
+The user wants a custom dashboard tile. Convert their description to a JSON criteria object.
+
+Available fields and operators:
+- workspace_id: eq, in (values are UUIDs)
+- status: eq, neq, in, not_in (values: Not Started, Working on, Manager Review, Back to You, Stuck, Waiting on Client, Client Review, Approved, Postponed, Quality Review, Complete)
+- priority: eq, neq, in, not_in (values: critical, high, medium, low, none)
+- assignee_id: eq, in (values are user UUIDs)
+- due_date: eq, lt, lte, gt, gte (values: "today", "this_week", "this_month", "relative:Nd" where N is days from now, negative for past e.g. "relative:-3d")
+- follow_up_date: eq, lt, lte, gt, gte (same date values)
+- type: eq, in (values: task, note, idea, decision, bug)
+- tag: eq, in (values are tag names)
+- list_id: eq, in (values are UUIDs)
+
+User's workspaces: {json.dumps({v: k for k, v in ws_names.items()})}
+Known people: {json.dumps([{"name": p.get("display_name", p.get("email", "")), "id": p["id"]} for p in profiles[:20]])}
+Known tags: {json.dumps([t["name"] for t in tags[:30]])}
+
+User description: "{description}"
+
+Return ONLY a JSON object with this exact structure (no markdown, no explanation):
+{{"title": "Short Tile Title", "criteria": {{"conditions": [...], "sort": "field_name", "sort_dir": "asc|desc", "limit": 25}}}}
+
+Each condition: {{"field": "...", "op": "...", "value": "..." or ["..."]}}
+"""
+
+    try:
+        result = await call_claude(
+            prompt,
+            model="claude-haiku-4-5",
+            max_tokens=512,
+            timeout=30,
+            api_key="",
+        )
+        # Parse JSON from response
+        text = result.strip()
+        # Strip markdown code fences if present
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+        parsed = json.loads(text)
+        return {
+            "title": parsed.get("title", "Custom Tile"),
+            "criteria": parsed.get("criteria", {"conditions": [], "sort": "updated_at", "sort_dir": "desc", "limit": 25}),
+        }
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="AI returned invalid criteria — try rephrasing")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI generation failed: {str(e)}")
 
 
 # ── Discord Settings ─────────────────────────────────────────
@@ -1974,6 +2624,9 @@ async def internal_create_item(
     list_id: str = Query(None),
     list_name: str = Query(None),
     assignee_id: str = Query(None),
+    parent_id: str = Query(None),
+    start_date: str = Query(None),
+    time_estimate: int = Query(None),
 ):
     """Create an item without JWT auth — called by Discord bridge on localhost only."""
     headers = _sb_headers_service()
@@ -2034,6 +2687,12 @@ async def internal_create_item(
             item_data["due_date"] = due_date
         if resolved_list_id:
             item_data["list_id"] = resolved_list_id
+        if parent_id:
+            item_data["parent_id"] = parent_id
+        if start_date:
+            item_data["start_date"] = start_date
+        if time_estimate is not None:
+            item_data["time_estimate"] = time_estimate
 
         resp = await client.post(
             _sb_url("team_items"),
@@ -2116,25 +2775,26 @@ async def internal_search(
         if not ws_ids:
             return {"items": []}
 
+        int_select = "id,type,title,status,priority,workspace_id,custom_id,created_at"
         words = q.strip().split()
         if len(words) <= 1:
             search_params = {
                 "workspace_id": f"in.({','.join(ws_ids)})",
-                "or": f"(title.ilike.%{q}%,description.ilike.%{q}%)",
+                "or": f"(title.ilike.%{q}%,description.ilike.%{q}%,custom_id.ilike.%{q}%)",
                 "order": "updated_at.desc,created_at.desc",
                 "limit": str(limit),
-                "select": "id,type,title,status,priority,workspace_id,created_at",
+                "select": int_select,
             }
         else:
             clauses = ",".join(
-                f"or(title.ilike.%{w}%,description.ilike.%{w}%)" for w in words
+                f"or(title.ilike.%{w}%,description.ilike.%{w}%,custom_id.ilike.%{w}%)" for w in words
             )
             search_params = {
                 "workspace_id": f"in.({','.join(ws_ids)})",
                 "and": f"({clauses})",
                 "order": "updated_at.desc,created_at.desc",
                 "limit": str(limit),
-                "select": "id,type,title,status,priority,workspace_id,created_at",
+                "select": int_select,
             }
         resp = await client.get(_sb_url("team_items"), headers=headers, params=search_params)
         if resp.status_code >= 400:
@@ -2494,6 +3154,89 @@ async def internal_get_item(item_id: str = Query(...)):
         return item
 
 
+@router.get("/internal/search-workspaces")
+async def internal_search_workspaces(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(default=5, le=20),
+):
+    """Search workspaces by name — called by transcript agent on localhost."""
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            _sb_url("team_workspaces"), headers=headers,
+            params={
+                "name": f"ilike.%{q}%",
+                "select": "id,name,slug,icon",
+                "limit": str(limit),
+                "order": "created_at.desc",
+            },
+        )
+        workspaces = resp.json() if resp.status_code < 400 else []
+        return {"workspaces": workspaces}
+
+
+@router.post("/internal/create-workspace")
+async def internal_create_workspace(
+    name: str = Query(...),
+    owner_id: str = Query(...),
+    template: str = Query("client"),
+):
+    """Create a workspace with template structure — called by transcript agent on localhost."""
+    headers = _sb_headers_service()
+    slug = name.lower().replace(" ", "-").replace("_", "-")
+    slug = "".join(c for c in slug if c.isalnum() or c == "-")[:50]
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        # Create workspace
+        ws_resp = await client.post(
+            _sb_url("team_workspaces"), headers=headers,
+            json={
+                "name": name,
+                "slug": slug,
+                "owner_id": owner_id,
+                "is_personal": False,
+                "icon": "briefcase",
+            },
+        )
+        if ws_resp.status_code >= 400:
+            raise HTTPException(status_code=ws_resp.status_code, detail=ws_resp.text)
+        ws = ws_resp.json()[0]
+
+        # Add owner as member
+        await client.post(
+            _sb_url("team_membership"), headers=headers,
+            json={"workspace_id": ws["id"], "user_id": owner_id, "role": "admin"},
+        )
+
+        # Apply template folders
+        template_folders = {
+            "client": ["Meeting Action Items", "Deliverables", "Communications"],
+            "project": ["Tasks", "Documentation", "Research"],
+        }
+        folders = template_folders.get(template, template_folders["client"])
+        for folder_name in folders:
+            await client.post(
+                _sb_url("team_folders"), headers=headers,
+                json={"workspace_id": ws["id"], "name": folder_name, "created_by": owner_id},
+            )
+
+        # Create default statuses
+        default_statuses = [
+            {"name": "Open", "color": "#3B82F6", "position": 0, "category": "todo"},
+            {"name": "In Progress", "color": "#F59E0B", "position": 1, "category": "active"},
+            {"name": "Done", "color": "#10B981", "position": 2, "category": "done"},
+        ]
+        for s in default_statuses:
+            await client.post(
+                _sb_url("team_statuses"), headers=headers,
+                json={"workspace_id": ws["id"], **s},
+            )
+
+        await _log_activity(client, ws["id"], "workspace_created", owner_id,
+                            details={"name": name, "template": template, "source": "transcript-agent"})
+        return ws
+
+
 @router.post("/internal/create-space")
 async def internal_create_space(
     workspace_id: str = Query(...),
@@ -2597,7 +3340,7 @@ async def internal_add_comment(
     content: str = Query(...),
     author_id: str = Query("ai-assistant"),
 ):
-    """Add a comment to an item."""
+    """Add a comment to an item. Parses @mentions and creates notifications."""
     headers = _sb_headers_service()
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.post(
@@ -2606,6 +3349,8 @@ async def internal_add_comment(
         )
         if resp.status_code >= 400:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        # Parse @[Name](uuid) mentions and create notifications
+        await _parse_mentions(client, content, item_id, author_id)
         return resp.json()[0]
 
 
@@ -2702,9 +3447,14 @@ CLICKUP_ADMIN_TEAM_ID = getattr(config, "CLICKUP_TEAM_ID", "")
 ADMIN_USER_ID = "1c93c5fe-d304-40f2-9169-765d0d2b7638"
 
 STATUS_MAP = {
-    "to do": "open", "not started": "open", "open": "open",
-    "in progress": "in_progress", "in review": "review", "review": "review",
-    "complete": "done", "closed": "done", "done": "done", "archived": "archived",
+    "to do": "Not Started", "not started": "Not Started", "open": "Not Started",
+    "in progress": "Working on", "working on": "Working on",
+    "in review": "Manager Review", "review": "Manager Review", "manager review": "Manager Review",
+    "back to you": "Back to You", "stuck": "Stuck", "blocked": "Stuck",
+    "waiting on client": "Waiting on Client", "client review": "Client Review",
+    "approved": "Approved", "postponed": "Postponed",
+    "quality review": "Quality Review",
+    "complete": "Complete", "closed": "Complete", "done": "Complete", "archived": "Complete",
 }
 PRIORITY_MAP = {
     "urgent": "critical", "high": "high", "normal": "medium", "low": "low", None: "medium",
@@ -3279,7 +4029,7 @@ async def ai_chat(req: AIChatRequest, user: AuthUser = Depends(get_current_user)
         ws_items = [i for i in items if i.get("workspace_id") == ws["id"]]
         if not ws_items:
             continue
-        open_items = [i for i in ws_items if i.get("status") not in ("done", "closed")]
+        open_items = [i for i in ws_items if i.get("status") not in ("done", "closed", "Complete")]
         overdue = [i for i in open_items if i.get("due_date") and i["due_date"] < today]
         titles = [i["title"] for i in open_items if i.get("title")][:6]
         line = f'{ws["name"]}: {len(open_items)} open'
@@ -3289,7 +4039,7 @@ async def ai_chat(req: AIChatRequest, user: AuthUser = Depends(get_current_user)
             line += " — " + "; ".join(titles)
         ctx.append(line)
 
-    my_open = [i for i in items if i.get("id") in my_item_ids and i.get("status") not in ("done", "closed")]
+    my_open = [i for i in items if i.get("id") in my_item_ids and i.get("status") not in ("done", "closed", "Complete")]
     my_section = ""
     if my_open:
         my_lines = []
@@ -3342,3 +4092,397 @@ async def ai_chat(req: AIChatRequest, user: AuthUser = Depends(get_current_user)
 
     log.info(f"AI chat total: {(time.time() - t0)*1000:.0f}ms")
     return {"reply": reply}
+
+
+# ── Subtask Reorder ──────────────────────────────────────────
+
+class ReorderSubtasks(BaseModel):
+    subtask_ids: list[str]
+
+
+@router.post("/items/{item_id}/subtasks/reorder")
+async def reorder_subtasks(item_id: str, req: ReorderSubtasks, user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        item_resp = await client.get(
+            _sb_url("team_items"), headers=headers,
+            params={"id": f"eq.{item_id}", "select": "workspace_id"},
+        )
+        if item_resp.status_code >= 400 or not item_resp.json():
+            raise HTTPException(status_code=404, detail="Item not found")
+        ws_id = item_resp.json()[0]["workspace_id"]
+        mem_check = await client.get(
+            _sb_url("team_membership"), headers=headers,
+            params={"workspace_id": f"eq.{ws_id}", "user_id": f"eq.{user.id}"},
+        )
+        if not mem_check.json():
+            raise HTTPException(status_code=404, detail="Item not found")
+        for idx, sub_id in enumerate(req.subtask_ids):
+            await client.patch(
+                _sb_url("team_items"), headers=headers,
+                params={"id": f"eq.{sub_id}", "parent_id": f"eq.{item_id}"},
+                json={"orderindex": idx},
+            )
+    return {"ok": True}
+
+
+# ── Favorites ────────────────────────────────────────────────
+
+class ToggleFavorite(BaseModel):
+    target_type: str  # "workspace", "folder", "list", "item"
+    target_id: str
+
+
+class ReorderFavorites(BaseModel):
+    favorite_ids: list[str]
+
+
+@router.get("/my/favorites")
+async def list_favorites(user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            _sb_url("team_favorites"), headers=headers,
+            params={"user_id": f"eq.{user.id}", "order": "orderindex.asc"},
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return {"favorites": resp.json()}
+
+
+@router.post("/my/favorites")
+async def toggle_favorite(req: ToggleFavorite, user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        existing = await client.get(
+            _sb_url("team_favorites"), headers=headers,
+            params={
+                "user_id": f"eq.{user.id}",
+                "target_type": f"eq.{req.target_type}",
+                "target_id": f"eq.{req.target_id}",
+            },
+        )
+        if existing.status_code < 400 and existing.json():
+            await client.delete(
+                _sb_url("team_favorites"), headers=headers,
+                params={"id": f"eq.{existing.json()[0]['id']}"},
+            )
+            return {"action": "removed"}
+        resp = await client.post(
+            _sb_url("team_favorites"), headers=headers,
+            json={
+                "user_id": user.id,
+                "target_type": req.target_type,
+                "target_id": req.target_id,
+            },
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return {"action": "added", "favorite": resp.json()[0]}
+
+
+@router.post("/my/favorites/reorder")
+async def reorder_favorites(req: ReorderFavorites, user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for idx, fav_id in enumerate(req.favorite_ids):
+            await client.patch(
+                _sb_url("team_favorites"), headers=headers,
+                params={"id": f"eq.{fav_id}", "user_id": f"eq.{user.id}"},
+                json={"orderindex": idx},
+            )
+    return {"ok": True}
+
+
+@router.delete("/my/favorites/{fav_id}")
+async def delete_favorite(fav_id: str, user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.delete(
+            _sb_url("team_favorites"), headers=headers,
+            params={"id": f"eq.{fav_id}", "user_id": f"eq.{user.id}"},
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return {"ok": True}
+
+
+# ── Reminders ────────────────────────────────────────────────
+
+class CreateReminder(BaseModel):
+    item_id: str
+    remind_at: str
+    note: str = ""
+
+
+@router.get("/my/reminders")
+async def list_reminders(user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            _sb_url("team_reminders"), headers=headers,
+            params={"user_id": f"eq.{user.id}", "fired": "eq.false", "order": "remind_at.asc"},
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return {"reminders": resp.json()}
+
+
+@router.post("/my/reminders")
+async def create_reminder(req: CreateReminder, user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(
+            _sb_url("team_reminders"), headers=headers,
+            json={
+                "user_id": user.id,
+                "item_id": req.item_id,
+                "remind_at": req.remind_at,
+                "note": req.note,
+            },
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return resp.json()[0]
+
+
+@router.delete("/my/reminders/{reminder_id}")
+async def delete_reminder(reminder_id: str, user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.delete(
+            _sb_url("team_reminders"), headers=headers,
+            params={"id": f"eq.{reminder_id}", "user_id": f"eq.{user.id}"},
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return {"ok": True}
+
+
+@router.post("/internal/fire-reminders")
+async def fire_reminders():
+    """Fire due reminders — converts them to notifications. Called by Engine heartbeat."""
+    headers = _sb_headers_service()
+    now = datetime.now(timezone.utc).isoformat()
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get(
+            _sb_url("team_reminders"), headers=headers,
+            params={"fired": "eq.false", "remind_at": f"lte.{now}", "limit": "100"},
+        )
+        if resp.status_code >= 400:
+            return {"fired": 0}
+        reminders = resp.json()
+        fired = 0
+        for r in reminders:
+            item_resp = await client.get(
+                _sb_url("team_items"), headers=headers,
+                params={"id": f"eq.{r['item_id']}", "select": "title,workspace_id"},
+            )
+            title = ""
+            if item_resp.status_code < 400 and item_resp.json():
+                title = item_resp.json()[0].get("title", "")
+            await client.post(
+                _sb_url("team_notifications"), headers=headers,
+                json={
+                    "user_id": r["user_id"],
+                    "type": "reminder",
+                    "title": f"Reminder: {title}" if title else "Reminder",
+                    "body": r.get("note") or "You set a reminder for this task",
+                    "item_id": r["item_id"],
+                },
+            )
+            await client.patch(
+                _sb_url("team_reminders"), headers=headers,
+                params={"id": f"eq.{r['id']}"},
+                json={"fired": True},
+            )
+            fired += 1
+        return {"fired": fired}
+
+
+# ══════════════════════════════════════════════════════════════
+# Dependencies (Phase 2)
+# ══════════════════════════════════════════════════════════════
+
+
+@router.get("/items/{item_id}/dependencies")
+async def get_dependencies(item_id: str, user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        # Get deps where this item is source or target
+        source_resp = await client.get(
+            _sb_url("team_item_dependencies"), headers=headers,
+            params={"source_id": f"eq.{item_id}"},
+        )
+        target_resp = await client.get(
+            _sb_url("team_item_dependencies"), headers=headers,
+            params={"target_id": f"eq.{item_id}"},
+        )
+        outgoing = source_resp.json() if source_resp.status_code < 400 else []
+        incoming = target_resp.json() if target_resp.status_code < 400 else []
+
+        # Enrich with item titles
+        all_ids = set()
+        for d in outgoing:
+            all_ids.add(d["target_id"])
+        for d in incoming:
+            all_ids.add(d["source_id"])
+        titles = {}
+        if all_ids:
+            items_resp = await client.get(
+                _sb_url("team_items"), headers=headers,
+                params={"id": f"in.({','.join(all_ids)})", "select": "id,title,status,custom_id"},
+            )
+            if items_resp.status_code < 400:
+                for it in items_resp.json():
+                    titles[it["id"]] = it
+
+        for d in outgoing:
+            d["target_item"] = titles.get(d["target_id"], {})
+        for d in incoming:
+            d["source_item"] = titles.get(d["source_id"], {})
+
+        return {"outgoing": outgoing, "incoming": incoming}
+
+
+class CreateDependency(BaseModel):
+    target_id: str
+    type: str = "blocks"
+
+
+@router.post("/items/{item_id}/dependencies", status_code=201)
+async def create_dependency(item_id: str, req: CreateDependency, user: AuthUser = Depends(get_current_user)):
+    if req.type not in ("blocks", "blocked_by", "relates_to"):
+        raise HTTPException(status_code=400, detail="type must be blocks, blocked_by, or relates_to")
+    if item_id == req.target_id:
+        raise HTTPException(status_code=400, detail="Cannot create self-dependency")
+
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(
+            _sb_url("team_item_dependencies"), headers=headers,
+            json={
+                "source_id": item_id,
+                "target_id": req.target_id,
+                "type": req.type,
+                "created_by": user.id,
+            },
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return resp.json()[0]
+
+
+@router.delete("/dependencies/{dep_id}", status_code=204)
+async def delete_dependency(dep_id: str, user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.delete(
+            _sb_url("team_item_dependencies"), headers=headers,
+            params={"id": f"eq.{dep_id}"},
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+
+@router.get("/items/{item_id}/blocking-check")
+async def blocking_check(item_id: str, user: AuthUser = Depends(get_current_user)):
+    """Check if this item is blocked by any unfinished items."""
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        # Items that block this one (where this item is the target and type is blocked_by,
+        # OR this item is the target and type is blocks from source perspective)
+        deps_resp = await client.get(
+            _sb_url("team_item_dependencies"), headers=headers,
+            params={"target_id": f"eq.{item_id}", "type": "eq.blocks"},
+        )
+        blocking_deps = deps_resp.json() if deps_resp.status_code < 400 else []
+        if not blocking_deps:
+            return {"blocked": False, "blockers": []}
+
+        blocker_ids = [d["source_id"] for d in blocking_deps]
+        items_resp = await client.get(
+            _sb_url("team_items"), headers=headers,
+            params={
+                "id": f"in.({','.join(blocker_ids)})",
+                "select": "id,title,status,custom_id",
+                "status": "not.in.(done,closed)",
+            },
+        )
+        blockers = items_resp.json() if items_resp.status_code < 400 else []
+        return {"blocked": len(blockers) > 0, "blockers": blockers}
+
+
+# ══════════════════════════════════════════════════════════════
+# Time Tracking (Phase 2)
+# ══════════════════════════════════════════════════════════════
+
+
+@router.get("/items/{item_id}/time-entries")
+async def get_time_entries(item_id: str, user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            _sb_url("team_time_entries"), headers=headers,
+            params={"item_id": f"eq.{item_id}", "order": "created_at.desc"},
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return resp.json()
+
+
+class CreateTimeEntry(BaseModel):
+    duration: int  # minutes
+    description: str = ""
+    started_at: Optional[str] = None
+
+
+@router.post("/items/{item_id}/time-entries", status_code=201)
+async def create_time_entry(item_id: str, req: CreateTimeEntry, user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        entry = {
+            "item_id": item_id,
+            "user_id": user.id,
+            "duration": req.duration,
+            "description": req.description,
+        }
+        if req.started_at:
+            entry["started_at"] = req.started_at
+        resp = await client.post(
+            _sb_url("team_time_entries"), headers=headers,
+            json=entry,
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return resp.json()[0]
+
+
+@router.delete("/time-entries/{entry_id}", status_code=204)
+async def delete_time_entry(entry_id: str, user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.delete(
+            _sb_url("team_time_entries"), headers=headers,
+            params={"id": f"eq.{entry_id}"},
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+
+class UpdateTimeEstimate(BaseModel):
+    time_estimate: int
+
+
+@router.patch("/items/{item_id}/time-estimate")
+async def update_time_estimate(item_id: str, req: UpdateTimeEstimate, user: AuthUser = Depends(get_current_user)):
+    headers = _sb_headers_service()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.patch(
+            _sb_url("team_items"), headers=headers,
+            params={"id": f"eq.{item_id}"},
+            json={"time_estimate": req.time_estimate},
+        )
+        if resp.status_code >= 400:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return resp.json()[0]

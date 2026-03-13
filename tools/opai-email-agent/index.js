@@ -124,11 +124,40 @@ const agentRef = {
   },
 };
 
+// ── Stale transcript proposal cleanup (7-day TTL) ─────────
+
+function cleanupStalePendingTranscripts() {
+  const pendingDir = path.join(__dirname, 'data', 'pending-transcripts');
+  try {
+    if (!fs.existsSync(pendingDir)) return;
+    const files = fs.readdirSync(pendingDir).filter(f => f.endsWith('.json'));
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    let cleaned = 0;
+    for (const file of files) {
+      const filePath = path.join(pendingDir, file);
+      const stat = fs.statSync(filePath);
+      if (stat.mtimeMs < cutoff) {
+        fs.unlinkSync(filePath);
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      console.log(`[EMAIL-AGENT] Cleaned ${cleaned} stale pending transcript proposals (>7d)`);
+      logAction({ action: 'cleanup', reasoning: `Cleaned ${cleaned} stale pending transcript proposals`, mode: 'system' });
+    }
+  } catch (err) {
+    console.error('[EMAIL-AGENT] Pending transcript cleanup error:', err.message);
+  }
+}
+
 // ── Initialize data directory ────────────────────────────
 
 const dataDir = path.join(__dirname, 'data');
 const logsDir = path.join(dataDir, 'logs');
 fs.mkdirSync(logsDir, { recursive: true });
+
+// Ensure pending-transcripts directory exists
+fs.mkdirSync(path.join(dataDir, 'pending-transcripts'), { recursive: true });
 
 // Initialize empty data files if they don't exist
 const dataFiles = {
@@ -154,6 +183,10 @@ app.listen(PORT, '127.0.0.1', () => {
   console.log(`[EMAIL-AGENT] Audit server listening on 127.0.0.1:${PORT}`);
   console.log(`[EMAIL-AGENT] UI: http://127.0.0.1:${PORT}/`);
   try { logAudit({ tier: 'health', service: 'opai-email-agent', event: 'agent-started', status: 'completed', summary: 'Email agent started' }); } catch (_) {}
+
+  // Cleanup stale pending transcripts on startup + every 6 hours
+  cleanupStalePendingTranscripts();
+  setInterval(cleanupStalePendingTranscripts, 6 * 60 * 60 * 1000);
 
   // Start the agent loop (unless killed)
   // Multi-account: each account resolves its own credentials.

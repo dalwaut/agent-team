@@ -135,48 +135,33 @@ window.WP = {
     },
 
     // ── WP Admin Auto-Login ───────────────────────────
-    async loginToAdmin() {
-        if (!WP.currentSite) {
+
+    /**
+     * Open a WP admin page with auto-login via backend-served form.
+     * @param {string} [redirectPath] — path after the site URL (e.g. '/wp-admin/post.php?post=123&action=edit').
+     *                                  Defaults to '/wp-admin/'.
+     * @param {string} [siteId]       — override site ID (defaults to WP.currentSite.id)
+     */
+    wpAdminOpen(redirectPath, siteId) {
+        const site = WP.currentSite;
+        if (!site) {
             WP.toast('Select a site first', 'error');
             return;
         }
 
-        const site = WP.currentSite;
-        const loginUrl = site.url.replace(/\/$/, '') + '/wp-login.php';
+        const sid = siteId || site.id;
+        const redirect = encodeURIComponent(redirectPath || '/wp-admin/');
+        const token = WP.session?.access_token || '';
+        const loginPageUrl = `api/sites/${sid}/wp-login?redirect=${redirect}&token=${encodeURIComponent(token)}`;
 
-        // Fetch credentials from backend
-        try {
-            const creds = await WP.api(`sites/${site.id}/credentials`);
-
-            // Open a new window and auto-submit the login form
-            const win = window.open('about:blank', '_blank');
-            if (!win) {
-                WP.toast('Pop-up blocked — please allow pop-ups for this site', 'error');
-                return;
-            }
-
-            // Write a self-submitting form to the new window
-            win.document.write(`<!DOCTYPE html>
-                <html><head><title>Logging in to ${WP.stripHtml(site.name)}...</title>
-                <style>body{background:#1e1e2e;color:#cdd6f4;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-                .msg{text-align:center}.spinner{width:28px;height:28px;border:3px solid #45475a;border-top-color:#89b4fa;border-radius:50%;animation:spin .8s linear infinite;margin:16px auto}
-                @keyframes spin{to{transform:rotate(360deg)}}</style></head>
-                <body><div class="msg"><div class="spinner"></div><p>Logging in to ${WP.stripHtml(site.name)}...</p></div>
-                <form id="wp-login" method="post" action="${loginUrl}" style="display:none">
-                    <input name="log" value="${creds.username}">
-                    <input name="pwd" value="${creds.app_password}">
-                    <input name="wp-submit" value="Log In">
-                    <input name="redirect_to" value="${site.url.replace(/\/$/, '')}/wp-admin/">
-                    <input name="testcookie" value="1">
-                </form>
-                <script>document.getElementById('wp-login').submit();<\/script>
-                </body></html>`);
-            win.document.close();
-        } catch (e) {
-            // Fallback: just open the login page
-            window.open(loginUrl, '_blank');
-            WP.toast('Could not auto-login. Opening login page.', 'error');
+        const win = window.open(loginPageUrl, '_blank');
+        if (!win) {
+            WP.toast('Pop-up blocked — please allow pop-ups for this site', 'error');
         }
+    },
+
+    async loginToAdmin() {
+        WP.wpAdminOpen();
     },
 
     // ── Sign out ──────────────────────────────────────

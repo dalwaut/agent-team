@@ -1,9 +1,9 @@
 # OPAI Files
-> Last updated: 2026-02-16 | Source: `tools/opai-files/`
+> Last updated: 2026-03-04 | Source: `tools/opai-files/`
 
 ## Overview
 
-OPAI Files is a sandboxed web file manager with Obsidian-like knowledge features. Regular users browse their personal sandbox directory (`/workspace/users/<Name>/`); admin users (Dallas-ADMIN) get full access to the OPAI workspace root (`/workspace/synced/opai`). The backend enforces strict path isolation server-side — the client never sees absolute filesystem paths.
+OPAI Files is a sandboxed web file manager with Obsidian-like knowledge features. Regular users browse their personal sandbox directory (`/workspace/users/<Name>/`); admin users (Dallas-ADMIN) get full access to the OPAI workspace root (`/workspace/synced/opai`) with an optional **context switcher** to toggle to their personal NAS folder. The backend enforces strict path isolation server-side — the client never sees absolute filesystem paths.
 
 **File management**: directory browsing, text editing (Ctrl+S), drag-and-drop upload, download, cut/copy/paste, rename, delete, new file/folder creation, context menu, image preview.
 
@@ -45,10 +45,17 @@ AI Instruct flow:
 
 Security flow:
   JWT → get_current_user() → user.role check
-    admin → root = /workspace/synced/opai
+    admin → root = /workspace/synced/opai (default)
+           → root = user.sandbox_path (when X-Files-Context: personal)
     user  → root = user.sandbox_path (from profiles table)
   Client sends: path="Projects/foo/bar.txt"
   Server joins: root + path → resolve → startswith check → allow or 403
+
+Context switching (admin only):
+  Frontend sends X-Files-Context header ("" or "personal")
+  Backend uses contextvars.ContextVar for per-request state
+  _get_user_root() checks context → returns personal NAS dir or server workspace
+  GET /api/files/contexts → lists available contexts for the user
 ```
 
 - **Backend**: FastAPI (Python) with Uvicorn on port 8086
@@ -132,6 +139,12 @@ Security flow:
 |----------|--------|------|---------|
 | `/api/files/ai/plan` | POST | User | Generate AI plan (JSON: `{path, instruction}`) |
 | `/api/files/ai/execute` | POST | User | Execute approved plan (JSON: `{plan_id}`) |
+
+### Context Switching
+
+| Endpoint | Method | Auth | Purpose |
+|----------|--------|------|---------|
+| `/api/files/contexts` | GET | User | List available file contexts (default + personal if admin with sandbox_path) |
 | `/health` | GET | Public | Service health (status, uptime, memory) |
 
 ## Wikilink Index Engine (`links.py`)
@@ -244,6 +257,14 @@ Rich rendering via **markdown-it** with plugins:
 `[[target]]` renders as a clickable link. `[[target|alias]]` shows the alias text. Click handler calls `/api/links/resolve` and navigates to the resolved file, or offers to create a new file if unresolved.
 
 ## Frontend Features
+
+### Admin Context Switching
+- **Context switch button** — admin-only toolbar button to toggle between "Server Workspace" (default) and "My Files" (personal NAS folder at `sandbox_path`)
+- Sends `X-Files-Context: personal` header on all API calls when in personal mode
+- Backend uses `contextvars.ContextVar` to avoid modifying all handler signatures
+- Button shows folder icon (default) or home icon (personal) with green highlight
+- `GET /api/files/contexts` returns available contexts and whether the personal directory exists
+- Requires `sandbox_path` set in Supabase profiles (e.g., `/workspace/users/Dallas`)
 
 ### File Management
 - **File list** — sortable table (name, size, modified) with directory-first ordering

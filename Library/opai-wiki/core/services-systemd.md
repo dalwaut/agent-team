@@ -1,11 +1,11 @@
 # Services & systemd
-> Last updated: 2026-02-26 | Source: `scripts/opai-control.sh`, `~/.config/systemd/user/` | **10 services, 3 timers** (v2)
+> Last updated: 2026-03-05 | Source: `scripts/opai-control.sh`, `~/.config/systemd/user/` | **12 services, 3 timers** (v3.5)
 
 ## Overview
 
 All OPAI services run as **systemd user services** (no root required). Managed via `opai-control.sh` or individual `systemctl --user` commands. User lingering is enabled so services run without an active login session.
 
-OPAI v2 consolidated 28+ services down to **10 active services + 3 timers**. The core consolidation merged the orchestrator, monitor, and task control panel into a single `opai-engine` service. Many v1 services were archived (see [v1 to v2 Migration](#v1--v2-migration) at the bottom).
+OPAI v2 consolidated 28+ services down to 10 active services. v3.5 added Brain and Browser, bringing the total to **12 active services + 3 timers**. The core consolidation merged the orchestrator, monitor, and task control panel into a single `opai-engine` service. Many v1 services were archived (see [v1 to v2 Migration](#v1--v2-migration) at the bottom).
 
 ## Architecture
 
@@ -16,15 +16,17 @@ systemd --user
   ├─ opai-portal.service           (auth + dashboard, 127.0.0.1:8090)
   ├─ opai-engine.service           (core engine, 127.0.0.1:8080)
   │    └─ [managed] email-agent    (spawned by WorkerManager)
+  ├─ opai-brain.service            (2nd Brain, 127.0.0.1:8101)
   ├─ opai-files.service            (file manager, 127.0.0.1:8086)
   ├─ opai-team-hub.service         (project management, 127.0.0.1:8089)
   ├─ opai-users.service            (user management, 127.0.0.1:8084)
   ├─ opai-wordpress.service        (WordPress management, 127.0.0.1:8096)
   ├─ opai-oc-broker.service        (OpenClaw container broker, 127.0.0.1:8106)
+  ├─ opai-browser.service          (Playwright automation, 127.0.0.1:8107)
   ├─ opai-discord-bot.service      (Discord bridge, no port)
   ├─ opai-docker-cleanup.timer     (daily prune)
   ├─ opai-journal-cleanup.timer    (daily vacuum)
-  └─ opai-email.timer              (30 min email check, legacy)
+  └─ opai-farmos-sync.timer        (farmOS data sync)
 ```
 
 ## Services
@@ -35,12 +37,14 @@ systemd --user
 | 2 | `opai-caddy` | simple | 80/443 | all | Reverse proxy -- sole external entry point, HTTPS termination | Yes |
 | 3 | `opai-portal` | simple | 8090 | 127.0.0.1 | Auth gateway, admin dashboard (20 tiles), Pages Archive | Yes |
 | 4 | `opai-engine` | simple | 8080 | 127.0.0.1 | Core engine: scheduler, tasks, workers, monitor, dashboard. **Replaces** opai-orchestrator + opai-monitor + opai-tasks. Manages email-agent as a child process via WorkerManager. | Yes |
-| 5 | `opai-files` | simple | 8086 | 127.0.0.1 | Sandboxed file manager + NAS integration | No |
-| 6 | `opai-team-hub` | simple | 8089 | 127.0.0.1 | Project/task management -- workspaces, boards, lists | No |
-| 7 | `opai-users` | simple | 8084 | 127.0.0.1 | User management + sandbox provisioning | No |
-| 8 | `opai-wordpress` | simple | 8096 | 127.0.0.1 | Multi-site WordPress management -- updates, content, WooCommerce | No |
+| 5 | `opai-brain` | simple | 8101 | 127.0.0.1 | 2nd Brain -- knowledge graph, library, research, Instagram/YouTube integration | No |
+| 6 | `opai-files` | simple | 8086 | 127.0.0.1 | Sandboxed file manager + NAS integration | No |
+| 7 | `opai-team-hub` | simple | 8089 | 127.0.0.1 | Project/task management -- workspaces, boards, lists | No |
+| 8 | `opai-users` | simple | 8084 | 127.0.0.1 | User management + sandbox provisioning | No |
+| 9 | `opai-wordpress` | simple | 8096 | 127.0.0.1 | Multi-site WordPress management -- updates, content, WooCommerce | No |
 | 10 | `opai-oc-broker` | simple | 8106 | 127.0.0.1 | OpenClaw vault broker + container runtime (Docker lifecycle, credential injection, port 9001-9099 range) | No |
-| 11 | `opai-discord-bot` | simple | -- | -- | Discord <-> Claude bridge (daemon, no HTTP port) | No |
+| 11 | `opai-browser` | simple | 8107 | 127.0.0.1 | Headless Playwright browser automation -- job queue, named sessions | No |
+| 12 | `opai-discord-bot` | simple | -- | -- | Discord <-> Claude bridge (daemon, no HTTP port) | No |
 
 **Core services** (`opai-vault`, `opai-caddy`, `opai-portal`, `opai-engine`) cannot be restarted by agents from non-interactive shells. Use `restart-one` with `OPAI_FORCE=1` or an interactive terminal to restart them.
 
@@ -60,9 +64,9 @@ These are **not** separate systemd services -- they are managed processes inside
 |-------|-----------------|----------|-------|------------|
 | `opai-docker-cleanup.timer` | `opai-docker-cleanup.service` | Daily at 3:00 AM (`*-*-* 03:00:00`) | 0-5 min jitter | Yes |
 | `opai-journal-cleanup.timer` | `opai-journal-cleanup.service` | Daily (`OnCalendar=daily`) | -- | Yes |
-| `opai-email.timer` | `opai-email.service` | Every 30 min (`*:0/30`) | 2 min after boot + 0-5 min jitter | Yes |
+| `opai-farmos-sync.timer` | `opai-farmos-sync.service` | farmOS data synchronization | -- | Yes |
 
-> **Note**: `opai-email.timer` is legacy and may be replaced by the engine's built-in WorkerManager email scheduling. `opai-git-sync.timer` still exists as a unit file but is not in the active TIMERS array in `opai-control.sh`.
+> **Note**: `opai-email.timer` (legacy) and `opai-git-sync.timer` still exist as unit files but are not in the active TIMERS array in `opai-control.sh`. Email is now engine-managed via WorkerManager.
 
 ## Key Files
 
@@ -166,13 +170,15 @@ systemctl --user list-timers --all
 2. `opai-caddy` (reverse proxy)
 3. `opai-portal` (auth + dashboard)
 4. `opai-engine` (core engine -- depends on vault)
-5. `opai-files` (file manager)
-6. `opai-team-hub` (project management)
-7. `opai-users` (user management)
-8. `opai-wordpress` (WordPress management)
-9. `opai-oc-broker` (OpenClaw container broker)
-10. `opai-discord-bot` (Discord bridge)
-10. Timers: `opai-docker-cleanup.timer`, `opai-journal-cleanup.timer`
+5. `opai-brain` (2nd Brain)
+6. `opai-files` (file manager)
+7. `opai-team-hub` (project management)
+8. `opai-users` (user management)
+9. `opai-wordpress` (WordPress management)
+10. `opai-oc-broker` (OpenClaw container broker)
+11. `opai-browser` (Playwright automation)
+12. `opai-discord-bot` (Discord bridge)
+13. Timers: `opai-docker-cleanup.timer`, `opai-journal-cleanup.timer`, `opai-farmos-sync.timer`
 
 **Stop is reverse order**: Discord bot first, vault last.
 
@@ -184,12 +190,13 @@ systemctl --user list-timers --all
 - **nvm PATH for engine workers**: Any engine-managed worker that spawns `claude` CLI needs nvm node bin in PATH (`/home/dallas/.nvm/versions/node/v20.19.5/bin`)
 - **CLAUDECODE env var**: Must be stripped before spawning `claude` -- handled by service environment and `start-bot.sh`
 - **All HTTP services bind 127.0.0.1**: Only Caddy binds to all interfaces. All other services are localhost-only. External access is exclusively through Caddy.
+- **Dependency pinning (2026-03-05)**: All Python tools use `>=` minimum version pinning in `requirements.txt`. 35 packages pinned across 6 tools (opai-bx4, opai-brain, opai-prd, opai-wordpress, opai-forumbot, opai-studio). This prevents silent downgrades while allowing patch updates.
 
 ## Dependencies
 
 - **Requires**: systemd (user mode), `loginctl enable-linger`
 - **Credential source**: [Vault](vault.md) (SOPS+age encrypted store, pre-start injection)
-- **Reverse proxy**: Caddy (`config/Caddyfile`) routes external traffic to the 9 backend ports
+- **Reverse proxy**: Caddy (`config/Caddyfile`) routes external traffic to the 11 backend ports
 - **Installed from**: `~/.config/systemd/user/` (unit files)
 
 ---
@@ -198,7 +205,7 @@ systemctl --user list-timers --all
 
 ### What changed (2026-02-25)
 
-The v2 restructure reduced OPAI from **28+ active services** to **10 services + 3 timers** (9 core v2 + OpenClaw broker added 2026-02-26).
+The v2 restructure reduced OPAI from **28+ active services** to 10 services + 3 timers. v3.5 added Brain and Browser, bringing the total to **12 services + 3 timers**.
 
 ### Merged into opai-engine
 
@@ -236,7 +243,7 @@ These services existed in v1 but are no longer active. Their unit files may stil
 | `opai-orchestra` | 8098 | Agent Orchestra visualization |
 | `opai-bot-space` | 8099 | Bot catalog + credits |
 | `opai-bx4` | 8100 | Business intelligence |
-| `opai-brain` | 8101 | 2nd Brain cognitive layer |
+| `opai-brain` | 8101 | 2nd Brain cognitive layer — **now active (v3.5)**, see services table |
 | `opai-helm` | 8102 | Autonomous business runner |
 | `opai-marq` | 8103 | App store publisher |
 | `opai-dam` | 8104 | Meta-orchestrator |
@@ -244,7 +251,7 @@ These services existed in v1 but are no longer active. Their unit files may stil
 
 ### Caddy changes
 
-The Caddy configuration (`config/Caddyfile`) was rewritten to only proxy the 9 active service upstreams, removing routes for all archived services.
+The Caddy configuration (`config/Caddyfile`) was rewritten to proxy the active service upstreams, removing routes for all archived services. v3.5 added routes for brain (:8101), browser (:8107), studio (:8108), and others.
 
 ### Timer changes
 

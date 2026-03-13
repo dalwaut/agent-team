@@ -20,7 +20,7 @@ https:// {
 
 	# Prevent browsers from caching HTML pages (ensures auth updates take effect)
 	@html {
-		path / /dashboard /admin /engine/ /tasks/ /users/ /files/ /team-hub/ /wordpress/ /email-agent/ /oc/ /vault/
+		path / /dashboard /admin /engine/ /tasks/ /users/ /files/ /team-hub/ /wordpress/ /email-agent/ /oc/ /vault/ /eliza-hub/
 	}
 	header @html Cache-Control "no-cache, no-store, must-revalidate"
 
@@ -120,14 +120,64 @@ https:// {
 	@vaultExactS path /vault
 	redir @vaultExactS /vault/ 301
 
+	# ── PRD Pipeline ──────────────────────────────────────
+	handle_path /prd/* {
+		reverse_proxy localhost:8097
+	}
+	@prdExactS path /prd
+	redir @prdExactS /prd/ 301
+
+	# ── Studio ────────────────────────────────────────────
+	handle_path /studio/* {
+		reverse_proxy localhost:8108
+	}
+	@studioExactS path /studio
+	redir @studioExactS /studio/ 301
+
+	# ── Eliza Hub ──────────────────────────────────────────
+	handle_path /eliza-hub/* {
+		reverse_proxy localhost:8083
+	}
+	@elizaHubExactS path /eliza-hub
+	redir @elizaHubExactS /eliza-hub/ 301
+
+	# ── Docs Portal ────────────────────────────────────────
+	# API routes → backend (auth-gated file viewer)
+	handle_path /docs/api/* {
+		reverse_proxy localhost:8091
+	}
+	# Wiki markdown files (raw)
+	handle_path /docs/wiki/* {
+		root * /workspace/synced/opai/Library/opai-wiki
+		file_server
+		header Content-Type "text/plain; charset=utf-8"
+	}
+	# Static SPA + view page
+	handle_path /docs/* {
+		root * /workspace/synced/opai/tools/opai-docs
+		try_files {path} /static/{path} /static/index.html
+		file_server
+	}
+	@docsExactS path /docs
+	redir @docsExactS /docs/ 301
+
+	# ── Hosting Calculator (static SPA) ───────────────────
+	handle_path /Hosting_Calculator/* {
+		root * "/workspace/synced/opai/Projects/INTERNAL/Hosting Calculator/dist"
+		try_files {path} /index.html
+		file_server
+	}
+	@hostCalcExactS path /Hosting_Calculator
+	redir @hostCalcExactS /Hosting_Calculator/ 301
+
 	# ── v3 Deferred Services ───────────────────────────────
 	# These services are stopped. Routes redirect to engine.
-	@v3deferred path /bx4 /bx4/* /helm /helm/* /dam /dam/* /marq /marq/* /prd /prd/* /forumbot /forumbot/* /billing /billing/* /dev /dev/*
+	@v3deferred path /bx4 /bx4/* /helm /helm/* /dam /dam/* /marq /marq/* /forumbot /forumbot/* /billing /billing/* /dev /dev/*
 	redir @v3deferred /engine/ 302
 
 	# ── Archived Services ──────────────────────────────────
 	# These services are archived. Routes redirect to engine.
-	@archived path /chat /chat/* /messenger /messenger/* /forum /forum/* /agents /agents/* /orchestra /orchestra/* /terminal /terminal/* /claude /claude/* /docs /docs/* /marketplace /marketplace/* /bot-space /bot-space/*
+	@archived path /chat /chat/* /messenger /messenger/* /forum /forum/* /agents /agents/* /orchestra /orchestra/* /terminal /terminal/* /claude /claude/* /marketplace /marketplace/* /bot-space /bot-space/*
 	redir @archived /engine/ 302
 
 	# ── Default (Portal) ──────────────────────────────────

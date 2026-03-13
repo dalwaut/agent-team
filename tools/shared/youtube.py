@@ -8,10 +8,16 @@ Usage in any OPAI FastAPI service:
 
     info = await process_video("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
     summary = await summarize_video(info)
+
+Transcript providers (in order):
+    1. youtube-transcript-api (free, local Python lib)
+    2. youtube-transcript-api + SOCKS5 proxy (on IP block)
+    3. Supadata API (api.supadata.ai — 100 free/month, paid after)
 """
 
 import asyncio
 import json
+import logging
 import os
 import re
 from datetime import datetime, timezone
@@ -19,6 +25,8 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
+
+log = logging.getLogger("opai.youtube")
 
 # ── Proxy Configuration ──────────────────────────────────────────────────────
 
@@ -55,6 +63,22 @@ def get_proxy_config():
     except Exception:
         pass
     return None
+
+
+# ── Supadata API (fallback transcript provider) ──────────────────────────────
+# Shared pool with instagram.py — see supadata.py for implementation.
+
+from supadata import (
+    get_supadata_usage,
+    fetch_transcript_supadata as _fetch_transcript_supadata_raw,
+)
+
+
+async def _fetch_transcript_supadata(video_id: str) -> Optional[dict]:
+    """Fetch transcript via Supadata API. Returns dict or None on failure."""
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    return await _fetch_transcript_supadata_raw(url, source="youtube")
+
 
 # ── URL Parsing ──────────────────────────────────────────────────────────────
 
@@ -156,11 +180,11 @@ def _fetch_transcript_sync(video_id: str, languages: list[str] = None) -> dict:
 async def fetch_transcript(
     video_id: str, languages: list[str] = None
 ) -> dict:
-    """Async wrapper: fetch transcript via youtube-transcript-api.
+    """Async wrapper: fetch transcript with multi-provider fallback.
 
+    Provider chain: youtube-transcript-api → proxy → Supadata API.
     Returns {"text": str, "segments": list, "language": str}.
-    Raises RuntimeError if transcript unavailable.
-    Auto-falls back to SOCKS5 proxy on IP block.
+    Raises RuntimeError if all providers fail.
     """
     loop = asyncio.get_event_loop()
     try:
@@ -168,6 +192,12 @@ async def fetch_transcript(
             None, _fetch_transcript_sync, video_id, languages
         )
     except Exception as e:
+        log.warning("[YouTube] Primary transcript fetch failed for %s: %s — trying Supadata", video_id, e)
+        # Fallback to Supadata API
+        result = await _fetch_transcript_supadata(video_id)
+        if result:
+            log.info("[YouTube] Supadata fallback succeeded for %s", video_id)
+            return result
         raise RuntimeError(f"Transcript unavailable for {video_id}: {e}")
 
 

@@ -1,0 +1,18 @@
+[Unit]
+Description=OPAI Studio — AI Image Generation & Editing Suite
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-studio
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-studio
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8108
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/workspace/synced/opai/tools/opai-studio/.env
+
+EnvironmentFile=-%t/opai-vault/opai-studio.env
+[Install]
+WantedBy=default.target

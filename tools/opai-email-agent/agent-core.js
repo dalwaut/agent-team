@@ -26,10 +26,73 @@ const { notifyDraftQueued } = require('./notifier');
 
 // Reuse email-checker modules
 const { classifyEmail } = require('../email-checker/classifier');
-const { draftResponse, loadResponses, approveResponse } = require('../email-checker/response-drafter');
-const { applyTagsToAccount, sendResponse, saveDraftToAccount, moveToTrash } = require('../email-checker/sender');
+const { draftResponse, getResponse, loadResponses, approveResponse } = require('../email-checker/response-drafter');
+const { applyLabelsToAccount, sendResponse, saveDraftToAccount, moveToTrash } = require('../email-checker/sender');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
+
+// ── Fix C: In-memory dedup set for emails currently being processed ──
+// Prevents the same email from entering the pipeline twice across overlapping cycles.
+const _processingNow = new Set();
+
+// ── AI-Sent Tracker (file-persisted) ─────────────────────────
+// Tracks all emails sent BY the AI across all accounts.
+// Used to prevent cross-account auto-reply loops (e.g., AI responds as dallas@ → denise@ picks up → loop).
+// Persists to disk so it survives process restarts.
+const AI_SENT_TRACKER_PATH = path.join(__dirname, 'data', 'ai-sent-tracker.json');
+const AI_SENT_MAX_ENTRIES = 500;
+const AI_SENT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function loadAiSentTracker() {
+  try { return JSON.parse(fs.readFileSync(AI_SENT_TRACKER_PATH, 'utf8')); }
+  catch { return { entries: [] }; }
+}
+
+function saveAiSentTracker(data) {
+  try { fs.writeFileSync(AI_SENT_TRACKER_PATH, JSON.stringify(data, null, 2)); }
+  catch (err) { console.error('[EMAIL-AGENT] Failed to save AI sent tracker:', err.message); }
+}
+
+/**
+ * Record an AI-sent email in the file-persisted tracker.
+ * Called after every outbound AI email (ARL, approval queue, compose).
+ * @param {{ messageId?: string, to: string, subject: string }} info
+ */
+function recordAiSent(info) {
+  const data = loadAiSentTracker();
+  const key = `${(info.to || '').toLowerCase()}|${(info.subject || '').replace(/^(Re:\s*)+/gi, '').trim().toLowerCase()}`;
+  data.entries.push({
+    messageId: info.messageId || null,
+    key,
+    to: (info.to || '').toLowerCase(),
+    sentAt: new Date().toISOString(),
+  });
+  // Prune old entries
+  const cutoff = Date.now() - AI_SENT_MAX_AGE_MS;
+  data.entries = data.entries.filter(e => new Date(e.sentAt).getTime() > cutoff);
+  // Cap size
+  if (data.entries.length > AI_SENT_MAX_ENTRIES) {
+    data.entries = data.entries.slice(-AI_SENT_MAX_ENTRIES);
+  }
+  saveAiSentTracker(data);
+}
+
+/**
+ * Check if an email was sent by the AI (file-persisted check).
+ * Matches by Message-ID or by sender+subject composite key.
+ * @param {{ messageId: string, fromAddress: string, subject: string }} email
+ * @returns {boolean}
+ */
+function isAiSentEmail(email) {
+  const data = loadAiSentTracker();
+  const msgId = email.messageId || '';
+  const key = `${(email.fromAddress || '').toLowerCase()}|${(email.subject || '').replace(/^(Re:\s*)+/gi, '').trim().toLowerCase()}`;
+  return data.entries.some(e => (e.messageId && e.messageId === msgId) || e.key === key);
+}
+
+// ── Fix A: Cycle-level concurrency lock ──
+// Prevents overlapping runCycle() calls from the normal timer + fast-poll timer.
+let _cycleRunning = false;
 
 // ── Credential loading (multi-account aware) ─────────────────
 
@@ -161,6 +224,17 @@ function markProcessed(messageId) {
   }
 }
 
+// Fix B: Allow unmarking if ARL didn't handle the email (so normal pipeline can retry)
+function unmarkProcessed(messageId) {
+  const data = loadProcessed();
+  if (!data.entries) return;
+  const before = data.entries.length;
+  data.entries = data.entries.filter(e => e.id !== messageId);
+  if (data.entries.length < before) {
+    saveProcessed(data);
+  }
+}
+
 /**
  * Remove processed entries matching a sender or domain.
  * Uses email-meta.json to reverse-lookup which message IDs belong to the sender.
@@ -206,6 +280,16 @@ function saveQueue(data) {
 
 function addToQueue(item) {
   const queue = loadQueue();
+  // Prevent duplicate pending items for the same emailId
+  const existing = queue.items.find(i => i.emailId === item.emailId && i.status === 'pending');
+  if (existing) {
+    // Update the existing item with the new draft if provided
+    if (item.draft) { existing.draft = item.draft; existing.draftId = item.draftId; }
+    if (item.reason) existing.reason = item.reason;
+    existing.updatedAt = new Date().toISOString();
+    saveQueue(queue);
+    return existing;
+  }
   queue.items.push({
     id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     ...item,
@@ -268,6 +352,122 @@ function extractAttachments(source) {
     if (name) attachments.push(decodeURIComponent(name).trim());
   }
   return attachments;
+}
+
+/**
+ * Download and decode attachment content from raw email source (MIME parsing).
+ * Returns array of { filename, mimeType, encoding, content (Buffer) }.
+ */
+function downloadAttachments(source) {
+  const raw = source ? source.toString('utf8') : '';
+  const results = [];
+
+  // Find the top-level boundary
+  const boundaryMatch = raw.match(/boundary="?([^"\r\n;]+)"?/i);
+  if (!boundaryMatch) return results;
+
+  const boundary = boundaryMatch[1];
+  const parts = raw.split('--' + boundary);
+
+  for (const part of parts) {
+    // Skip preamble and epilogue
+    if (part.startsWith('--') || !part.trim()) continue;
+
+    // Check for Content-Disposition: attachment
+    const dispMatch = part.match(/Content-Disposition:\s*attachment[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*/i);
+    if (!dispMatch) continue;
+
+    const block = dispMatch[0];
+    let filename = (block.match(/filename="([^"]+)"/i) || [])[1];
+    if (!filename) filename = (block.match(/filename\*=UTF-8''([^\s;"\r\n]+)/i) || [])[1];
+    if (!filename) filename = (block.match(/filename=([^\s;"\r\n]+)/i) || [])[1];
+    if (!filename) continue;
+    filename = decodeURIComponent(filename).trim();
+
+    // Extract Content-Type
+    const ctMatch = part.match(/Content-Type:\s*([^\s;\r\n]+)/i);
+    const mimeType = ctMatch ? ctMatch[1] : 'application/octet-stream';
+
+    // Extract Content-Transfer-Encoding
+    const encMatch = part.match(/Content-Transfer-Encoding:\s*(\S+)/i);
+    const encoding = encMatch ? encMatch[1].toLowerCase() : '7bit';
+
+    // Extract body (everything after the first blank line in this part)
+    const bodyStart = part.indexOf('\r\n\r\n');
+    if (bodyStart === -1) continue;
+    let bodyText = part.slice(bodyStart + 4);
+    // Trim trailing boundary artifacts
+    const endIdx = bodyText.lastIndexOf('\r\n');
+    if (endIdx > 0) bodyText = bodyText.slice(0, endIdx);
+
+    let content;
+    if (encoding === 'base64') {
+      content = Buffer.from(bodyText.replace(/[\r\n\s]/g, ''), 'base64');
+    } else if (encoding === 'quoted-printable') {
+      const decoded = bodyText
+        .replace(/=\r?\n/g, '')
+        .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+      content = Buffer.from(decoded, 'utf8');
+    } else {
+      content = Buffer.from(bodyText, 'utf8');
+    }
+
+    results.push({ filename, mimeType, encoding, content });
+  }
+
+  return results;
+}
+
+// ── Transcript detection patterns ────────────────────────────
+
+const TRANSCRIPT_TEXT_EXTENSIONS = /\.(txt|md|pdf|docx)$/i;
+const TRANSCRIPT_AUDIO_EXTENSIONS = /\.(m4a|mp3|wav|ogg|webm|aac)$/i;
+const TRANSCRIPT_KEYWORDS = /transcript|meeting|notes|minutes|call.?notes|voice.?memo|recording|recap/i;
+
+/**
+ * Detect and save transcript/recording attachments from an email.
+ * Sets email._transcriptPath if a transcript is found.
+ * Returns true if a transcript was detected.
+ */
+function detectAndSaveTranscripts(email, rawSource) {
+  if (!rawSource) return false;
+
+  const attachments = downloadAttachments(rawSource);
+  if (attachments.length === 0) return false;
+
+  const WORKSPACE = '/workspace/synced/opai';
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+  for (const att of attachments) {
+    const fn = att.filename;
+    const isTextFile = TRANSCRIPT_TEXT_EXTENSIONS.test(fn);
+    const isAudioFile = TRANSCRIPT_AUDIO_EXTENSIONS.test(fn);
+
+    // Text files: must have transcript keywords in filename or subject
+    if (isTextFile && (TRANSCRIPT_KEYWORDS.test(fn) || TRANSCRIPT_KEYWORDS.test(email.subject || ''))) {
+      const destDir = path.join(WORKSPACE, 'notes', 'Transcripts');
+      fs.mkdirSync(destDir, { recursive: true });
+      const destPath = path.join(destDir, `${timestamp}_${fn}`);
+      fs.writeFileSync(destPath, att.content);
+      email._transcriptPath = destPath;
+      console.log(`[EMAIL-AGENT] Transcript saved: ${destPath}`);
+      return true;
+    }
+
+    // Audio files: save to Recordings
+    if (isAudioFile) {
+      const destDir = path.join(WORKSPACE, 'notes', 'Recordings');
+      fs.mkdirSync(destDir, { recursive: true });
+      const destPath = path.join(destDir, `${timestamp}_${fn}`);
+      fs.writeFileSync(destPath, att.content);
+      email._transcriptPath = destPath;
+      email._isAudioTranscript = true;
+      console.log(`[EMAIL-AGENT] Recording saved: ${destPath}`);
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -354,6 +554,11 @@ function getQueueItems(status = null, accountId = null) {
   return items;
 }
 
+function getQueueItemById(itemId) {
+  const queue = loadQueue();
+  return queue.items.find(i => i.id === itemId) || null;
+}
+
 function updateQueueItem(itemId, updates) {
   const queue = loadQueue();
   const item = queue.items.find(i => i.id === itemId);
@@ -422,7 +627,8 @@ async function fetchEmails(account = null, options = {}) {
         for await (const msg of messages) {
           imapCount++;
           const messageId = msg.envelope?.messageId || `uid-${msg.uid}`;
-          if (isProcessed(messageId)) { dedupSkipped++; continue; }
+          // Fix C: Check in-memory set first (instant), then file-based dedup
+          if (_processingNow.has(messageId) || isProcessed(messageId)) { dedupSkipped++; continue; }
 
           const from = msg.envelope?.from?.[0];
           const senderAddr = from ? `${from.name || ''} <${from.address}>`.trim() : 'unknown';
@@ -468,30 +674,39 @@ async function fetchEmails(account = null, options = {}) {
 function extractTextFromSource(source) {
   const raw = source.toString('utf8');
 
-  // Try to find text/plain boundary
-  const boundaryMatch = raw.match(/boundary="?([^"\r\n]+)"?/i);
-  if (boundaryMatch) {
-    const boundary = boundaryMatch[1];
+  // Collect all boundaries (handles nested multipart)
+  const boundaries = [];
+  const boundaryRe = /boundary="?([^"\r\n;]+)"?/gi;
+  let bm;
+  while ((bm = boundaryRe.exec(raw)) !== null) {
+    boundaries.push(bm[1].trim());
+  }
+
+  // Search all boundary levels for text/plain
+  for (const boundary of boundaries) {
     const parts = raw.split('--' + boundary);
     for (const part of parts) {
-      if (part.includes('text/plain')) {
-        const bodyStart = part.indexOf('\r\n\r\n');
-        if (bodyStart > -1) {
-          let text = part.slice(bodyStart + 4);
-          // Remove trailing boundary marker
-          const endIdx = text.indexOf('--' + boundary);
-          if (endIdx > -1) text = text.slice(0, endIdx);
-          // Handle quoted-printable
-          if (part.toLowerCase().includes('quoted-printable')) {
-            text = text.replace(/=\r?\n/g, '').replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
-          }
-          // Handle base64
-          if (part.toLowerCase().includes('base64')) {
-            try { text = Buffer.from(text.trim(), 'base64').toString('utf8'); } catch {}
-          }
-          return text.trim();
-        }
+      const headerEnd = part.indexOf('\r\n\r\n');
+      if (headerEnd === -1) continue;
+      const headers = part.slice(0, headerEnd).toLowerCase();
+      if (!headers.includes('text/plain')) continue;
+
+      let text = part.slice(headerEnd + 4);
+      // Remove trailing boundary marker
+      for (const b of boundaries) {
+        const endIdx = text.indexOf('--' + b);
+        if (endIdx > -1) text = text.slice(0, endIdx);
       }
+      // Handle quoted-printable
+      if (headers.includes('quoted-printable')) {
+        text = text.replace(/=\r?\n/g, '').replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+      }
+      // Handle base64
+      if (headers.includes('base64')) {
+        try { text = Buffer.from(text.trim(), 'base64').toString('utf8'); } catch {}
+      }
+      text = text.trim();
+      if (text.length > 0) return text;
     }
   }
 
@@ -555,11 +770,27 @@ async function fetchThreadEmail(inReplyToId, account = null) {
  */
 async function processEmail(email, account, mode, caps) {
   const acctId = account.id;
+  const label = account.name || account.email;
+
+  // Fix C: Add to in-memory set immediately to block any parallel cycle from picking it up
+  _processingNow.add(email.messageId);
+
+  try {
+  return await _processEmailInner(email, account, mode, caps, acctId, label);
+  } finally {
+    _processingNow.delete(email.messageId);
+  }
+}
+
+async function _processEmailInner(email, account, mode, caps, acctId, label) {
+  // ── Pre-check: Drop emails with no sender address (phantom/system messages) ──
+  if (!email.fromAddress) {
+    markProcessed(email.messageId);
+    return 'skipped';
+  }
 
   // Store email metadata for UI display (body preview + attachment names)
   storeEmailMeta(email, email._rawSource, acctId);
-
-  const label = account.name || account.email;
 
   // ── Step 0: Blacklist gate (before everything else) ──
   const blacklistResult = checkBlacklistForAccount(email.fromAddress, account);
@@ -583,19 +814,66 @@ async function processEmail(email, account, mode, caps) {
     return 'blacklisted';
   }
 
+  // ── Step 0.5: AI-sent detection gate (universal — all accounts) ──
+  // Prevents cross-account auto-reply loops. If the AI sent this email
+  // (detected via X-OPAI-ARL-Sent header or file-persisted tracker),
+  // skip it entirely. Human emails between managed accounts are allowed.
+  const accountConfig = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+  const ownAddresses = accountConfig.accounts.map(a => a.email.toLowerCase());
+  const senderIsManaged = ownAddresses.includes((email.fromAddress || '').toLowerCase());
+
+  if (senderIsManaged) {
+    const rawSource = (email._rawSource || '').toString('utf8');
+    const hasArlHeader = rawSource.includes('X-OPAI-ARL-Sent:');
+    const inSentTracker = isAiSentEmail(email);
+
+    if (hasArlHeader || inSentTracker) {
+      console.log(`[EMAIL-AGENT] [${label}] BLOCKED: AI-sent email from ${email.fromAddress} (header: ${hasArlHeader}, tracker: ${inSentTracker}) — preventing cross-account loop`);
+      logAction({
+        accountId: acctId,
+        action: 'ai-self-skip',
+        emailId: email.messageId,
+        sender: email.fromAddress,
+        subject: email.subject,
+        reasoning: `[${label}] Blocked AI-sent email: ${email.fromAddress} detected via ${hasArlHeader ? 'X-OPAI-ARL-Sent header' : 'file-persisted sent tracker'}`,
+        mode,
+      });
+      markProcessed(email.messageId);
+      return 'skipped';
+    }
+    // Sender is a managed account but NOT AI-sent → human email → continue pipeline
+    console.log(`[EMAIL-AGENT] [${label}] Sender ${email.fromAddress} is a managed account but not AI-sent — treating as human email`);
+  }
+
+  // ── Transcript detection: check attachments for meeting transcripts/recordings ──
+  const hasTranscript = detectAndSaveTranscripts(email, email._rawSource);
+  if (hasTranscript) {
+    console.log(`[EMAIL-AGENT] [${label}] Transcript detected: ${email._transcriptPath}`);
+    // Force ARL to process-transcript skill (will be picked up by intent parser)
+    if (!email.subject) email.subject = '';
+    if (!/transcript|meeting|recording/i.test(email.subject + ' ' + (email.body || ''))) {
+      email.subject = `[transcript] ${email.subject}`;
+    }
+  }
+
   // ── ARL intercept: check if this email triggers the Agent Response Loop ──
   if (shouldProcessArl(email, account)) {
     const gateCheck = checkSenderForAccount(email.fromAddress, account);
     if (gateCheck.allowed) {
+      // Fix B: Mark processed BEFORE ARL pipeline (takes minutes).
+      // This closes the window where overlapping cycles could re-fetch the same email.
+      markProcessed(email.messageId);
       try {
         const arlResult = await processArlEmail(email, account);
         if (arlResult.handled) {
-          markProcessed(email.messageId);
           return 'processed';
         }
-        // ARL didn't handle it (no intent detected) — fall through to normal pipeline
+        // ARL didn't handle it (no intent detected) — unmark so normal pipeline can process later
+        unmarkProcessed(email.messageId);
       } catch (arlErr) {
         console.error(`[EMAIL-AGENT] [${label}] ARL error (falling back to normal pipeline):`, arlErr.message);
+        // Unmark so it can be retried on next cycle
+        unmarkProcessed(email.messageId);
       }
     }
   }
@@ -633,7 +911,7 @@ async function processEmail(email, account, mode, caps) {
       emailId: email.messageId,
       sender: email.fromAddress,
       subject: email.subject,
-      reasoning: `[${label}] Classified: tags=[${(classification.tags || []).join(', ')}], priority=${classification.priority}, urgency=${classification.urgency}`,
+      reasoning: `[${label}] Classified: tags=[${(classification.labels || []).join(', ')}], priority=${classification.priority}, urgency=${classification.urgency}`,
       mode,
       details: { classification },
     });
@@ -646,7 +924,7 @@ async function processEmail(email, account, mode, caps) {
         sender: email.fromAddress,
         subject: email.subject,
         reason: classification.urgency === 'urgent' ? 'Urgent email detected' : 'Email needs your attention',
-        tags: classification.tags || [],
+        tags: classification.labels || [],
         priority: classification.priority,
       });
     }
@@ -668,13 +946,13 @@ async function processEmail(email, account, mode, caps) {
     }
   }
 
-  // ── Step 3: Tag (IMAP labels) ──
-  if (caps.tag && classification) {
+  // ── Step 3: Label (IMAP labels) ──
+  if (caps.label && classification) {
     try {
       setEnvBridgeForAccount(account);
-      await applyTagsToAccount(
+      await applyLabelsToAccount(
         email.uid,
-        classification.tags || [],
+        classification.labels || [],
         classification.priority || 'normal',
         classification.isSystem || false,
         '',  // envPrefix — empty, using bridged env vars
@@ -683,21 +961,21 @@ async function processEmail(email, account, mode, caps) {
 
       logAction({
         accountId: acctId,
-        action: 'tag',
+        action: 'label',
         emailId: email.messageId,
         sender: email.fromAddress,
         subject: email.subject,
-        reasoning: `[${label}] Applied IMAP tags: ${(classification.tags || []).join(', ')}`,
+        reasoning: `[${label}] Applied IMAP labels: ${(classification.labels || []).join(', ')}`,
         mode,
       });
-    } catch (tagErr) {
-      console.error(`[EMAIL-AGENT] [${label}] Tag error:`, tagErr.message);
+    } catch (labelErr) {
+      console.error(`[EMAIL-AGENT] [${label}] Label error:`, labelErr.message);
     }
   }
 
   // ── Step 3.5: Classification suggestions ──
   if (classification) {
-    const suggestions = suggestClassifications({ sender: email.fromAddress, tags: classification.tags }, acctId);
+    const suggestions = suggestClassifications({ sender: email.fromAddress, tags: classification.labels }, acctId);
     if (suggestions.length > 0) {
       const meta = loadEmailMeta();
       if (meta[email.messageId]) {
@@ -721,7 +999,7 @@ async function processEmail(email, account, mode, caps) {
       }
     }
 
-    const draft = await draftResponse(
+    const responseId = await draftResponse(
       {
         from: email.fromAddress,
         fromName: email.from,
@@ -733,95 +1011,47 @@ async function processEmail(email, account, mode, caps) {
       voiceProfile
     );
 
-    if (draft) {
+    if (responseId) {
+      const draft = getResponse(responseId);
+      const draftContent = draft ? (draft.refinedDraft || draft.initialDraft || '') : '';
+
       logAction({
         accountId: acctId,
         action: 'draft',
         emailId: email.messageId,
         sender: email.fromAddress,
         subject: email.subject,
-        reasoning: `[${label}] Drafted response (${draft.steps || 3} step process). priority=${classification.priority}`,
+        reasoning: `[${label}] Drafted response (3 step process). priority=${classification.priority}`,
         mode,
-        details: { draftId: draft.id, draftPreview: (draft.final || draft.draft || '').slice(0, 200) },
+        details: { draftId: responseId, draftPreview: draftContent.slice(0, 200) },
       });
 
-      // ── Step 5: Send or queue ──
-      if (caps.send) {
-        const rateCheck = checkRateLimit();
-        if (rateCheck.allowed) {
-          setEnvBridgeForAccount(account);
-          await sendResponse({
-            to: email.fromAddress,
-            subject: email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`,
-            finalContent: draft.finalContent || draft.refinedDraft || draft.initialDraft,
-            emailMessageId: email.messageId,
-          }, '');
+      // ── Step 5: Always queue for approval — never auto-send ──
+      addToQueue({
+        accountId: acctId,
+        emailId: email.messageId,
+        uid: email.uid,
+        folder: email.folder,
+        sender: email.fromAddress,
+        subject: email.subject,
+        draft: draftContent,
+        draftId: responseId,
+        reason: mode === 'auto' ? 'Awaiting approval' : (mode === 'internal' ? 'Internal mode — requires approval' : 'Draft for review'),
+      });
 
-          markEmailSeen(email.uid, email.folder, account).catch(() => {});
+      notifyDraftQueued(account, { sender: email.fromAddress, subject: email.subject, draft: draftContent })
+        .catch(err => console.error('[EMAIL-AGENT] Notify error:', err.message));
 
-          logAction({
-            accountId: acctId,
-            action: 'send',
-            emailId: email.messageId,
-            sender: email.fromAddress,
-            subject: email.subject,
-            reasoning: `[${label}] Auto-sent response. Rate limit: ${rateCheck.remaining} remaining.`,
-            mode,
-            details: { draftId: draft.id, rateLimitRemaining: rateCheck.remaining },
-          });
-        } else {
-          addToQueue({
-            accountId: acctId,
-            emailId: email.messageId,
-            uid: email.uid,
-            folder: email.folder,
-            sender: email.fromAddress,
-            subject: email.subject,
-            draft: draft.final || draft.draft,
-            draftId: draft.id,
-            reason: 'Rate limit reached',
-          });
-
-          notifyDraftQueued(account, { sender: email.fromAddress, subject: email.subject, draft: draft.final || draft.draft })
-            .catch(err => console.error('[EMAIL-AGENT] Notify error:', err.message));
-
-          logAction({
-            accountId: acctId,
-            action: 'queue',
-            emailId: email.messageId,
-            sender: email.fromAddress,
-            subject: email.subject,
-            reasoning: `[${label}] Rate limit reached (${rateCheck.limit}/hour). Draft queued.`,
-            mode,
-          });
-        }
-      } else {
-        // Internal mode — always queue for approval
-        addToQueue({
-          accountId: acctId,
-          emailId: email.messageId,
-          uid: email.uid,
-          folder: email.folder,
-          sender: email.fromAddress,
-          subject: email.subject,
-          draft: draft.final || draft.draft,
-          draftId: draft.id,
-          reason: 'Internal mode — requires approval',
-        });
-
-        notifyDraftQueued(account, { sender: email.fromAddress, subject: email.subject, draft: draft.final || draft.draft })
-          .catch(err => console.error('[EMAIL-AGENT] Notify error:', err.message));
-
-        logAction({
-          accountId: acctId,
-          action: 'queue',
-          emailId: email.messageId,
-          sender: email.fromAddress,
-          subject: email.subject,
-          reasoning: `[${label}] Internal mode: queued for admin approval.`,
-          mode,
-        });
-      }
+      logAction({
+        accountId: acctId,
+        action: 'queue',
+        emailId: email.messageId,
+        sender: email.fromAddress,
+        subject: email.subject,
+        reasoning: `[${label}] Draft queued for approval (${mode} mode).`,
+        mode,
+        details: { draftId: draft.id, draftPreview: draftContent.slice(0, 200) },
+      });
     }
   } else if (caps.classify && classification && !classification.requiresResponse) {
     logAction({
@@ -853,6 +1083,21 @@ async function runCycle(options = {}) {
     return { processed: 0, skipped: 0, errors: 0, killed: true };
   }
 
+  // Fix A: Prevent overlapping cycles (normal timer + fast-poll can fire concurrently)
+  if (_cycleRunning) {
+    console.log('[EMAIL-AGENT] Cycle already running — skipping overlapping call');
+    return { processed: 0, skipped: 0, errors: 0, killed: false, skippedOverlap: true };
+  }
+  _cycleRunning = true;
+
+  try {
+  return await _runCycleInner(options);
+  } finally {
+    _cycleRunning = false;
+  }
+}
+
+async function _runCycleInner(options = {}) {
   const cycleStart = Date.now();
   pruneOldProcessed();
 
@@ -889,6 +1134,7 @@ async function runCycle(options = {}) {
         } catch (emailErr) {
           console.error(`[EMAIL-AGENT] [${label}] Error processing ${email.subject}:`, emailErr.message);
           logAction({
+            accountId: acctId,
             action: 'error',
             emailId: email.messageId,
             sender: email.fromAddress,
@@ -903,6 +1149,7 @@ async function runCycle(options = {}) {
     } catch (fetchErr) {
       console.error(`[EMAIL-AGENT] [${label}] Cycle error:`, fetchErr.message);
       logAction({
+        accountId: acctId,
         action: 'error',
         reasoning: `[${label}] Cycle-level error: ${fetchErr.message}`,
         mode,
@@ -1016,6 +1263,7 @@ module.exports = {
   runCycle,
   fetchEmails,
   getQueueItems,
+  getQueueItemById,
   updateQueueItem,
   loadQueue,
   markEmailSeen,
@@ -1029,4 +1277,7 @@ module.exports = {
   hasActiveConversations,
   unmarkProcessed,
   addToQueue,
+  downloadAttachments,
+  detectAndSaveTranscripts,
+  recordAiSent,
 };

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OPAI Command Center</title>
-  <link rel="stylesheet" href="static/style.css?v=20260228">
+  <link rel="stylesheet" href="static/style.css?v=20260304b">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -16,6 +16,7 @@
     <!-- Tab Navigation -->
     <nav id="tab-nav">
       <button class="tab-btn active" data-tab="command-center">Command Center</button>
+      <button class="tab-btn" data-tab="my-queue">My Queue <span id="mq-tab-badge" class="tab-badge" style="display:none">0</span></button>
       <button class="tab-btn" data-tab="tasks">Tasks</button>
       <button class="tab-btn" data-tab="workers">Workers</button>
       <button class="tab-btn" data-tab="openclaw">OpenClaw</button>
@@ -56,6 +57,15 @@
         </div>
       </div>
 
+      <!-- Needs Your Attention (populated from action-items API) -->
+      <div id="cc-action-items" class="panel" style="display:none">
+        <h3 class="panel-title">
+          Needs Your Attention
+          <span id="cc-action-count" class="tab-badge">0</span>
+        </h3>
+        <div id="cc-action-list" class="action-items-compact"></div>
+      </div>
+
       <!-- Two-column layout -->
       <div class="cc-grid">
         <!-- Activity Feed -->
@@ -91,6 +101,67 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- TAB: MY QUEUE                                            -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div id="tab-my-queue" class="tab-panel">
+      <div class="subtab-nav">
+        <button class="subtab-btn active" data-subtab="mq-all">All Items</button>
+        <button class="subtab-btn" data-subtab="mq-hitl">HITL Decisions</button>
+        <button class="subtab-btn" data-subtab="mq-reviews">Agent Reviews</button>
+      </div>
+
+      <!-- Dispatch bar -->
+      <div class="mq-dispatch-bar">
+        <select id="mq-worker-select" class="filter-select">
+          <option value="">Select Worker...</option>
+        </select>
+        <input type="text" id="mq-dispatch-title" class="search-input" placeholder="Task title (optional)..." style="min-width:200px">
+        <button class="btn btn-sm btn-primary" onclick="dispatchWorker()">Dispatch</button>
+        <button class="btn btn-sm" onclick="loadActionItems()">Refresh</button>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="mq-filter-bar" id="mq-filter-bar">
+        <select id="mq-filter-age" class="filter-select" onchange="applyQueueFilters()">
+          <option value="">All Time</option>
+          <option value="1">24 hours</option>
+          <option value="7" selected>7 days</option>
+          <option value="14">14 days</option>
+          <option value="30">30 days</option>
+        </select>
+        <select id="mq-filter-type" class="filter-select" onchange="applyQueueFilters()">
+          <option value="">All Types</option>
+          <option value="hitl_decision">HITL</option>
+          <option value="blocked_agent">Blocked</option>
+          <option value="review_needed">Reviews</option>
+          <option value="stalled_worker">Stalled</option>
+          <option value="suggestion">Suggestions</option>
+          <option value="pending_approval">Approvals</option>
+        </select>
+        <span id="mq-item-count" class="mq-count-label">0 items</span>
+        <button class="btn btn-sm btn-danger" onclick="bulkDismissSuggestions()" id="mq-bulk-dismiss-btn" style="margin-left:auto">Dismiss All Suggestions</button>
+      </div>
+
+      <div id="subtab-mq-all" class="subtab-panel active">
+        <div id="mq-all-list" class="action-items-list">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+
+      <div id="subtab-mq-hitl" class="subtab-panel">
+        <div id="mq-hitl-list" class="action-items-list">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+
+      <div id="subtab-mq-reviews" class="subtab-panel">
+        <div id="mq-reviews-list" class="action-items-list">
+          <div class="loading">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════ -->
     <!-- TAB: TASKS                                              -->
     <!-- ═══════════════════════════════════════════════════════ -->
     <div id="tab-tasks" class="tab-panel">
@@ -106,6 +177,8 @@
           <select id="task-filter-status" class="filter-select">
             <option value="">All Status</option>
             <option value="pending">Pending</option>
+            <option value="proposed">Proposed</option>
+            <option value="scheduled">Scheduled</option>
             <option value="running">Running</option>
             <option value="completed">Completed</option>
             <option value="failed">Failed</option>
@@ -161,6 +234,7 @@
         <button class="subtab-btn active" data-subtab="worker-overview">Overview</button>
         <button class="subtab-btn" data-subtab="worker-guardrails">Guardrails</button>
         <button class="subtab-btn" data-subtab="worker-approvals">Approvals</button>
+        <button class="subtab-btn" data-subtab="worker-roster">Roster</button>
       </div>
 
       <div id="subtab-worker-overview" class="subtab-panel active">
@@ -178,6 +252,27 @@
       <div id="subtab-worker-approvals" class="subtab-panel">
         <div id="approvals-content">
           <div class="loading">Loading...</div>
+        </div>
+      </div>
+
+      <div id="subtab-worker-roster" class="subtab-panel">
+        <!-- Stats row (clickable type filters) -->
+        <div class="roster-stats" id="roster-stats"></div>
+        <!-- Toolbar -->
+        <div class="toolbar">
+          <input type="text" id="roster-search" class="search-input" placeholder="Search workforce...">
+          <select id="roster-category" class="filter-select">
+            <option value="">All Categories</option>
+          </select>
+        </div>
+        <!-- Master-detail layout -->
+        <div class="roster-layout">
+          <div class="roster-list" id="roster-list">
+            <div class="loading">Loading...</div>
+          </div>
+          <div class="roster-detail" id="roster-detail">
+            <div class="empty-state">Select an entity to view details</div>
+          </div>
         </div>
       </div>
     </div>
@@ -347,6 +442,17 @@
     </div>
   </div>
 
+  <!-- Action Item Detail Modal -->
+  <div id="action-modal" class="modal-overlay" onclick="if(event.target===this)closeActionModal()">
+    <div class="modal-panel" style="max-width:700px">
+      <div class="modal-header">
+        <h3 id="action-modal-title">Action Item</h3>
+        <button class="modal-close" onclick="closeActionModal()">&times;</button>
+      </div>
+      <div id="action-modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
   <!-- Task Detail Modal -->
   <div id="task-modal" class="modal-overlay" onclick="if(event.target===this)closeTaskModal()">
     <div class="modal-panel">
@@ -358,21 +464,22 @@
     </div>
   </div>
 
-  <!-- Auth bootstrap -->
+  <!-- Auth bootstrap (async fetch, blocks app init via promise) -->
   <script>
-    (async () => {
-      try {
-        const r = await fetch('/auth/config');
-        const cfg = await r.json();
-        window.OPAI_SUPABASE_URL = cfg.supabase_url;
-        window.OPAI_SUPABASE_ANON_KEY = cfg.supabase_anon_key;
-      } catch(e) {
-        console.warn('Auth config unavailable:', e);
-      }
-    })();
+    window.OPAI_AUTH_READY = fetch('/auth/config')
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(cfg => {
+        window.OPAI_SUPABASE_URL = cfg.supabase_url || '';
+        window.OPAI_SUPABASE_ANON_KEY = cfg.supabase_anon_key || '';
+        if (cfg.auth_disabled) window.OPAI_AUTH_DISABLED = true;
+      })
+      .catch(() => {
+        console.warn('Auth config unavailable — running without auth');
+        window.OPAI_AUTH_DISABLED = true;
+      });
   </script>
   <script src="/auth/static/js/auth-v3.js" defer></script>
   <script src="/auth/static/js/navbar.js" defer></script>
-  <script src="static/js/app.js?v=20260228" type="module"></script>
+  <script src="static/js/app.js?v=20260305" type="module"></script>
 </body>
 </html>

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI — Document Viewer</title>
+    <link rel="icon" type="image/png" href="/static/opai-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/docs/static/style.css">
+    <style>
+        /* View-specific overrides */
+        body { overflow: auto; }
+
+        .view-topbar {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            height: 56px;
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 1.5rem;
+            gap: 1rem;
+        }
+
+        .view-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--text);
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .view-brand span { color: var(--accent); }
+
+        .view-path {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 4px 10px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 500px;
+        }
+
+        .view-actions {
+            margin-left: auto;
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .view-btn {
+            padding: 6px 14px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.15s;
+        }
+
+        .view-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text);
+        }
+
+        .view-container {
+            max-width: 880px;
+            margin: 0 auto;
+            padding: 2rem 2.5rem 4rem;
+        }
+
+        .view-meta {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .view-meta-tag {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+        }
+
+        .view-loading {
+            text-align: center;
+            padding: 6rem 2rem;
+            color: var(--text-dim);
+        }
+
+        .view-loading .spinner {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .view-error {
+            text-align: center;
+            padding: 6rem 2rem;
+        }
+
+        .view-error h2 {
+            color: #ef4444;
+            margin-bottom: 0.5rem;
+        }
+
+        .view-error p {
+            color: var(--text-muted);
+        }
+
+        .view-error a {
+            color: var(--accent);
+        }
+
+        .view-auth-wall {
+            text-align: center;
+            padding: 6rem 2rem;
+        }
+
+        .view-auth-wall h2 {
+            margin-bottom: 0.75rem;
+        }
+
+        .view-auth-wall .login-btn {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: 10px 24px;
+            background: var(--accent);
+            color: #fff;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: opacity 0.15s;
+        }
+
+        .view-auth-wall .login-btn:hover { opacity: 0.9; }
+
+        /* Raw text (non-markdown) */
+        .raw-content {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-x: auto;
+        }
+
+        @media (max-width: 768px) {
+            .view-container { padding: 1.25rem; }
+            .view-path { max-width: 200px; font-size: 0.7rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="view-topbar">
+        <a href="/docs/" class="view-brand"><span>OPAI</span> Docs</a>
+        <div class="view-path" id="path-display">Loading...</div>
+        <div class="view-actions">
+            <a href="/docs/" class="view-btn">All Docs</a>
+            <button class="view-btn" id="copy-link-btn" title="Copy link">Copy Link</button>
+        </div>
+    </div>
+
+    <div class="view-container">
+        <div id="content">
+            <div class="view-loading">
+                <div class="spinner"></div>
+                <div>Loading document...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/auth/static/js/auth-v3.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        const contentEl = document.getElementById('content');
+        const pathDisplay = document.getElementById('path-display');
+        const copyBtn = document.getElementById('copy-link-btn');
+
+        // Get path from URL
+        const params = new URLSearchParams(window.location.search);
+        const filePath = params.get('path');
+
+        if (!filePath) {
+            contentEl.innerHTML = '<div class="view-error"><h2>No file specified</h2>' +
+                '<p>Use <code>?path=notes/file.md</code> to view a document.</p>' +
+                '<p><a href="/docs/">Browse all docs</a></p></div>';
+            return;
+        }
+
+        pathDisplay.textContent = filePath;
+        document.title = filePath.split('/').pop() + ' — OPAI Docs';
+
+        // Copy link button
+        copyBtn.addEventListener('click', function() {
+            navigator.clipboard.writeText(window.location.href).then(function() {
+                copyBtn.textContent = 'Copied!';
+                setTimeout(function() { copyBtn.textContent = 'Copy Link'; }, 2000);
+            });
+        });
+
+        // Auth init then fetch
+        async function boot() {
+            // Step 1: Fetch Supabase config from portal (required before auth init)
+            try {
+                const cfgResp = await fetch('/auth/config');
+                if (cfgResp.ok) {
+                    const cfg = await cfgResp.json();
+                    window.OPAI_SUPABASE_URL = cfg.supabase_url;
+                    window.OPAI_SUPABASE_ANON_KEY = cfg.supabase_anon_key;
+                    if (cfg.auth_disabled) window.OPAI_AUTH_DISABLED = true;
+                }
+            } catch (e) {
+                console.warn('[View] Could not fetch auth config:', e);
+            }
+
+            // Step 2: Initialize auth — require login
+            if (typeof opaiAuth !== 'undefined' && opaiAuth.init) {
+                const user = await opaiAuth.init({ allowAnonymous: false });
+                // If init returned null AND didn't redirect, show login wall
+                if (!user && !window.OPAI_AUTH_DISABLED) {
+                    const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
+                    contentEl.innerHTML = '<div class="view-auth-wall">' +
+                        '<h2>Authentication Required</h2>' +
+                        '<p>You need to be logged in to view workspace documents.</p>' +
+                        '<a href="/auth/login?return=' + returnUrl + '" class="login-btn">Log In</a>' +
+                        '</div>';
+                    return;
+                }
+            }
+
+            // Step 3: Get token for API calls
+            let token = null;
+            if (typeof opaiAuth !== 'undefined' && opaiAuth.getToken) {
+                token = await opaiAuth.getToken();
+            }
+
+            if (!token && !window.OPAI_AUTH_DISABLED) {
+                const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
+                contentEl.innerHTML = '<div class="view-auth-wall">' +
+                    '<h2>Authentication Required</h2>' +
+                    '<p>Please log in to view workspace documents.</p>' +
+                    '<a href="/auth/login?return=' + returnUrl + '" class="login-btn">Log In</a>' +
+                    '</div>';
+                return;
+            }
+
+            // Fetch the file via authed API
+            try {
+                const resp = await opaiAuth.fetchWithAuth('/docs/api/view?path=' + encodeURIComponent(filePath));
+
+                if (resp.status === 401 || resp.status === 403) {
+                    contentEl.innerHTML = '<div class="view-error"><h2>Access Denied</h2>' +
+                        '<p>You don\'t have permission to view this file.</p></div>';
+                    return;
+                }
+
+                if (resp.status === 404) {
+                    contentEl.innerHTML = '<div class="view-error"><h2>File Not Found</h2>' +
+                        '<p><code>' + escHtml(filePath) + '</code> does not exist.</p>' +
+                        '<p><a href="/docs/">Browse docs</a></p></div>';
+                    return;
+                }
+
+                if (!resp.ok) {
+                    const err = await resp.json().catch(function() { return {}; });
+                    contentEl.innerHTML = '<div class="view-error"><h2>Error</h2>' +
+                        '<p>' + escHtml(err.detail || 'Could not load file') + '</p></div>';
+                    return;
+                }
+
+                const data = await resp.json();
+                renderFile(data);
+
+            } catch (e) {
+                contentEl.innerHTML = '<div class="view-error"><h2>Connection Error</h2>' +
+                    '<p>Could not reach the docs API. Is the service running?</p></div>';
+            }
+        }
+
+        function renderFile(data) {
+            // Meta bar
+            let metaHtml = '<div class="view-meta">';
+            metaHtml += '<span class="view-meta-tag">' + escHtml(data.type) + '</span>';
+            metaHtml += '<span class="view-meta-tag">' + formatBytes(data.size) + '</span>';
+            metaHtml += '<span class="view-meta-tag">' + escHtml(data.name) + '</span>';
+            metaHtml += '</div>';
+
+            if (data.type === 'markdown') {
+                // Configure marked renderer
+                const renderer = new marked.Renderer();
+                renderer.link = function(token) {
+                    const href = token.href || '';
+                    const text = token.text || '';
+                    if (href.startsWith('http')) {
+                        return '<a href="' + href + '" target="_blank" rel="noopener">' + text + '</a>';
+                    }
+                    return '<a href="' + href + '">' + text + '</a>';
+                };
+
+                const html = marked.parse(data.content, { renderer: renderer, gfm: true, breaks: false });
+                contentEl.innerHTML = metaHtml + '<div class="markdown-body">' + html + '</div>';
+            } else {
+                contentEl.innerHTML = metaHtml + '<pre class="raw-content">' + escHtml(data.content) + '</pre>';
+            }
+        }
+
+        function escHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        boot();
+    })();
+    </script>
+</body>
+</html>

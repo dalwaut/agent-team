@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# gws-as — Run GWS CLI as any @paradisewebfl.com user via domain-wide delegation.
+#
+# Usage:
+#   ./scripts/gws-as dallas@paradisewebfl.com gmail users messages list --params '{"userId":"me","maxResults":5}'
+#   ./scripts/gws-as denise@paradisewebfl.com drive files list --params '{"pageSize":10}'
+
+set -euo pipefail
+
+if [ $# -lt 2 ]; then
+    echo "Usage: gws-as <user@paradisewebfl.com> <gws args...>"
+    echo "Example: gws-as dallas@paradisewebfl.com gmail users messages list --params '{\"userId\":\"me\",\"maxResults\":5}'"
+    exit 1
+fi
+
+USER_EMAIL="$1"
+shift
+
+# Mint a delegated token via Python
+TOKEN=$(python3 -c "
+import asyncio, sys
+sys.path.insert(0, '$(dirname "$0")/../tools/shared')
+from google_auth import get_delegated_token
+print(asyncio.run(get_delegated_token('${USER_EMAIL}')))
+")
+
+# Pass token to GWS CLI via env var
+GOOGLE_WORKSPACE_CLI_TOKEN="$TOKEN" exec gws "$@"

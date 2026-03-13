@@ -59,12 +59,38 @@ def prepare_workspace(
         context_file.write_text(json.dumps(task_context, indent=2, default=str))
 
         # Also write a human-readable summary
-        summary_file = context_dir / "task-summary.txt"
+        summary_file = context_dir / "task-summary.md"
         lines = [f"{k}: {v}" for k, v in task_context.items()]
         summary_file.write_text("\n".join(lines))
 
+        # Symlink project directory if task is tied to a project
+        project_path = task_context.get("project") or task_context.get("project_path", "")
+        if project_path:
+            _symlink_project(run_dir, project_path)
+
     logger.info("Prepared workspace for %s run %s at %s", worker_id, run_id, run_dir)
     return run_dir
+
+
+def _symlink_project(run_dir: Path, project_path: str):
+    """Symlink a project directory into the run workspace as project/."""
+    if not project_path:
+        return
+
+    # Resolve to absolute path
+    if not project_path.startswith("/"):
+        project_dir = config.OPAI_ROOT / project_path
+    else:
+        project_dir = Path(project_path)
+
+    if not project_dir.is_dir():
+        logger.warning("Project directory not found for symlink: %s", project_dir)
+        return
+
+    target = run_dir / "project"
+    if not target.exists():
+        target.symlink_to(project_dir)
+        logger.info("Symlinked project %s into workspace", project_dir.name)
 
 
 def _symlink_shared(run_dir: Path, shared_dir: Path):

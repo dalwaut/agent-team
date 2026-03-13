@@ -65,6 +65,47 @@ async def run(business_id: str, job_config: dict):
         if feedback_lines:
             extra_context += f"\n\n## Recent Feedback on Past Content\nApply these notes to improve this piece:\n{feedback_lines}"
 
+    # Optional NotebookLM topic research (when research_first: true in config)
+    # Step 1: Query organized Business & HELM RAG notebook for grounding
+    # Step 2: If topic needs web research, use ephemeral notebook
+    if job_config.get("research_first") and topic:
+        try:
+            import sys
+            from pathlib import Path
+            sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared"))
+            from nlm import (
+                is_available, get_client, ensure_notebook,
+                research_topic, ask_notebook, ask_rag,
+            )
+
+            if is_available():
+                biz_name = business.get("name", "Business")
+                client = await get_client()
+                async with client:
+                    # Check organized RAG for business context first
+                    rag_result = await ask_rag(
+                        client,
+                        f"What business context, playbooks, or strategies are relevant to: {topic}",
+                        topic_hint="business helm strategy",
+                    )
+                    if rag_result and len(rag_result.get("answer", "")) > 100:
+                        extra_context += f"\n\n## Business Context (RAG)\n{rag_result['answer']}"
+                        log.info("RAG business context added for: %s", topic[:50])
+
+                    # Then do web research for external trends/facts
+                    nb_id = await ensure_notebook(client, f"HELM: {biz_name}")
+                    await research_topic(client, nb_id, topic)
+                    research_result = await ask_notebook(
+                        client, nb_id,
+                        f"Summarize key facts, recent trends, and expert perspectives on: {topic}"
+                    )
+                    research_text = research_result.get("answer", "")
+                    if research_text:
+                        extra_context += f"\n\n## Topic Research (NotebookLM)\n{research_text}"
+                        log.info("NotebookLM topic research added for: %s", topic[:50])
+        except Exception as nlm_err:
+            log.debug("NotebookLM topic research unavailable: %s", nlm_err)
+
     # Determine task type based on content_type
     task_type = "social_post" if content_type in ("social_post", "tweet", "linkedin_post") else "content_generate"
 

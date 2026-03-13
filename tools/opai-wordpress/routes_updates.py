@@ -35,9 +35,20 @@ async def _get_site(site_id: str, user: AuthUser) -> dict:
             url += f"&user_id=eq.{user.id}"
         resp = await client.get(url, headers=_sb_headers_service())
         sites = resp.json() if resp.status_code == 200 else []
-        if not sites:
-            raise HTTPException(404, "Site not found")
-        return sites[0]
+        if sites:
+            return sites[0]
+        if not user.is_admin:
+            from routes_sites import _get_shared_site_owner_ids
+            for e in await _get_shared_site_owner_ids(client, user.id):
+                oid = e.get("shared_by")
+                if not oid:
+                    continue
+                r2 = await client.get(
+                    f"{_sb_url('wp_sites')}?id=eq.{site_id}&user_id=eq.{oid}&select=*",
+                    headers=_sb_headers_service())
+                if r2.status_code == 200 and r2.json():
+                    s = r2.json()[0]; s["_shared"] = True; return s
+        raise HTTPException(404, "Site not found")
 
 
 def _wp_auth_header(site: dict) -> dict:

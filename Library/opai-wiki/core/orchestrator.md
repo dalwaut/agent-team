@@ -1,49 +1,118 @@
-# Orchestrator
-> Last updated: 2026-03-02 | Source: `config/orchestrator.json`, `tools/opai-engine/background/`
+# Orchestrator (Engine)
+> Last updated: 2026-03-05 | Source: `tools/opai-engine/app.py`, `config/orchestrator.json`, `tools/opai-engine/background/`
 
-> **v2 MIGRATION (2026-02-25)**: The standalone orchestrator has been **merged into the [OPAI Engine](opai-v2.md)**. All scheduling, health monitoring, task routing, and feedback processing now runs as Python background tasks inside `tools/opai-engine/background/`. The Node.js daemon at `tools/opai-orchestrator/` has been deleted. The `opai-orchestrator` systemd unit no longer exists. See [OPAI v2](opai-v2.md) for the current architecture.
->
-> **Engine equivalents**:
-> - `index.js` setInterval loops → `background/scheduler.py` (async Python scheduler)
-> - Service health checks → `background/service_monitor.py`
-> - Resource monitoring → `background/resource_monitor.py`
-> - Task processing → `services/task_processor.py`
-> - Stale job sweeper → `background/stale_job_sweeper.py`
-> - Sandbox scanning → `background/sandbox_scanner.py`
-> - Feedback triggers → `background/feedback_loop.py`
+> **v2 MIGRATION (2026-02-25)**: The standalone Node.js orchestrator has been **merged into the OPAI Engine**. All scheduling, health monitoring, task routing, and feedback processing now runs as Python async background tasks inside `tools/opai-engine/background/`. The Node.js daemon at `tools/opai-orchestrator/` has been deleted. The `opai-orchestrator` systemd unit no longer exists. See [OPAI v2](opai-v2.md) for the migration details.
 
 ## Overview
 
-Central daemon that coordinates all OPAI subsystems. Handles cron-based scheduling, service health monitoring with auto-restart, resource-aware task execution, and task registry processing with intelligent routing.
+The OPAI Engine (`tools/opai-engine/`, port 8080) is the unified core daemon that coordinates all OPAI subsystems. It runs as a single FastAPI application (v3.5.0) with 12+ async background tasks handling: cron-based scheduling, service health monitoring, resource tracking, task processing, heartbeat, fleet coordination, NFS dispatch, assembly pipeline, memory consolidation, bottleneck detection, process sweeping, and stale job cleanup.
 
 ## Architecture
 
 ```
-Main Loop (Node.js daemon)
-  ├─ setInterval(checkScheduledTasks, 60s)    → email checks, squad runs, task processing
-  ├─ setInterval(monitorAllServices, 300s)    → systemctl health queries, auto-restart
-  ├─ setInterval(checkResources, 30s)         → CPU/memory via top
-  ├─ setInterval(saveState, 300s)             → persist to orchestrator-state.json
-  └─ setInterval(sweepStaleJobs, 120s)        → auto-clear zombie jobs older than 20m
+Engine (FastAPI + Uvicorn, port 8080)
+  ├── 29 route modules (health, tasks, workers, fleet, assembly, mail, agent-feedback, etc.)
+  ├── WebSocket streams (real-time dashboard updates)
+  └── 12+ async background tasks:
+      ├── scheduler (60s)            → cron-based task dispatch
+      ├── service-monitor (300s)     → HTTP health probes + systemctl checks
+      ├── auto-executor (30s)        → auto-run approved tasks
+      ├── resource-monitor (30s)     → CPU/memory tracking
+      ├── updater (300s)             → component scanning + suggestions
+      ├── stale-sweeper (120s)       → zombie job cleanup
+      ├── worker-health (60s)        → managed worker process health
+      ├── heartbeat (1800s)          → aggregation, detection, notifications
+      ├── bottleneck-detector (6h)   → approval pattern analysis
+      ├── fleet-coordinator (5m)     → work dispatch + Team Hub integration
+      ├── nfs-dispatcher (30s)       → NFS drop-folder worker comms
+      ├── process-sweeper (300s)     → orphan Claude process cleanup
+      ├── feedback-decay (24h)       → agent feedback confidence decay
+      ├── notebooklm-sync (daily)    → wiki sync to NotebookLM (optional)
+      └── chat-fast-loop (30s)       → Google Chat message polling (optional)
 ```
 
-- **Non-blocking**: All spawned processes are async/Promise-based
+- **Async Python**: All background loops are `asyncio.create_task()` coroutines
 - **Resource-aware**: Defers tasks when CPU > 80% or memory > 85%
-- **Job timeouts**: Email checks timeout at 5 min, agent squads at 15 min, sandbox tasks at 5 min (configurable)
-- **Stale job sweeper**: Every 2 minutes, auto-clears zombie jobs using two-tier logic:
-  - **Batch jobs** (email_check, agent_squad, user_sandbox): swept if older than 20 minutes
-  - **Interactive sessions** (ide_session, terminal, claude_session): only swept after 20 min of **no user interaction** (`lastActivity` tracking) — never by age alone
-- **Human-in-the-loop**: Defaults to `propose` mode — writes HITL briefings for non-trivial tasks
-- **Zero production deps**: Only uses Node.js built-ins + system utilities
+- **Stale job sweeper**: Every 2 minutes, auto-clears zombie jobs using two-tier logic
+- **Process sweeper**: Kills orphan Claude CLI processes older than configurable threshold
+- **Human-in-the-loop**: Defaults to `propose` mode -- writes HITL briefings for non-trivial tasks
+- **Managed workers**: Engine spawns and manages child processes (email-agent) via WorkerManager
+
+### Shared Instances
+
+The Engine creates several shared singleton objects at startup that are wired together:
+
+```python
+worker_manager = WorkerManager()
+worker_mail = WorkerMail()
+bottleneck_detector = BottleneckDetector()
+fleet_coordinator = FleetCoordinator(worker_manager, scheduler, worker_mail)
+nfs_dispatcher = NfsDispatcher(fleet_coordinator)
+assembly_pipeline = AssemblyPipeline(fleet_coordinator, worker_manager, worker_mail)
+```
+
+### Route Modules (28)
+
+| Module | Prefix | Purpose |
+|--------|--------|---------|
+| `health` | `/api/health/*` | Service health summary, per-service probes, system stats |
+| `monitor` | `/api/monitor/*` | Dashboard data: agents, logs, Claude sessions |
+| `tasks` | `/api/tasks/*` | Task registry CRUD, execution, HITL routing |
+| `feedback` | `/api/feedback/*` | User feedback collection and processing |
+| `audit` | `/api/audit/*` | Audit log viewer |
+| `suggestions` | `/api/suggestions/*` | Updater suggestions management |
+| `users` | `/api/users/*` | User management, sandbox provisioning |
+| `claude_usage` | `/api/claude/*` | Claude subscription usage tracking |
+| `workers` | `/api/workers/*` | WorkerManager: managed process control, workforce roster (`/roster` — unified agents/squads/workers/templates/swarm) |
+| `heartbeat` | `/api/heartbeat/*` | Heartbeat data, daily notes, manual trigger |
+| `consolidator` | `/api/consolidator/*` | Memory consolidation status and trigger |
+| `command_channels` | `/api/command-channels/*` | Trust-level command routing |
+| `bottleneck` | `/api/bottleneck/*` | Bottleneck detection results |
+| `fleet` | `/api/fleet/*` | Fleet coordinator state, dispatch history |
+| `action_items` | `/api/action-items` | Aggregated priority-scored action feed |
+| `nfs` | `/api/nfs/*` | NFS dispatcher state, worker status |
+| `assembly` | `/api/assembly/*` | Assembly pipeline runs, phase control |
+| `demos` | `/api/demos/*` | Vercel demo platform management |
+| `mail` | `/api/mail/*` | Worker mail system debugging |
+| `google_chat` | `/api/google-chat/*` | Google Chat webhook + polling |
+| `notifications` | `/api/notifications/*` | Personal notification feed |
+| `newsletter` | `/api/newsletter/*` | Feature announcement newsletter |
+| `notebooklm` | `/api/notebooklm/*` | NotebookLM integration API |
+| `ws_router` | `/ws/*` | WebSocket streams (stats, agents, logs, Claude) |
+
+## Endpoint Security (2026-03-05)
+
+All Engine route modules enforce admin authentication via `dependencies=[Depends(require_admin)]`. 40 endpoints across 8 route modules are protected:
+
+| Module | Protected Endpoints | Notes |
+|--------|---------------------|-------|
+| `assembly` | 7 | All endpoints |
+| `action_items` | 6 | All endpoints |
+| `notebooklm` | 7 | All endpoints |
+| `notifications` | 4 | All endpoints |
+| `newsletter` | 4 | All endpoints |
+| `mail` | 6 | All endpoints |
+| `demos` | 4 | POST/PUT/DELETE only |
+| `google_chat` | 2 | POST only |
+
+**Intentionally public endpoints** (no auth required):
+- `GET /api/demos/` — demo list (read-only, no sensitive data)
+- `GET /api/nfs/*` — NFS monitoring (read-only status)
+- `GET /api/google-chat/status` — chat poller status (read-only)
+
+Pre-existing modules (`health`, `tasks`, `workers`, `fleet`, `heartbeat`, etc.) already had auth via `get_current_user` or `require_admin`. The `nfs` dispatch endpoint was already protected; only GET monitoring endpoints remain public.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `tools/opai-orchestrator/index.js` | Main application (~1030 lines): scheduling, health, task processing, feedback processor + actor, job management |
-| `config/orchestrator.json` | Schedules, resource limits, service config, task processor settings, API config |
-| `tools/opai-orchestrator/data/orchestrator-state.json` | Persistent state: active jobs, scheduled task times, service health, stats |
-| `logs/orchestrator.log` | Activity log (console + file) |
+| `tools/opai-engine/app.py` | FastAPI entrypoint (~290 lines): imports 28 routers, wires 12+ background tasks in lifespan, shared instances |
+| `tools/opai-engine/config.py` | Unified config (~310 lines): workspace paths, engine data files, health services map, systemd services list, orchestrator config loader |
+| `config/orchestrator.json` | Schedules, resource limits, service config, task processor settings, fleet/heartbeat/NFS/evolve config |
+| `tools/opai-engine/data/engine-state.json` | Persistent state: scheduler state, active jobs |
+| `tools/opai-engine/data/fleet-state.json` | Fleet coordinator: active dispatches, history |
+| `tools/opai-engine/data/heartbeat-state.json` | Heartbeat: cycle count, daily note date |
+| `tools/opai-engine/data/assembly-runs.json` | Assembly pipeline: active build runs |
 
 ## Configuration
 
@@ -64,10 +133,28 @@ Main Loop (Node.js daemon)
 | `sandbox` | `timeout_seconds` | `300` | Sandbox job timeout |
 | `resources` | `max_cpu_percent` | `80` | Defer tasks above this |
 | `resources` | `max_memory_percent` | `85` | Defer tasks above this |
-| `resources` | `max_parallel_jobs` | `3` | Max concurrent executions |
+| `resources` | `max_parallel_jobs` | `3` | Max concurrent executions (**lightweight tasks bypass**: newsletter, health_check, pollers) |
 | `task_processor` | `auto_execute` | `false` | Don't auto-run without approval |
 | `task_processor` | `cooldown_minutes` | `30` | Min time between task re-triggers |
-| `api` | `port` | `3737` | API port (reserved, not fully implemented) |
+
+### Health Services Map
+
+The Engine probes these services via HTTP `/health` endpoint:
+
+| Service | Port |
+|---------|------|
+| engine | 8080 |
+| portal | 8090 |
+| files | 8086 |
+| team-hub | 8089 |
+| users | 8084 |
+| wordpress | 8096 |
+| vault | 8105 |
+| browser | 8107 |
+| brain | 8101 |
+| studio | 8108 |
+
+Systemd-only services (no HTTP endpoint): `opai-discord-bot`.
 
 ## Scheduled Task Types
 
@@ -76,26 +163,34 @@ Main Loop (Node.js daemon)
 | `email_check` | Fetch & classify emails | `node tools/email-checker/index.js --check` |
 | `workspace_audit` | Full workspace analysis | `bash scripts/run_squad.sh -s workspace` |
 | `knowledge_sync` | Knowledge management | `bash scripts/run_squad.sh -s knowledge` |
-| `health_check` | Service health monitoring | `systemctl --user is-active opai-*` |
-| `task_process` | Task registry processing | Auto-route → HITL briefings → optional squad triggers |
-| `user_sandbox_scan` | Scan user sandbox queues | Read `/workspace/users/*/tasks/queue.json`, execute pending tasks within sandbox |
-| `feedback_process` | Classify and file user feedback | `node tools/feedback-processor/index.js` |
-| `feedback_act` | Create tasks for HIGH/MEDIUM feedback | `node tools/feedback-processor/feedback-actor.js` |
+| `health_check` | Service health monitoring | HTTP probes + `systemctl --user is-active` |
+| `task_process` | Task registry processing | Auto-route, HITL briefings, optional squad triggers |
+| `user_sandbox_scan` | Scan user sandbox queues | Read `/workspace/users/*/tasks/queue.json`, execute pending |
+| `feedback_process` | Classify and file user feedback | Background `feedback_loop.py` |
+| `feedback_act` | Create tasks for HIGH/MEDIUM feedback | Background `feedback_loop.py` |
 | `dep_scan_daily` | Daily dependency vulnerability scan | `bash scripts/run_squad.sh -s dep_scan` |
 | `secrets_scan_daily` | Daily secrets/credential leak scan | `bash scripts/run_squad.sh -s secrets_scan` |
 | `security_quick` | Quick security posture check | `bash scripts/run_squad.sh -s security_quick` |
 | `incident_check` | Incident detection and response check | `bash scripts/run_squad.sh -s incident` |
 | `a11y_weekly` | Weekly accessibility audit | `bash scripts/run_squad.sh -s a11y` |
+| `daily_evolve` | Daily evolution pipeline (2am) | 5-phase: auto_safe -> apply fixes -> evolve -> meta-assessment -> email |
+| `daily_agent_newsletter` | 7 AM Chat Agent newsletter | Feature announcements + activity + gaps (see [Google Workspace](../integrations/google-workspace.md)) |
+| `workspace_mention_poll` | @agent doc comment poller (2min) | `background/workspace_mentions.py` |
+| `workspace_chat_poll` | Google Chat message poller (2min) | `background/workspace_chat.py` |
+| `coedit_activity_check` | Co-edit session timeout (2min) | Check Drive revisions, timeout inactive sessions |
+| `context_harvest` | Context harvester (every 4h) | Worker-based context extraction |
+| `workspace_folder_audit` | Nightly Google Workspace audit | `background/workspace_agent.py` |
+| `knowledge_refresh` | Nightly business context rebuild (02:30) | `background/knowledge_refresher.py` |
 
-The five security and accessibility squads (`dep_scan_daily`, `secrets_scan_daily`, `security_quick`, `incident_check`, `a11y_weekly`) run on cron schedules defined in `orchestrator.json`. The daily scans run overnight, `security_quick` runs every few hours, `incident_check` runs frequently for early detection, and `a11y_weekly` runs once per week. Each spawns the corresponding squad via `run_squad.sh`.
+The security squads run on cron schedules defined in `orchestrator.json`. The `daily_evolve` pipeline consolidates what was previously two separate schedules into a single 5-phase automation -- see [Self-Evolution Workflow](../../workflows/self-evolution.md) and [Meta-Assessment](../infra/meta-assessment.md).
 
 ## Task Registry Processing
 
 When the task processor runs (every 15 min):
 
-1. **Auto-route orphaned tasks** — Tasks with no assignee get classified via work-companion (`classifyTask` → `routeTask`)
-2. **Write HITL briefings** — Pending tasks with `mode: 'propose'` get a briefing written to `reports/HITL/{taskId}.md`
-3. **Optional auto-execute** — If `auto_execute: true` and task is agent-assigned with safe mode, trigger squad run
+1. **Auto-route orphaned tasks** -- Tasks with no assignee get classified and routed
+2. **Write HITL briefings** -- Pending tasks with `mode: 'propose'` get a briefing written to `reports/HITL/{taskId}.md`
+3. **Optional auto-execute** -- If `auto_execute: true` and task is agent-assigned with safe mode, trigger squad run
 
 ### HITL Briefing Format
 
@@ -111,59 +206,37 @@ When the task processor runs (every 15 min):
 bash scripts/run_squad.sh -s {squad}
 ```
 
-Written to `reports/HITL/{taskId}.md`. Consumed by the [Task Control Panel](task-control-panel.md) My Queue view for human review (approve/reject/defer/reassign).
-
-### Task Categories
-
-The registry holds two types of tasks:
-- **System tasks** (6): Internal OPAI tasks that stay in the registry for agent execution and lifecycle testing
-- **Work tasks** (31): Client/project tasks migrated to [Team Hub](team-hub.md) workspaces via `scripts/migrate-registry-to-hub.py`, tagged with `registry:{task_id}` for traceability
-
-### Known Gap
-
-Squad runs (`runAgentSquad()`) currently don't receive task context (task ID, description). The squad executes generically without knowing which registry task triggered it. This means agent reports are not automatically linked back to specific tasks.
+Written to `reports/HITL/{taskId}.md`. Consumed by the Engine dashboard My Queue tab for human review (approve/reject/defer/reassign).
 
 ## How to Use
 
 ```bash
 # Service management
-systemctl --user start opai-orchestrator
-systemctl --user status opai-orchestrator
-journalctl --user -u opai-orchestrator -f
+systemctl --user start opai-engine
+systemctl --user status opai-engine
+journalctl --user -u opai-engine -f
 
-# View state
-cat tools/opai-orchestrator/data/orchestrator-state.json | jq .stats
+# View scheduler state
+cat tools/opai-engine/data/engine-state.json | jq .scheduler
+
+# Restart via opai-control
+./scripts/opai-control.sh restart engine
 ```
-
-## User Sandbox Scanning
-
-Every 5 minutes, `scanUserSandboxes()` checks for pending tasks in user sandbox queues:
-
-1. Reads `/workspace/users/*/tasks/queue.json` for `pending` tasks
-2. Validates against per-user limits from `config/sandbox.json`
-3. Checks global `max_parallel_jobs: 3` (user jobs share this pool)
-4. Picks up task → sets `in_progress` → creates central registry entry (`source: "user-sandbox"`)
-5. Executes within user's sandbox directory (isolated)
-6. Writes reports to user's `reports/` dir, updates both queues
-
-See [Sandbox System](sandbox-system.md) for full sandbox architecture.
 
 ## Dependencies
 
-- **Monitors**: [Discord Bridge](discord-bridge.md) (critical), [Email Checker](email-checker.md), task processor
-- **Spawns**: [Agent Framework](agent-framework.md) (`run_squad.sh`), [Email Checker](email-checker.md) (`index.js --check`), [Feedback System](feedback-system.md) (`feedback-processor/index.js` + `feedback-actor.js`)
-- **Scans**: [Sandbox System](sandbox-system.md) (`/workspace/users/*/tasks/queue.json` every 5 min)
-- **Reads**: `config/orchestrator.json`, `tasks/registry.json`
-- **Writes**: `orchestrator-state.json`, `logs/orchestrator.log`, `reports/HITL/*.md`
-- **Consumed by**: [Task Control Panel](task-control-panel.md) — My Queue reads HITL briefings, HITL respond endpoint updates registry and archives briefings
-- **Uses**: work-companion for task classification/routing
+- **Spawns**: [Agent Framework](agent-framework.md) (`run_squad.sh`), [Email Agent](../integrations/email-agent.md) (via WorkerManager)
+- **Scans**: [Sandbox System](sandbox-system.md) (`/workspace/users/*/tasks/queue.json`)
+- **Reads**: `config/orchestrator.json`, `tasks/registry.json`, `config/workers.json`
+- **Writes**: `data/engine-state.json`, `data/fleet-state.json`, `data/heartbeat-state.json`, `reports/HITL/*.md`
+- **Integrates with**: [Team Hub](../tools/team-hub.md) (internal API for task/item CRUD), [Telegram](../integrations/telegram-bridge.md) (notifications), [Google Workspace](../integrations/google-workspace.md) (Drive/Chat/Docs polling)
 - **Managed by**: [Services & systemd](services-systemd.md) (`opai-engine` service)
 
 ## v3.5 Configuration Additions
 
 The following sections were added to `config/orchestrator.json` for the v3.5 "Team Hub Backbone" phase:
 
-### `fleet_coordinator` — Work Dispatch
+### `fleet_coordinator` -- Work Dispatch
 
 Routes identified work to the right worker (local or NFS), tracks execution, integrates with Team Hub. See [Fleet Coordinator & Action Items](../infra/fleet-action-items.md).
 
@@ -186,7 +259,7 @@ Routes identified work to the right worker (local or NFS), tracks execution, int
 }
 ```
 
-### `proactive_intelligence` — Pattern Detection
+### `proactive_intelligence` -- Pattern Detection
 
 Heartbeat-driven detection of overdue items, stalled assignments, recurring patterns, and idle workers. See [Heartbeat](../infra/heartbeat.md).
 
@@ -203,7 +276,7 @@ Heartbeat-driven detection of overdue items, stalled assignments, recurring patt
 }
 ```
 
-### `nfs_dispatcher` — NFS Drop-Folder Communication
+### `nfs_dispatcher` -- NFS Drop-Folder Communication
 
 Bridges Engine to external ClaudeClaw workers via file-based inbox/outbox protocol. See [NFS Dispatcher](../infra/nfs-dispatcher.md).
 
@@ -220,7 +293,25 @@ Bridges Engine to external ClaudeClaw workers via file-based inbox/outbox protoc
 }
 ```
 
-### `bottleneck_detector` — Approval Bottleneck Detection
+### `evolve` -- Daily Evolution Pipeline
+
+Consolidated automation that replaced separate `self_assessment` + `evolution` schedules. Runs at 2am via `daily_evolve` cron. See [Self-Evolution Workflow](../../workflows/self-evolution.md) and [Meta-Assessment](../infra/meta-assessment.md).
+
+```json
+"evolve": {
+    "enabled": true,
+    "daily_evolve": {
+        "frequency_type": "daily",
+        "frequency_value": 1,
+        "time_hour": 2,
+        "time_minute": 0,
+        "phases": ["auto_safe", "apply_fixes", "evolve", "meta_assess", "email"],
+        "report_retention_days": 14
+    }
+}
+```
+
+### `bottleneck_detector` -- Approval Bottleneck Detection
 
 Tracks approval patterns and flags workflow bottlenecks. Runs every 6 hours.
 
@@ -233,7 +324,23 @@ Tracks approval patterns and flags workflow bottlenecks. Runs every 6 hours.
 }
 ```
 
-### `command_channels` — Trust Model
+### `process_sweeper` -- Orphan Process Cleanup
+
+Kills orphan Claude CLI processes that exceed age/count thresholds. Configurable dry-run mode.
+
+```json
+"process_sweeper": {
+    "enabled": true,
+    "interval_seconds": 300,
+    "min_age_seconds": 600,
+    "max_kills_per_cycle": 10,
+    "sigterm_wait_seconds": 5,
+    "dry_run": false,
+    "notify_on_kill": true
+}
+```
+
+### `command_channels` -- Trust Model
 
 Defines per-channel trust levels for incoming commands. Channels can be `command` (auto-execute), `proposal` (create task for review), or `context` (read-only).
 

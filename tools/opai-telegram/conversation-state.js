@@ -377,6 +377,40 @@ function formatDuration(ms) {
   return `${Math.floor(h / 24)}d`;
 }
 
+/**
+ * Get the N most recent messages from a scope's ring buffer.
+ * Used to always inject recent topic context into prompts.
+ *
+ * @param {string} scopeKey
+ * @param {number} count - Number of messages to retrieve (default 5)
+ * @returns {Array<{role: string, username: string, content: string, timestamp: number}>}
+ */
+function getRecentMessages(scopeKey, count = 5) {
+  const data = loadScope(scopeKey);
+  const msgs = data.recentMessages || [];
+  return msgs.slice(-count);
+}
+
+/**
+ * Format recent messages as a concise context block for prompt injection.
+ *
+ * @param {string} scopeKey
+ * @param {number} count - Number of messages to include (default 5)
+ * @returns {string} Formatted context block (empty string if no messages)
+ */
+function formatRecentContext(scopeKey, count = 5) {
+  const msgs = getRecentMessages(scopeKey, count);
+  if (msgs.length === 0) return '';
+
+  const lines = msgs.map(m => {
+    const who = m.role === 'user' ? m.username : 'OP';
+    const ago = formatAgo(Date.now() - m.timestamp);
+    return `[${ago}] ${who}: ${m.content}`;
+  });
+
+  return '--- Recent messages ---\n' + lines.join('\n') + '\n--- End recent ---';
+}
+
 module.exports = {
   getContextStrategy,
   recordMessage,
@@ -387,4 +421,6 @@ module.exports = {
   listActiveScopes,
   buildScopeKey,
   computeState,
+  getRecentMessages,
+  formatRecentContext,
 };

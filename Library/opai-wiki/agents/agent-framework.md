@@ -1,5 +1,5 @@
 # Agent Framework
-> Last updated: 2026-02-28 | Source: `team.json`, `scripts/run_squad.sh`, `scripts/run_builder.sh`, `scripts/prompt_*.txt`
+> Last updated: 2026-03-05 | Source: `team.json`, `scripts/run_squad.sh`, `scripts/run_builder.sh`, `scripts/prompt_*.txt`
 
 ## Overview
 
@@ -12,11 +12,16 @@ run_squad.sh -s <squad>
   ├─ preflight.sh (validate env)
   ├─ Read team.json → resolve agents → separate parallel vs last
   ├─ Phase 1: Launch parallel agents (max 4 concurrent)
-  │     └─ mktemp prompt → cat prompt | claude -p → write report
+  │     └─ fetch hints → mktemp prompt → cat prompt | claude -p → write report
   ├─ Phase 2: Run sequential ("last") agents
   │     └─ manager, executors, dispatcher (read Phase 1 reports)
-  └─ Copy reports to reports/latest/ + write .manifest.json
+  ├─ Copy reports to reports/latest/ + write .manifest.json
+  └─ post_squad_hook.py: extract <!-- FEEDBACK --> → Engine API
 ```
+
+### Agent Feedback Loop
+
+Agents compound knowledge across runs via the [Agent Feedback Loop](../infra/agent-feedback-loops.md) system. `build_prompt()` fetches relevant hints from Engine before each run, and `post_squad_hook.py` extracts structured feedback from reports after each run. 5 prompts currently emit feedback (security, self_assessment, accuracy, tools_monitor, researcher).
 
 - **Stateless agents**: All run via `claude -p --output-format text`, stdout only
 - **Temp file prompts**: Avoids shell quoting issues (`/tmp/claude_prompt_*.XXXXXX`)
@@ -63,6 +68,7 @@ run_squad.sh -s <squad>
 | `executor_safe` | execution | last | Auto-apply only non-breaking fixes |
 | `executor_full` | execution | last | Auto-apply all improvements |
 | `self_assessment` | meta | last | Detect team gaps, propose new agents |
+| `meta_assessment` | meta | last | Second-order loop: verify fix pipeline, cross-validate agents, measure token efficiency, audit prompts (see [Meta-Assessment](../infra/meta-assessment.md)) |
 | `notes_curator` | operations | parallel | Organize notes/ folder |
 | `library_curator` | operations | parallel | Maintain Library/ knowledge base |
 | `report_dispatcher` | orchestration | last | Extract actions, generate HITL briefings |
@@ -148,7 +154,7 @@ See [wshobson-agents.md](wshobson-agents.md) for the full squad reference with a
 | `email` | email_manager, report_dispatcher | Email management |
 | `node_update` | node_updater, tools_monitor, report_dispatcher | Safe dependency upgrades |
 | `onboard` | project_onboarder, report_dispatcher | Onboard external projects |
-| `evolve` | self_assessment | Assess gaps, propose agents |
+| `evolve` | self_assessment, meta_assessment | Assess gaps + verify the assessment pipeline itself |
 | `dispatch` | report_dispatcher | Process reports |
 | `build` | builder | Implement a task/feature |
 | `auto_safe` | accuracy, health, security, reviewer, executor_safe | Auto-fix safe changes |
@@ -298,6 +304,7 @@ Dynamic pools are a superset of the squad's regular agents, giving the composer 
 | `review` | 8 | 12 | +security, perf_profiler, db_auditor, ux_reviewer, a11y_auditor |
 | `plan` | 6 | 7 | +prdgent, rd_analyst |
 | `workspace` | 6 | 7 | +email_manager, project_onboarder |
+| `forge` | 7 | 9 | +accuracy, perf_profiler, llm_engineer |
 
 ### Examples
 

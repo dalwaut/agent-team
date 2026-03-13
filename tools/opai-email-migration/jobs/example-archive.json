@@ -1,0 +1,37 @@
+{
+  "job_id": "archive-inactive-001",
+  "source": {
+    "provider": "m365",
+    "host": "outlook.office365.com",
+    "port": 993,
+    "auth": "app_password",
+    "accounts": [
+      {
+        "email": "inactive1@domain.com",
+        "password_env": "SOURCE_PASS_INACTIVE1"
+      },
+      {
+        "email": "inactive2@domain.com",
+        "password_env": "SOURCE_PASS_INACTIVE2"
+      }
+    ]
+  },
+  "target": {
+    "provider": "hostinger",
+    "host": "imap.hostinger.com",
+    "port": 993,
+    "accounts": [
+      {
+        "email": "archive@domain.com",
+        "password_env": "TARGET_PASS_ARCHIVE"
+      }
+    ]
+  },
+  "options": {
+    "mode": "archive",
+    "folder_prefix": "Archive/{source_email}",
+    "batch_size": 100,
+    "skip_folders": ["Junk Email", "Deleted Items", "Sync Issues"],
+    "verify_after": true
+  }
+}

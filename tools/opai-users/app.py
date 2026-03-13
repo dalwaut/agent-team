@@ -13,8 +13,6 @@ from fastapi.responses import FileResponse
 
 # Add shared modules (auth) to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
-# Add monitor (routes_users) to path — reuse the same API router
-sys.path.insert(0, str(Path(__file__).parent.parent / "opai-monitor"))
 
 from routes_users import router as users_router
 
@@ -25,13 +23,13 @@ app = FastAPI(
 )
 
 # Auth config endpoint (needed by auth.js)
-import config as monitor_config
+import config
 
 @app.get("/api/auth/config")
 def auth_config():
     return {
-        "supabase_url": monitor_config.SUPABASE_URL,
-        "supabase_anon_key": monitor_config.SUPABASE_ANON_KEY,
+        "supabase_url": config.SUPABASE_URL,
+        "supabase_anon_key": config.SUPABASE_ANON_KEY,
     }
 
 # App registry — dynamically built from tools/ directory + external services

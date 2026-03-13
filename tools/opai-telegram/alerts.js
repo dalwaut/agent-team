@@ -5,9 +5,14 @@
  * Does NOT poll emails (excluded per user request).
  *
  * Alert sources:
- *   - Engine health summary (service up/down transitions)
+ *   - Engine watchdog (lightweight /health ping — detects Engine death)
  *   - WordPress site health (offline/degraded transitions)
  *   - Morning briefing (8 AM) — services, WordPress, tasks, system info
+ *
+ * Per-service health monitoring (individual service up/down) is handled by the
+ * Engine's heartbeat + notifier (tools/opai-engine/background/). Telegram only
+ * checks if the Engine ITSELF is reachable — the one thing the Engine can't
+ * self-report. See: Library/opai-wiki/infra/scheduling-architecture.md
  *
  * Task deadlines (overdue/upcoming) are ONLY reported in the morning briefing,
  * not as standalone periodic alerts.
@@ -23,11 +28,13 @@ const WP_INTERVAL = 10 * 60 * 1000;       // 10 minutes
 const BRIEFING_HOUR = 8;                    // 8 AM local time
 
 // --- State Tracking ---
-// Previous states for change detection
-let prevServiceStates = {};   // { serviceName: 'healthy'|'unreachable' }
+// Engine watchdog state (only tracks Engine reachability, not per-service)
+let prevServiceStates = {};   // { '_engine_http': 'healthy'|'unreachable' }
 let prevSiteStates = {};      // { siteId: 'healthy'|'degraded'|'offline' }
+let serviceDownSince = {};    // { '_engine_http': timestamp } — 10min grace period
 let lastBriefingDate = null;  // YYYY-MM-DD of last auto-briefing
 let alertsStarted = false;
+const ALERT_GRACE_MS = 10 * 60 * 1000;  // 10 minutes before alerting
 
 // --- HTTP Helpers ---
 
@@ -73,6 +80,9 @@ function httpGetAuth(url, token, timeout = 5000) {
 let _bot = null;
 let _chatId = null;
 let _alertThreadId = null; // optional: route alerts to a specific forum topic
+let _serverStatusThreadId = null; // optional: route status/briefings to Server Status topic
+let _personalChatId = null; // DM chat for personal briefing (owner user ID)
+let _teamGroupId = null; // WautersEdge team group chat ID
 
 function sendAlert(text, opts = {}) {
   if (!_bot || !_chatId) return;
@@ -85,42 +95,84 @@ function sendAlert(text, opts = {}) {
   });
 }
 
+function sendToServerStatus(text, opts = {}) {
+  if (!_bot || !_chatId) return;
+  const msgOpts = { parse_mode: 'Markdown' };
+  if (_serverStatusThreadId) msgOpts.message_thread_id = _serverStatusThreadId;
+  Object.assign(msgOpts, opts);
+
+  _bot.api.sendMessage(_chatId, text, msgOpts).catch(err => {
+    console.error('[TG] [ALERT] Failed to send to Server Status:', err.message);
+  });
+}
+
+function sendToPersonal(text, opts = {}) {
+  if (!_bot || !_personalChatId) return;
+  const msgOpts = { parse_mode: 'Markdown' };
+  Object.assign(msgOpts, opts);
+
+  _bot.api.sendMessage(_personalChatId, text, msgOpts).catch(err => {
+    console.error('[TG] [ALERT] Failed to send personal briefing:', err.message);
+  });
+}
+
+function sendToTeamGroup(text, opts = {}) {
+  if (!_bot || !_teamGroupId) return;
+  const msgOpts = { parse_mode: 'Markdown' };
+  Object.assign(msgOpts, opts);
+
+  _bot.api.sendMessage(_teamGroupId, text, msgOpts).catch(err => {
+    console.error('[TG] [ALERT] Failed to send team briefing:', err.message);
+  });
+}
+
 // --- Service Health Monitor ---
 
 async function checkServiceHealth() {
+  // Step 1: Check engine reachability with the lightweight /health endpoint.
+  // The heavy /api/health/summary probes 10+ services and can time out under
+  // load (Google API polling saturates the event loop). Using /health (2ms vs
+  // 650ms+) prevents false "unreachable" alerts.
+  let engineReachable = false;
   try {
-    const data = await httpGet('http://127.0.0.1:8080/health/summary');
-    if (!data || !data.services) return;
-
-    const services = data.services;
-    const alerts = [];
-
-    for (const [name, info] of Object.entries(services)) {
-      const status = info.status || 'unknown';
-      const prev = prevServiceStates[name];
-
-      if (prev && prev !== status) {
-        if (status === 'unreachable' || status === 'error') {
-          alerts.push(`*Service Down:* \`${name}\` went from ${prev} to ${status}`);
-        } else if (prev === 'unreachable' || prev === 'error') {
-          alerts.push(`*Service Recovered:* \`${name}\` is now ${status}`);
-        }
-      }
-
-      prevServiceStates[name] = status;
-    }
-
-    if (alerts.length > 0) {
-      sendAlert(`*Service Alert*\n\n${alerts.join('\n')}`);
-      console.log(`[TG] [ALERT] ${alerts.length} service state change(s)`);
-    }
-  } catch (err) {
-    // Engine itself might be down — only alert if it was previously up
-    if (prevServiceStates['engine'] === 'healthy') {
-      sendAlert('*Service Alert*\n\n`opai-engine` is unreachable.');
-      prevServiceStates['engine'] = 'unreachable';
-    }
+    await httpGet('http://127.0.0.1:8080/health');
+    engineReachable = true;
+  } catch {
+    // Engine process is genuinely unreachable
   }
+
+  if (!engineReachable) {
+    // Engine is truly down — track grace period
+    if (!serviceDownSince['_engine_http']) {
+      serviceDownSince['_engine_http'] = Date.now();
+      console.log('[TG] [ALERT] Engine unreachable — grace period started');
+    }
+
+    const downFor = Date.now() - serviceDownSince['_engine_http'];
+    if (prevServiceStates['_engine_http'] !== 'unreachable' && downFor >= ALERT_GRACE_MS) {
+      sendAlert('*Service Alert*\n\n`opai-engine` is unreachable.');
+      prevServiceStates['_engine_http'] = 'unreachable';
+      console.log('[TG] [ALERT] Engine unreachable alert sent (after grace)');
+    }
+    return;
+  }
+
+  // Engine is reachable — handle recovery
+  if (serviceDownSince['_engine_http'] && prevServiceStates['_engine_http'] === 'unreachable') {
+    const wasDown = Date.now() - serviceDownSince['_engine_http'];
+    if (wasDown >= ALERT_GRACE_MS) {
+      sendAlert('*Service Recovered:* `engine` is now reachable');
+      console.log('[TG] [ALERT] Engine recovered alert sent');
+    }
+    delete serviceDownSince['_engine_http'];
+    prevServiceStates['_engine_http'] = 'healthy';
+    console.log('[TG] [ALERT] Engine HTTP recovered');
+  }
+
+  // Per-service health monitoring (individual service up/down transitions) is
+  // handled by Engine's heartbeat + notifier. Telegram only checks Engine
+  // reachability — the one thing the Engine can't self-report.
+  // See: Library/opai-wiki/infra/scheduling-architecture.md
 }
 
 // --- WordPress Site Health ---
@@ -220,7 +272,7 @@ async function generateBriefing() {
 
   // ── 1. Services ──
   try {
-    const health = await httpGet('http://127.0.0.1:8080/health/summary');
+    const health = await httpGet('http://127.0.0.1:8080/api/health/summary');
     if (health && health.services) {
       const svcs = Object.entries(health.services);
       const down = svcs.filter(([, v]) => v.status !== 'healthy');
@@ -290,68 +342,22 @@ async function generateBriefing() {
     }
   }
 
-  // ── 3. Tasks ──
+  // ── 3. Tasks (count only — details go to personal/team briefings) ──
   try {
     const wsId = '80753c5a-beb5-498c-8d71-393a0342af27';
-    const data = await httpGet(`http://127.0.0.1:8089/api/internal/list-items?workspace_id=${wsId}&limit=50`);
+    const data = await httpGet(`http://127.0.0.1:8089/api/internal/list-items?workspace_id=${wsId}&limit=200`);
     const items = data.items || [];
     const today = new Date().toISOString().split('T')[0];
 
-    const overdue = items.filter(i =>
-      i.due_date && i.due_date < today && !['done', 'closed', 'archived'].includes(i.status)
-    ).sort((a, b) => a.due_date.localeCompare(b.due_date));
-
-    const dueToday = items.filter(i =>
-      i.due_date && i.due_date === today && !['done', 'closed', 'archived'].includes(i.status)
-    );
-
-    const upcoming = items.filter(i => {
-      if (!i.due_date || i.due_date <= today) return false;
-      if (['done', 'closed', 'archived'].includes(i.status)) return false;
-      const diff = (new Date(i.due_date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000;
-      return diff <= 7;
-    }).sort((a, b) => a.due_date.localeCompare(b.due_date));
-
     const openTasks = items.filter(i =>
-      i.type === 'task' && !['done', 'closed', 'archived'].includes(i.status)
+      !['done', 'closed', 'archived', 'completed'].includes((i.status || '').toLowerCase())
     );
+    const overdue = openTasks.filter(i => i.due_date && i.due_date < today);
 
     lines.push('', SEP, '');
     lines.push(`📋 *Tasks*  ${openTasks.length} open`);
-
     if (overdue.length > 0) {
-      lines.push('');
-      lines.push(`🔴 *Overdue (${overdue.length})*`);
-      overdue.slice(0, 5).forEach(i => {
-        const late = daysAgo(i.due_date);
-        lines.push(`  ⏰ ${trunc(i.title, 30)}`);
-        lines.push(`       ${fmtDate(i.due_date)} · ${late}d late`);
-      });
-      if (overdue.length > 5) {
-        lines.push(`  _+${overdue.length - 5} more_`);
-      }
-    }
-
-    if (dueToday.length > 0) {
-      lines.push('');
-      lines.push(`🟡 *Due Today (${dueToday.length})*`);
-      dueToday.slice(0, 5).forEach(i => {
-        lines.push(`  📌 ${trunc(i.title, 30)}`);
-      });
-    }
-
-    if (upcoming.length > 0) {
-      lines.push('');
-      lines.push(`🔵 *This Week (${upcoming.length})*`);
-      upcoming.slice(0, 5).forEach(i => {
-        lines.push(`  📅 ${trunc(i.title, 30)}`);
-        lines.push(`       ${fmtDate(i.due_date)}`);
-      });
-    }
-
-    if (overdue.length === 0 && dueToday.length === 0 && upcoming.length === 0) {
-      lines.push('');
-      lines.push('  ✨ No deadlines this week');
+      lines.push(`  🔴 ${overdue.length} overdue`);
     }
   } catch {}
 
@@ -397,6 +403,235 @@ async function generateBriefing() {
   return lines.join('\n');
 }
 
+// --- Personal Morning Briefing ---
+
+/**
+ * Generate a personal morning briefing for the owner — tasks, deadlines, decisions.
+ * Sent as a DM, not to any group.
+ * @returns {Promise<string>} Formatted personal briefing text
+ */
+async function generatePersonalBriefing() {
+  const now = new Date();
+  const dateStr = `${MONTHS[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const lines = [];
+
+  lines.push(`☀️ *Good morning, Dallas*`);
+  lines.push(`${dayNames[now.getDay()]}, ${dateStr}`);
+
+  try {
+    const wsId = '80753c5a-beb5-498c-8d71-393a0342af27';
+    const data = await httpGet(`http://127.0.0.1:8089/api/internal/list-items?workspace_id=${wsId}&limit=200`);
+    const items = data.items || [];
+    const today = new Date().toISOString().split('T')[0];
+    const DONE = ['done', 'closed', 'archived', 'completed'];
+
+    const openItems = items.filter(i => !DONE.includes((i.status || '').toLowerCase()));
+
+    const overdue = openItems.filter(i =>
+      i.due_date && i.due_date < today
+    ).sort((a, b) => a.due_date.localeCompare(b.due_date));
+
+    const dueToday = openItems.filter(i =>
+      i.due_date && i.due_date === today
+    );
+
+    const upcoming = openItems.filter(i => {
+      if (!i.due_date || i.due_date <= today) return false;
+      const diff = (new Date(i.due_date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000;
+      return diff <= 7;
+    }).sort((a, b) => a.due_date.localeCompare(b.due_date));
+
+    const needsDecision = openItems.filter(i =>
+      ['awaiting-human', 'manager review', 'back to you'].includes((i.status || '').toLowerCase())
+    );
+
+    if (overdue.length > 0) {
+      lines.push('', SEP, '');
+      lines.push(`🔴 *Overdue (${overdue.length})*`);
+      overdue.slice(0, 8).forEach(i => {
+        const late = daysAgo(i.due_date);
+        const pIcon = { high: '🔺', urgent: '🔺', medium: '🔸', low: '🔹' }[(i.priority || '').toLowerCase()] || '▫️';
+        lines.push(`  ${pIcon} ${trunc(i.title, 34)}`);
+        lines.push(`       ${fmtDate(i.due_date)} · ${late}d late`);
+      });
+      if (overdue.length > 8) {
+        lines.push(`  _+${overdue.length - 8} more_`);
+      }
+    }
+
+    if (dueToday.length > 0) {
+      lines.push('', SEP, '');
+      lines.push(`🟡 *Due Today (${dueToday.length})*`);
+      dueToday.slice(0, 5).forEach(i => {
+        const pIcon = { high: '🔺', urgent: '🔺', medium: '🔸', low: '🔹' }[(i.priority || '').toLowerCase()] || '▫️';
+        lines.push(`  ${pIcon} ${trunc(i.title, 34)}`);
+      });
+    }
+
+    if (upcoming.length > 0) {
+      lines.push('', SEP, '');
+      lines.push(`🔵 *This Week (${upcoming.length})*`);
+      upcoming.slice(0, 5).forEach(i => {
+        lines.push(`  📅 ${trunc(i.title, 30)}`);
+        lines.push(`       ${fmtDate(i.due_date)}`);
+      });
+      if (upcoming.length > 5) {
+        lines.push(`  _+${upcoming.length - 5} more_`);
+      }
+    }
+
+    if (needsDecision.length > 0) {
+      lines.push('', SEP, '');
+      lines.push(`⚡ *Needs Your Decision (${needsDecision.length})*`);
+      needsDecision.slice(0, 5).forEach(i => {
+        lines.push(`  🔔 ${trunc(i.title, 34)}`);
+        lines.push(`       Status: ${i.status}`);
+      });
+    }
+
+    if (overdue.length === 0 && dueToday.length === 0 && upcoming.length === 0 && needsDecision.length === 0) {
+      lines.push('', SEP, '');
+      lines.push('✨ Clear schedule — no deadlines or decisions pending');
+    }
+
+    // Summary footer
+    lines.push('', SEP, '');
+    lines.push(`📊 ${openItems.length} open items total`);
+  } catch {
+    lines.push('', SEP, '');
+    lines.push('📋 _Could not load tasks_');
+  }
+
+  return lines.join('\n');
+}
+
+
+// --- Team Morning Briefing (WautersEdge) ---
+
+/**
+ * Generate a team morning briefing for the WautersEdge group.
+ * Shows workspace status, overdue, coming up, stuck, and recently updated items.
+ * @returns {Promise<string>} Formatted team briefing text
+ */
+async function generateTeamBriefing() {
+  const now = new Date();
+  const dateStr = `${MONTHS[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const lines = [];
+
+  lines.push(`📋 *Team Briefing*`);
+  lines.push(`${dayNames[now.getDay()]}, ${dateStr}`);
+
+  try {
+    const wsId = '80753c5a-beb5-498c-8d71-393a0342af27';
+    const data = await httpGet(`http://127.0.0.1:8089/api/internal/list-items?workspace_id=${wsId}&limit=200`);
+    const items = data.items || [];
+    const today = new Date().toISOString().split('T')[0];
+    const DONE = ['done', 'closed', 'archived', 'completed'];
+
+    const openItems = items.filter(i => !DONE.includes((i.status || '').toLowerCase()));
+
+    const overdue = openItems.filter(i =>
+      i.due_date && i.due_date < today
+    ).sort((a, b) => a.due_date.localeCompare(b.due_date));
+
+    const dueToday = openItems.filter(i =>
+      i.due_date && i.due_date === today
+    );
+
+    const upcoming = openItems.filter(i => {
+      if (!i.due_date || i.due_date <= today) return false;
+      const diff = (new Date(i.due_date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000;
+      return diff <= 7;
+    }).sort((a, b) => a.due_date.localeCompare(b.due_date));
+
+    const stuck = openItems.filter(i =>
+      ['stuck', 'blocked', 'waiting on client', 'client reviewing'].includes((i.status || '').toLowerCase())
+    );
+
+    const inProgress = openItems.filter(i =>
+      ['in-progress', 'working on', 'in progress'].includes((i.status || '').toLowerCase())
+    );
+
+    // Status summary bar
+    lines.push('', SEP, '');
+    lines.push(`📊 *Workspace Overview*`);
+    lines.push(`  ${openItems.length} open · ${overdue.length} overdue · ${stuck.length} stuck`);
+    if (inProgress.length > 0) {
+      lines.push(`  ${inProgress.length} in progress`);
+    }
+
+    if (overdue.length > 0) {
+      lines.push('', SEP, '');
+      lines.push(`🔴 *Overdue (${overdue.length})*`);
+      overdue.slice(0, 5).forEach(i => {
+        const late = daysAgo(i.due_date);
+        const pIcon = { high: '🔺', urgent: '🔺', medium: '🔸', low: '🔹' }[(i.priority || '').toLowerCase()] || '▫️';
+        lines.push(`  ${pIcon} ${trunc(i.title, 30)}`);
+        lines.push(`       ${fmtDate(i.due_date)} · ${late}d late`);
+      });
+      if (overdue.length > 5) {
+        lines.push(`  _+${overdue.length - 5} more_`);
+      }
+    }
+
+    if (stuck.length > 0) {
+      lines.push('', SEP, '');
+      lines.push(`🟠 *Stuck / Waiting (${stuck.length})*`);
+      stuck.slice(0, 5).forEach(i => {
+        lines.push(`  🚧 ${trunc(i.title, 30)}`);
+        lines.push(`       Status: ${i.status}`);
+      });
+      if (stuck.length > 5) {
+        lines.push(`  _+${stuck.length - 5} more_`);
+      }
+    }
+
+    if (dueToday.length > 0) {
+      lines.push('', SEP, '');
+      lines.push(`🟡 *Due Today (${dueToday.length})*`);
+      dueToday.slice(0, 5).forEach(i => {
+        lines.push(`  📌 ${trunc(i.title, 30)}`);
+      });
+    }
+
+    if (upcoming.length > 0) {
+      lines.push('', SEP, '');
+      lines.push(`🔵 *Coming Up (${upcoming.length})*`);
+      upcoming.slice(0, 5).forEach(i => {
+        lines.push(`  📅 ${trunc(i.title, 30)}`);
+        lines.push(`       ${fmtDate(i.due_date)}`);
+      });
+      if (upcoming.length > 5) {
+        lines.push(`  _+${upcoming.length - 5} more_`);
+      }
+    }
+
+    if (inProgress.length > 0) {
+      lines.push('', SEP, '');
+      lines.push(`🟢 *In Progress (${inProgress.length})*`);
+      inProgress.slice(0, 5).forEach(i => {
+        lines.push(`  🔨 ${trunc(i.title, 30)}`);
+      });
+      if (inProgress.length > 5) {
+        lines.push(`  _+${inProgress.length - 5} more_`);
+      }
+    }
+
+    if (openItems.length === 0) {
+      lines.push('', SEP, '');
+      lines.push('✨ All clear — no open items');
+    }
+  } catch {
+    lines.push('', SEP, '');
+    lines.push('_Could not load workspace data_');
+  }
+
+  return lines.join('\n');
+}
+
+
 // --- Auto-Briefing Check ---
 
 // Local date string (YYYY-MM-DD) — avoids UTC rollover mismatch with getHours()
@@ -409,15 +644,39 @@ async function checkAutoBriefing() {
   const today = localDateStr(now);
   const hour = now.getHours();
 
-  // Send briefing ONLY during the 8 AM hour (8:00–8:59), not later in the day
+  // Send briefings ONLY during the 8 AM hour (8:00–8:59), not later in the day
   if (hour === BRIEFING_HOUR && lastBriefingDate !== today) {
     lastBriefingDate = today;
+
+    // 1. System briefing → Server Status topic (admin group)
     try {
       const text = await generateBriefing();
-      sendAlert(text);
-      console.log(`[TG] [ALERT] Auto-briefing sent (${today} ${hour}:00 local)`);
+      sendToServerStatus(text);
+      console.log(`[TG] [ALERT] System briefing → Server Status (${today})`);
     } catch (err) {
-      console.error('[TG] [ALERT] Briefing error:', err.message);
+      console.error('[TG] [ALERT] System briefing error:', err.message);
+    }
+
+    // 2. Personal briefing → DM to owner
+    if (_personalChatId) {
+      try {
+        const text = await generatePersonalBriefing();
+        sendToPersonal(text);
+        console.log(`[TG] [ALERT] Personal briefing → DM (${today})`);
+      } catch (err) {
+        console.error('[TG] [ALERT] Personal briefing error:', err.message);
+      }
+    }
+
+    // 3. Team briefing → WautersEdge group
+    if (_teamGroupId) {
+      try {
+        const text = await generateTeamBriefing();
+        sendToTeamGroup(text);
+        console.log(`[TG] [ALERT] Team briefing → WautersEdge group (${today})`);
+      } catch (err) {
+        console.error('[TG] [ALERT] Team briefing error:', err.message);
+      }
     }
   }
 }
@@ -432,17 +691,24 @@ let briefingTimer = null;
  * Start the alert system.
  * @param {import('grammy').Bot} bot
  * @param {string|number} chatId - Admin group chat ID
- * @param {number} [alertThreadId] - Optional forum topic for alerts
+ * @param {Object} opts - Optional thread/chat IDs
+ * @param {number} [opts.alertThreadId] - Forum topic for alerts
+ * @param {number} [opts.serverStatusThreadId] - Forum topic for server status / briefings
+ * @param {number} [opts.personalChatId] - DM chat ID for personal briefing
+ * @param {number} [opts.teamGroupId] - Team group chat ID for team briefing
  */
-function startAlerts(bot, chatId, alertThreadId = null) {
+function startAlerts(bot, chatId, opts = {}) {
   if (alertsStarted) return;
   alertsStarted = true;
 
   _bot = bot;
   _chatId = chatId;
-  _alertThreadId = alertThreadId;
+  _alertThreadId = opts.alertThreadId || null;
+  _serverStatusThreadId = opts.serverStatusThreadId || null;
+  _personalChatId = opts.personalChatId || null;
+  _teamGroupId = opts.teamGroupId || null;
 
-  console.log(`[TG] [ALERT] Starting proactive alerts (chat: ${chatId}, thread: ${alertThreadId || 'general'})`);
+  console.log(`[TG] [ALERT] Starting proactive alerts (admin: ${chatId}, personal: ${_personalChatId || 'none'}, team: ${_teamGroupId || 'none'})`);
 
   // If we're starting after briefing hour, mark today as already sent
   // so a service restart mid-day doesn't re-send the morning briefing
@@ -476,6 +742,8 @@ module.exports = {
   startAlerts,
   stopAlerts,
   generateBriefing,
+  generatePersonalBriefing,
+  generateTeamBriefing,
   checkServiceHealth,
   checkWordPressHealth,
 };

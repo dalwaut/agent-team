@@ -6,13 +6,13 @@
     <title>OPAI Team Hub</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="static/style.css?v=20260228a">
+    <link rel="stylesheet" href="static/style.css?v=20260305a">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@14/dist/markdown-it.min.js"></script>
     <script src="/auth/static/js/auth-v3.js" defer></script>
     <script src="/auth/static/js/navbar.js" defer></script>
     <script src="/docs/static/js/docs-widget.js" defer></script>
-    <script src="static/app.js?v=20260228a" defer></script>
+    <script src="static/app.js?v=20260305a" defer></script>
 </head>
 <body>
 
@@ -230,29 +230,64 @@
 
 <!-- Space Settings Modal -->
 <div id="settings-modal" class="modal-overlay">
-    <div class="modal settings-modal" style="max-width:640px;">
+    <div class="modal settings-modal" style="max-width:840px;">
         <button class="modal-close">&times;</button>
         <div class="modal-title settings-modal-title">
             <svg style="width:18px;height:18px;margin-right:6px;vertical-align:middle;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             TeamHub Settings
         </div>
-        <div id="settings-space-label" style="font-size:12px;color:var(--text-muted);margin-bottom:16px;"></div>
-        <div class="th-tab-bar">
-            <button class="th-tab active" onclick="switchSettingsTab('statuses')">Statuses</button>
-            <button class="th-tab" onclick="switchSettingsTab('priorities')">Priorities</button>
-            <button class="th-tab" onclick="switchSettingsTab('tags')">Tags</button>
-            <button class="th-tab" onclick="switchSettingsTab('import')">Import</button>
-            <button class="th-tab" onclick="switchSettingsTab('landing')">Landing</button>
-            <button class="th-tab" onclick="switchSettingsTab('members')">Members</button>
-            <button class="th-tab" onclick="switchSettingsTab('discord-ai')">Discord AI</button>
+        <div id="settings-space-label" style="font-size:12px;color:var(--text-muted);margin-bottom:12px;"></div>
+        <div class="settings-layout">
+            <div class="settings-sidebar">
+                <button class="settings-nav-item active" data-tab="statuses">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12l2 2 4-4"/></svg>
+                    Statuses
+                </button>
+                <button class="settings-nav-item" data-tab="priorities">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    Priorities
+                </button>
+                <button class="settings-nav-item" data-tab="tags">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                    Tags
+                </button>
+                <button class="settings-nav-item" data-tab="members">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    Members
+                </button>
+                <button class="settings-nav-item" data-tab="custom-fields">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                    Fields
+                </button>
+                <button class="settings-nav-item" data-tab="automations">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                    Automations
+                </button>
+                <button class="settings-nav-item" data-tab="import">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Import
+                </button>
+                <button class="settings-nav-item" data-tab="landing">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    Landing
+                </button>
+                <button class="settings-nav-item" data-tab="discord-ai">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    Telegram
+                </button>
+            </div>
+            <div class="settings-content">
+                <div id="settings-tab-statuses" class="settings-tab-content"></div>
+                <div id="settings-tab-priorities" class="settings-tab-content" style="display:none;"></div>
+                <div id="settings-tab-tags" class="settings-tab-content" style="display:none;"></div>
+                <div id="settings-tab-import" class="settings-tab-content" style="display:none;"></div>
+                <div id="settings-tab-landing" class="settings-tab-content" style="display:none;"></div>
+                <div id="settings-tab-members" class="settings-tab-content" style="display:none;"></div>
+                <div id="settings-tab-custom-fields" class="settings-tab-content" style="display:none;"></div>
+                <div id="settings-tab-automations" class="settings-tab-content" style="display:none;"></div>
+                <div id="settings-tab-discord-ai" class="settings-tab-content" style="display:none;"></div>
+            </div>
         </div>
-        <div id="settings-tab-statuses" class="settings-tab-content"></div>
-        <div id="settings-tab-priorities" class="settings-tab-content" style="display:none;"></div>
-        <div id="settings-tab-tags" class="settings-tab-content" style="display:none;"></div>
-        <div id="settings-tab-import" class="settings-tab-content" style="display:none;"></div>
-        <div id="settings-tab-landing" class="settings-tab-content" style="display:none;"></div>
-        <div id="settings-tab-members" class="settings-tab-content" style="display:none;"></div>
-        <div id="settings-tab-discord-ai" class="settings-tab-content" style="display:none;"></div>
     </div>
 </div>
 

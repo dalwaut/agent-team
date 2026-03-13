@@ -476,6 +476,21 @@ async def profile_setup(user_id: str, req: ProfileSetupRequest, user: AuthUser =
     return {"success": True}
 
 
+# ── Backward-compat aliases (old /api/monitor/users/... paths) ──
+
+@router.post("/monitor/users/{user_id}/provision-sandbox")
+async def compat_provision_sandbox(user_id: str, user: AuthUser = Depends(get_current_user)):
+    return await provision_sandbox(user_id, user)
+
+@router.get("/monitor/users/{user_id}/sandbox-status")
+async def compat_sandbox_status(user_id: str, user: AuthUser = Depends(get_current_user)):
+    return await sandbox_status(user_id, user)
+
+@router.put("/monitor/users/{user_id}/profile-setup")
+async def compat_profile_setup(user_id: str, req: ProfileSetupRequest, user: AuthUser = Depends(get_current_user)):
+    return await profile_setup(user_id, req, user)
+
+
 @router.post("/users/drop-all", dependencies=[Depends(require_admin)])
 async def drop_all_users():
     """Deactivate all non-admin users and set system kill switch."""

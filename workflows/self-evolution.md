@@ -1,91 +1,117 @@
 ---
-description: How the agent team detects gaps in its own capabilities and safely evolves itself.
+description: How OPAI detects system gaps and safely self-evolves via the daily_evolve automation.
 ---
 
 # Self-Evolution Workflow
 
-The agent team can identify its own blind spots and propose new agents, prompts, and workflows.
+> Last updated: 2026-03-05 | Source: `tools/opai-engine/background/scheduler.py`
 
-## How It Works
+OPAI runs a consolidated daily evolution pipeline (`daily_evolve`) at **2am** that audits the system, auto-applies safe fixes, assesses operational health, verifies the assessment pipeline itself, and emails a consolidated report.
 
-### 1. Run the Evolve Squad
-```powershell
-.\.agent\scripts\run_squad.ps1 -Squad "evolve"
-```
+## Daily Evolve Pipeline
 
-This runs the **self_assessment** meta-agent, which:
-- Reads team.json (current roster)
-- Reads all prompt_*.txt files (current capabilities)
-- Reads .agent/reports/latest/ (quality of recent output)
-- Produces a gap analysis with fully specified new agent proposals
+Scheduled via `config/orchestrator.json` → `"daily_evolve": "0 2 * * *"`.
 
-### 2. Review the Proposal
-The self-assessment report lands in `.agent/reports/<date>/self_assessment.md`.
+### Phase 1: Auto-Safe Squad
 
-It contains:
-- **Coverage gaps**: what the team can't currently analyze
-- **Prompt quality scores**: which prompts need improvement
-- **New agent specs**: complete prompt text ready to copy into a new file
-- **Workflow suggestions**: new squads or execution patterns
+Runs the `auto_safe` squad (`accuracy`, `health`, `security`, `reviewer`, `executor_safe`):
+- Audits system accuracy, health, and security posture
+- `executor_safe` produces a fix plan for pre-approved safe changes (formatting, config typos, missing imports, dead code)
+- Reports land in `reports/<date>/` and `reports/latest/`
+- `post_squad_hook.py` fires (creates tasks, sends standard email + Telegram)
 
-### 3. Human Review (Required)
-**The system proposes. A human approves.** This is the safety boundary.
+### Phase 2: Apply Safe Fixes
 
-Before adding any new agent, verify:
-- [ ] The proposed prompt doesn't grant destructive capabilities (file deletion, deployment, git push)
-- [ ] The prompt file name follows the `prompt_<name>.txt` convention
-- [ ] The agent is added to team.json with correct metadata
-- [ ] The agent is assigned to appropriate squads
-- [ ] A test run produces useful output
+Reads `reports/latest/executor_safe.md` and feeds it to `claude -p` with a constrained apply prompt:
+- Only applies fixes listed in the plan (no improvisation)
+- Allowed tools: `Read`, `Edit`, `Glob`, `Grep`, `Bash(git diff:*)`
+- Saves result to `reports/<date>/executor_safe_result.md`
 
-### 4. Apply Changes
+### Phase 3: Evolve Squad (Self-Assessment + Meta-Assessment)
 
-To add a proposed agent:
+Runs the `evolve` squad (`self_assessment`, `meta_assessment` agents):
+- **Self-assessment**: Evaluates system health, configuration drift, agent coverage gaps
+- Produces `self_assessment.md` with P0/P1/P2 action items
+- Items requiring human approval are flagged
 
-```powershell
-# 1. Create the prompt file (from self_assessment report's FULL PROMPT TEXT)
-#   .agent/scripts/prompt_<new_agent>.txt
+### Phase 3.5: Meta-Assessment (Second-Order Loop)
 
-# 2. Add to team.json roles section
+Runs after self-assessment to verify the assessment pipeline itself:
+- Checks whether Phase 2 fixes actually landed (or hit max_turns)
+- Cross-validates agent outputs (e.g., security.md vs reviewer.md)
+- Measures fleet token efficiency (success rate, max_turns failures)
+- Audits prompt quality (length, output format, scope boundaries)
+- Produces `meta_assessment.md` — see [Meta-Assessment](Library/opai-wiki/infra/meta-assessment.md)
 
-# 3. Add to relevant squads in team.json
+### Phase 4: Consolidated Email
 
-# 4. Test it
-.\.agent\scripts\run_agents_seq.ps1 -Filter "<new_agent>"
+Sends a single HTML email to `Dallas@paradisewebfl.com` with two sections:
+- **Green — "Applied (Safe)"**: Each fix that was auto-applied (file, action, status)
+- **Orange — "Needs Your Approval"**: P0/P1/P2 items from self-assessment
 
-# 5. Verify the report is useful (>1KB, actionable findings)
-```
+Status badges at top: Assessment PASS/FAIL, Safe Fixes APPLIED/SKIPPED, count needing approval.
 
-### 5. Continuous Improvement Loop
+### Pre-Phase: Report Cleanup
 
-```
-Run Evolve Squad
-    |
-Review self_assessment.md
-    |
-Approve / Reject / Modify proposals
-    |
-Add new agents -> Update team.json
-    |
-Run the relevant squad with new agent
-    |
-Evaluate output quality
-    |
-(repeat monthly or after major changes)
+Before Phase 1, archives report directories older than 14 days to `reports/Archive/`.
+
+## Manual Runs
+
+```bash
+# Run just the auto_safe squad
+./scripts/run_squad.sh -s auto_safe --skip-preflight
+
+# Run just the evolve squad (self-assessment)
+./scripts/run_squad.sh -s evolve --skip-preflight
+
+# The full daily_evolve pipeline runs automatically at 2am
+# To test manually, temporarily set the cron to "*/5 * * * *" in orchestrator.json
 ```
 
 ## Safety Guardrails
 
-1. **No auto-apply**: The self-assessment agent can PROPOSE but never directly create files or modify team.json
-2. **Read-only agents**: All agents use `claude -p` (pipe mode) which outputs to stdout -- they cannot modify the codebase
-3. **Human gate**: Every new agent must be reviewed before being added to the roster
-4. **Prompt auditing**: The self-assessment agent evaluates ALL prompts, including its own, for safety and quality
-5. **Rollback**: Since reports are timestamped, you can always compare before/after to see if a change improved output quality
+1. **Two-tier automation**: `executor_safe` only proposes pre-screened non-breaking fixes; `executor_full` requires explicit human enablement
+2. **Read-only agents**: All agents except executor_safe/executor_full use `claude -p` (pipe mode) — stdout only, no file modifications
+3. **Human gate**: Self-assessment proposes improvements; humans approve via email or Task Control Panel
+4. **Constrained apply**: Phase 2 runs `claude -p` with limited tool access — no git push, no service restarts, no destructive operations
+5. **Rollback**: Reports are timestamped; `git diff` output is captured in executor_safe_result.md
 
-## When to Run Evolve
+## Configuration
 
-- After adding a major new feature area (new tech, new integration)
-- After noticing repeated manual work that an agent could automate
-- Monthly as part of project health checks
-- When agent reports consistently miss important issues
-- When the project's tech stack changes significantly
+In `config/orchestrator.json`:
+
+```json
+"evolve": {
+    "enabled": true,
+    "daily_evolve": {
+        "frequency_type": "daily",
+        "frequency_value": 1,
+        "time_hour": 2,
+        "time_minute": 0,
+        "phases": ["auto_safe", "apply_fixes", "evolve", "meta_assess", "email"],
+        "report_retention_days": 14
+    }
+}
+```
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `tools/opai-engine/background/scheduler.py` | `_daily_evolve()` implementation (5 phases) |
+| `config/orchestrator.json` | Schedule + evolve config |
+| `scripts/run_squad.sh` | Squad runner (called by Phase 1 + 3) |
+| `scripts/post_squad_hook.py` | Post-squad tasks + email + Telegram |
+| `scripts/prompt_self_assessment.txt` | Self-assessment agent prompt |
+| `scripts/prompt_meta_assessment.txt` | Meta-assessment agent prompt (Phase 3.5) |
+| `reports/latest/executor_safe.md` | Current fix plan (Phase 1 output) |
+| `reports/latest/executor_safe_result.md` | Apply result (Phase 2 output) |
+| `reports/latest/self_assessment.md` | Health report (Phase 3 output) |
+| `reports/latest/meta_assessment.md` | Pipeline verification report (Phase 3.5 output) |
+
+## Dependencies
+
+- [Agent Framework](../Library/opai-wiki/agents/agent-framework.md) — squad definitions (auto_safe, evolve)
+- [Heartbeat](../Library/opai-wiki/infra/heartbeat.md) — separate 30-min proactive system (not part of daily_evolve)
+- [Fleet Coordinator](../Library/opai-wiki/infra/fleet-action-items.md) — may dispatch fixes identified by daily_evolve
+- SMTP credentials from `tools/opai-email-agent/.env`

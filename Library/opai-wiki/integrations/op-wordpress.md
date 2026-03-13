@@ -1,14 +1,14 @@
 # OP WordPress — Multi-Site WordPress Management
-> Last updated: 2026-02-24 | Source: `tools/opai-wordpress/`
+> Last updated: 2026-03-05 | Source: `tools/opai-wordpress/`
 
-**Status**: v1.5.1 | **Port**: 8096 | **Path**: `/wordpress/` | **Connector**: v1.4.0
+**Status**: v1.5.2 | **Port**: 8096 | **Path**: `/wordpress/` | **Connector**: v1.5.0
 **Service**: `opai-wordpress` | **Source**: `tools/opai-wordpress/`
 
 ## Overview
 
 OP WordPress is a ManageWP replacement that manages multiple WordPress sites from a single dashboard. It wraps the existing `tools/wp-agent/` library (70+ actions across 10 agents) and adds multi-site orchestration, WooCommerce support, and an AI assistant.
 
-Key capabilities: multi-strategy connector deployment, **Push OP** (force-push connector plugin updates to all sites), self-healing connection retry agent, per-site method pinning, WooCommerce REST API integration, AI-assisted management via Claude CLI, Push OP run logging to the OPAI Task Control Panel.
+Key capabilities: multi-strategy connector deployment, **Push OP** (force-push connector plugin updates to all sites), self-healing connection retry agent, **HMAC auto-login** to WP admin panels, per-site method pinning, WooCommerce REST API integration, AI-assisted management via Claude CLI, **broken link scanner** with severity classification, Push OP run logging to the OPAI Task Control Panel. Security: explicit CORS origin allowlisting, pinned Python dependencies.
 
 ## Architecture
 
@@ -21,19 +21,20 @@ Browser → Caddy (/wordpress/*) → FastAPI (port 8096) → wp-agent library �
                                   Claude CLI (AI assistant)
 ```
 
-### Background Services (3 async tasks started at boot)
+### Background Services (4 async tasks started at boot)
 
 | Task | Interval | Purpose |
 |------|----------|---------|
 | `background_checker` | 30 min | Scans all sites for available updates using strategy chain |
 | `scheduler_loop` | 60 sec | Processes scheduled automation tasks |
 | `connection_agent_loop` | 10 min | Self-healing retry agent for failed/broken connections |
+| `agent_scheduler_loop` | configurable | WP agents scheduler -- runs site-specific AI agent tasks |
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `app.py` | FastAPI app, health endpoint, static mount, 3 background tasks |
+| `app.py` | FastAPI app, health endpoint, static mount, 4 background tasks |
 | `config.py` | Port 8096, Supabase config, paths, agent intervals |
 | `auth.py` | Supabase JWT auth middleware |
 | `routes_sites.py` | Site CRUD, connector install/status, **Push OP** (`/api/connector/push-all`) |
@@ -48,10 +49,13 @@ Browser → Caddy (/wordpress/*) → FastAPI (port 8096) → wp-agent library �
 | `services/deployer.py` | Multi-strategy connector deployment engine + `push_update_connector()` |
 | `services/task_logger.py` | Push OP audit logger — writes system-tier audit records via shared `audit.py` helper (79 lines) |
 | `services/connection_agent.py` | Self-healing background retry agent |
+| `services/broken_link_scanner.py` | Link scanner with severity classification (broken vs warning) |
+| `services/agent_scheduler.py` | WP agents scheduling and management |
 | `services/scheduler.py` | Automation task scheduler |
 | `services/site_manager.py` | Multi-site orchestrator pool (wraps wp-agent) |
 | `services/woo_client.py` | WooCommerce REST API v3 client |
 | `services/ai_assistant.py` | Claude CLI integration for WP tasks |
+| `routes_agents.py` | Broken link scanner, WP agents management |
 | `wp-plugin/opai-connector/` | WordPress plugin installed on managed sites |
 | `data/avada.json` | Server-side cache only: `cached_version`. Keys no longer stored here. |
 | `data/avada-latest.zip` | Most recently pulled Avada theme ZIP (ready to deploy, shared across users) |
@@ -87,7 +91,7 @@ Force-push the latest OPAI Connector plugin ZIP to all connected sites. Distinct
 
 ```python
 # services/deployer.py
-OPAI_CONNECTOR_VERSION_STR = "1.4.0"  # updated when plugin version bumps
+OPAI_CONNECTOR_VERSION_STR = "1.5.0"  # updated when plugin version bumps
 
 async def push_update_connector(site: dict) -> dict:
     # Returns {"status": "success"|"manual", "method": ..., "reason": ...}
@@ -122,6 +126,8 @@ Tried in order when checking for available updates:
 | 3 | `rest_api` | `/wp/v2/plugins?context=edit` + `/wp/v2/themes?context=edit` | `app_password` only |
 
 Pinned in `capabilities.data_method`. The `connector_refresh` strategy is most accurate because it forces WordPress to re-scan for updates.
+
+**Stale REST API pin guard** (added 2026-03-04): When the pinned `rest_api` method returns 0 plugin+theme updates but the site has `connector_installed=true`, the system automatically clears the stale pin and retries the connector chain. This prevents sites from getting stuck on the REST API fallback — the WP REST API `/wp/v2/plugins` endpoint only populates the `update` field when WordPress's `update_plugins` transient is populated, and many hosts don't keep transients fresh. The connector's `wp_update_plugins()` server-side call is the only reliable way to detect plugin updates on these hosts.
 
 ### Connection Retry Agent (`services/connection_agent.py`)
 
@@ -163,6 +169,42 @@ CONNECTION_AGENT_INTERVAL = 10 * 60  # 10 minutes
 CONNECTION_AGENT_BATCH_SIZE = 5      # attempts before HITL report
 ```
 
+### Auto-Login System (v1.5.0)
+
+HMAC-signed, time-limited auto-login to WordPress admin panels directly from the OP WordPress dashboard. No passwords exposed in the browser — the backend generates a signed token and redirects through the connector.
+
+**Flow**:
+
+```
+Frontend: WP.wpAdminOpen(siteId, targetPath)
+  → Backend: GET /api/sites/{id}/wp-login-redirect?target=...
+    → Generates HMAC-SHA256 token (site connector_secret as key)
+    → 302 redirect to: {site_url}/?opai_autologin=1&user={username}&ts={timestamp}&token={hmac}&redirect={target}
+      → Connector: class-autologin.php (init hook)
+        → Validates HMAC signature against stored connector key
+        → Checks timestamp within 60-second TTL window
+        → www/non-www domain fix: if request domain != canonical `home_url()`, 302 bounces to canonical domain with same query params (cookies must be set on the canonical domain)
+        → Looks up WP admin user by username
+        → Sets WP auth cookie via wp_set_auth_cookie()
+        → 302 redirect to target page (e.g. /wp-admin/)
+```
+
+**Key files**:
+| File | Role |
+|------|------|
+| `routes_sites.py` | `wp_login_redirect()` — generates HMAC token, returns 302 |
+| `wp-plugin/opai-connector/includes/class-autologin.php` | Validates token, sets auth cookie, redirects |
+| `static/js/app.js` | `WP.wpAdminOpen()` — frontend trigger |
+
+**Security**:
+- **HMAC-SHA256** signature using the site's `connector_secret` as the signing key
+- **60-second TTL** — tokens expire quickly, preventing replay attacks
+- **Admin-only** — only authenticates WP administrator accounts
+- **No passwords in browser** — credentials never leave the backend; the browser only sees the signed redirect URL
+- **Connector key required** — if no `connector_secret` is configured for the site, falls back to redirecting to the standard `wp-login.php` page
+
+**www/non-www domain fix**: WordPress cookies are domain-scoped. If the auto-login URL hits `www.example.com` but WP's canonical `home_url()` is `example.com` (or vice versa), the cookie would be set on the wrong domain. The connector detects this mismatch and issues an intermediate 302 bounce to the canonical domain before setting cookies, ensuring the auth cookie is always valid.
+
 ## Scheduler Health Check System
 
 The scheduler (`services/scheduler.py`) includes a 3-pronged health check used both as a standalone scheduled task type and as post-update verification.
@@ -197,9 +239,9 @@ The main `scheduler_loop()` runs as a background async task with a configurable 
 - **Concurrent execution**: Multiple due schedules run concurrently via `asyncio.gather()`
 - **Audit logging**: Each completed scheduled task writes an `execution`-tier audit record via `log_audit()`
 
-## OPAI Connector Plugin (v1.4.0)
+## OPAI Connector Plugin (v1.5.0)
 
-A lightweight WordPress plugin installed on each managed site. Provides accurate update detection (forces WP transient refresh), backup management with real-time progress tracking and tar streaming for ZipArchive-less hosts, health monitoring, and theme/plugin management via custom REST endpoints.
+A lightweight WordPress plugin installed on each managed site. Provides accurate update detection (forces WP transient refresh), backup management with real-time progress tracking and tar streaming for ZipArchive-less hosts, HMAC-signed auto-login, health monitoring, and theme/plugin management via custom REST endpoints.
 
 ### Plugin Files
 
@@ -207,6 +249,7 @@ A lightweight WordPress plugin installed on each managed site. Provides accurate
 |------|---------|
 | `opai-connector.php` | Main plugin file — REST routes, admin UI, activation hook |
 | `includes/class-auth.php` | Auth: X-OPAI-Key header or WP Basic Auth |
+| `includes/class-autologin.php` | HMAC-signed auto-login handler (v1.5.0+) |
 | `includes/class-health.php` | Health check (DB, disk, PHP, plugins count) |
 | `includes/class-updater.php` | Update detection and apply (plugins, themes, core) |
 | `includes/class-backup.php` | Complete site backup (wp-admin + wp-includes + wp-content + root PHP), chunked download streaming, progress tracking, DB dump streaming, tar file streaming |
@@ -361,6 +404,93 @@ The `capabilities` column on `wp_sites` stores per-site state:
 - `push_reason`: `"host_blocks_upload"` | `"no_credentials"` | `"upload_failed"` | `"error"`
 - `push_failure_detail`: human-readable description of the last failure
 - `push_version_needed`: version string that failed to push (e.g. `"1.2.0"`)
+
+## Shared Site Access (TeamHub App Sharing)
+
+Multi-user access to WordPress sites via the TeamHub `team_app_sharing` table. Site owners share OP WordPress access with team members, giving them the same operational capabilities.
+
+### How Sharing Works
+
+1. **Owner shares access**: An entry is created in `team_app_sharing` with `app_name = "op-wordpress"`, `shared_by = {owner_id}`, `user_id = {recipient_id}`, and `access_level = "full"`
+2. **Recipient sees shared sites**: `GET /api/sites` merges the recipient's own sites with sites owned by the sharer
+3. **All operations use owner credentials**: When a shared user interacts with a site, the backend resolves the site via the sharing lookup and uses the owner's WP credentials (username, app_password, connector_secret)
+
+### Access Resolution Pattern
+
+Every route file has a sharing-aware `_get_site()` helper (or uses `get_site()` from `routes_sites.py`) that:
+
+```
+1. Try wp_sites WHERE id = {site_id} AND user_id = {current_user_id}
+2. If no match → query team_app_sharing for owner IDs who shared with this user
+3. Try wp_sites WHERE id = {site_id} AND user_id = {owner_id}
+4. Return site with _shared = True flag
+```
+
+This pattern is implemented in: `routes_sites.py`, `routes_content.py`, `routes_management.py`, `routes_avada.py`, `routes_woo.py`, `routes_ai.py`, `routes_updates.py`, `routes_agents.py` (via `_verify_site_access`).
+
+### Shared User Capabilities
+
+| Operation | Shared User Can? | Implementation |
+|-----------|-----------------|----------------|
+| View sites | Yes | `list_sites` merges own + shared sites |
+| View site details | Yes | `get_site` checks sharing fallback |
+| Update site config | Yes | `update_site` resolves via `get_site()`, patches with owner_id |
+| Delete site | **No** | Owner-only — returns 403 for shared users |
+| WP Admin auto-login | Yes | HMAC uses owner's username + connector_secret |
+| View credentials | Yes | `get_credentials` uses sharing-aware `get_site()` |
+| Test/refresh connection | Yes | Both use sharing-aware `get_site()` |
+| List/create/edit agents | Yes | Agents stored under owner's user_id |
+| Run agent scans | Yes | `_verify_site_access` handles sharing |
+| View scan results | Yes | `_verify_site_access` handles sharing |
+| AI Fix / Unlink / Dismiss | Yes | All use `_verify_site_access` |
+| List/create schedules | Yes | Schedules stored under owner's user_id |
+| Update/delete/toggle schedules | Yes | Filters by own + shared owner IDs |
+| Content CRUD (posts/pages) | Yes | Sharing-aware `_get_site()` in routes_content |
+| WooCommerce operations | Yes | Sharing-aware `_get_site()` in routes_woo |
+| Management (plugins/themes) | Yes | Sharing-aware `_get_site()` in routes_management |
+
+### Key Implementation Details
+
+**Child entities use owner's user_id**: When a shared user creates an agent or schedule, the `user_id` stored in the DB is the **site owner's ID**, not the creating user's. This ensures the entity appears in listings (which filter by site owner).
+
+```python
+# routes_agents.py — create_agent
+site = await _verify_site_access(site_id, user)
+owner_id = site["user_id"]
+row = {"site_id": site_id, "user_id": owner_id, ...}
+
+# routes_automation.py — create_schedule
+site = await get_site(body.site_id, user)
+owner_id = site["user_id"]
+row = {"site_id": body.site_id, "user_id": owner_id, ...}
+```
+
+**Schedule operations resolve owner IDs**: `_resolve_schedule_owner_ids()` helper returns `[user.id] + [shared_owner_ids]` so update/delete/toggle queries match schedules owned by anyone who shared with the current user.
+
+**Auto-login works for shared users**: The HMAC token is generated with the site owner's WP admin credentials regardless of who triggers it. The WordPress OPAI Connector plugin validates the HMAC and logs in as the owner's admin account.
+
+### Supabase Table: `team_app_sharing`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `workspace_id` | UUID | TeamHub workspace |
+| `user_id` | UUID | Recipient (who gets access) |
+| `app_name` | TEXT | `"op-wordpress"` |
+| `access_level` | TEXT | `"full"` (only level currently implemented) |
+| `config` | JSONB | Reserved for future per-share config |
+| `shared_by` | UUID | Owner (who is sharing their sites) |
+| `created_at` | TIMESTAMPTZ | When sharing was granted |
+
+### Troubleshooting Shared Access
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Shared user can't see sites | Missing `team_app_sharing` entry | Create entry with `app_name = "op-wordpress"` |
+| Agents created by shared user disappear | `user_id` stored as shared user's ID (pre-fix bug) | Delete orphaned agents, recreate — agents now use owner's ID |
+| Shared user gets 404 on site update | `update_site` filtering by user.id (pre-fix bug) | Fixed: now resolves via `get_site()` first |
+| Auto-login opens WP login page instead | `connector_secret` missing from `wp_sites` row | Install OPAI Connector on the WP site and save the key |
+| Auto-login popup blocked | Browser popup blocker | Allow popups for the OPAI domain |
 
 ## Update Detection
 
@@ -546,15 +676,45 @@ Server-side cache (`data/avada.json`) stores only:
 
 `data/avada-latest.zip` — the downloaded theme ZIP (shared across users, overwritten on each Pull).
 
+## Agents
+
+Site-specific AI automation agents accessible from the **Agents** tab in Site Management. Managed via `routes_agents.py`.
+
+### Broken Link Scanner (`services/broken_link_scanner.py`)
+
+Crawls a WordPress site to detect broken and problematic links. Results stored in Supabase `wp_link_scans` table.
+
+**Severity classification**:
+
+| Severity | HTTP Codes / Errors | Meaning |
+|----------|-------------------|---------|
+| `broken` | 404, 410, `connection_error` | Definitively broken — page does not exist or host unreachable |
+| `warning` | 401, 403, 429, 5xx, timeout, SSL error | Possibly broken — may be bot-blocking, rate limiting, or temporary server issues |
+
+**Anti-false-positive measures**:
+- **Browser User-Agent headers**: Requests use a Chrome User-Agent string to prevent bot-blocking false positives (many sites return 403/406 to default Python UA)
+- **Internal link rate limiting**: 2 concurrent requests for same-domain links (was 10) to prevent self-DDoS — previously caused 508 errors on shared hosting
+- **HEAD→GET fallback**: If a HEAD request returns HTTP >= 400, automatically retries with GET. Previously only fell back on 405 Method Not Allowed.
+
+**Database**:
+- Results stored in `wp_link_scans` table
+- `warning_links` column (JSONB) stores warning-severity links separately from broken links
+- Each scan record includes `broken_links`, `warning_links`, `total_links`, `scan_duration`
+
+**Result example** (VEC site): Reduced from 713 false positives to 46 broken + 104 warnings after severity classification and anti-false-positive improvements.
+
 ## API Endpoints
 
 ### Sites
 - `POST /api/sites` — Connect new site (validates first, accepts optional connector_secret)
-- `GET /api/sites` — List user's sites
-- `GET/PUT/DELETE /api/sites/{id}` — Site CRUD (PUT accepts connector_secret)
-- `GET /api/sites/{id}/credentials` — Get WP login creds (for auto-login)
-- `POST /api/sites/{id}/test` — Test connection
-- `POST /api/sites/{id}/refresh` — Refresh site info (version, theme, plugin counts)
+- `GET /api/sites` — List user's sites (includes shared sites via TeamHub)
+- `GET /api/sites/{id}` — Get site details (sharing-aware)
+- `PUT /api/sites/{id}` — Update site config (sharing-aware — shared users can update)
+- `DELETE /api/sites/{id}` — Delete site (**owner-only** — shared users get 403)
+- `GET /api/sites/{id}/credentials` — Get WP login creds (sharing-aware)
+- `GET /api/sites/{id}/wp-login` — HMAC auto-login redirect (sharing-aware)
+- `POST /api/sites/{id}/test` — Test connection (sharing-aware)
+- `POST /api/sites/{id}/refresh` — Refresh site info (sharing-aware)
 
 ### Connector
 - `GET /api/connector/download` — Download OPAI Connector plugin ZIP
@@ -690,8 +850,8 @@ The `total_*` counts reflect individual site-update pairs (e.g. if 3 sites need 
 
 | Site | URL | Connector | Data Method | Deploy Method | Push Status | Notes |
 |------|-----|-----------|-------------|---------------|-------------|-------|
-| Constitution for the People | constitutionforthepeople.org | v1.4.0 | connector_refresh | admin_upload | success | Hostinger shared hosting — no ZipArchive, uses two-phase tar streaming backup. PHP 8.1, 128M memory |
-| WautersEdge | wautersedge.com | v1.4.0 | connector_refresh | admin_upload | success | WP 6.9 overwrite handled, local backup storage active. PHP 8.4, 1024M memory, ZipArchive available |
+| Constitution for the People | constitutionforthepeople.org | v1.5.0 | connector_refresh | admin_upload | success | Hostinger shared hosting — no ZipArchive, uses two-phase tar streaming backup. PHP 8.1, 128M memory |
+| WautersEdge | wautersedge.com | v1.5.0 | connector_refresh | admin_upload | success | WP 6.9 overwrite handled, local backup storage active. PHP 8.4, 1024M memory, ZipArchive available |
 
 ## Deployment
 
@@ -723,7 +883,7 @@ sudo systemctl reload caddy
 - **Setup endpoint**: Returns existing key (idempotent). Only regenerates with `force=true`. Prevents key drift.
 - **Plugin deletion via REST API**: Use the raw path `/wp/v2/plugins/plugin-dir/plugin-file` (not URL-encoded). DELETE on URL-encoded path returns 404.
 - **Theme deletion via REST API**: `DELETE /wp/v2/themes/{slug}` does NOT exist in WordPress REST API — returns `rest_no_route` 404. Always use the connector endpoint `POST /opai/v1/themes/{stylesheet}/delete` instead.
-- **Pinned method stuck on `rest_api`**: If the REST API fallback "succeeds" (returns 200 with plugin list) but finds 0 updates (stale transients), it pins `rest_api` and never tries the connector. Fix: manually set `capabilities.data_method` to `connector_refresh` in Supabase, or clear the pin so the full chain retries.
+- **Pinned method stuck on `rest_api`** (fixed 2026-03-04): Previously, if the REST API fallback "succeeded" (HTTP 200 with plugin list) but found 0 updates (stale transients), it pinned `rest_api` and never tried the connector again. Now `check_site_updates()` detects this scenario — when `rest_api` returns 0 plugin+theme updates but `connector_installed=true`, the pin is automatically cleared and the connector chain is retried. Root cause: WP REST API `/wp/v2/plugins?context=edit` returns `update: null` for all plugins when the `update_plugins` transient is empty, which is common on hosts that don't run `wp-cron.php` regularly.
 - **Host blocks `update.php` from external IPs**: Some managed hosts (e.g. Hostinger) return 404 on `POST /wp-admin/update.php` from non-allowlisted IPs even with valid admin session cookies. Push OP now tries `plugin-install.php?action=upload-plugin` as a fallback. If both fail, site is tagged `push_reason: "host_blocks_upload"` and the site overview shows manual instructions.
 - **WP "replace existing?" confirmation page**: When the connector plugin is already installed and you upload a new ZIP via wp-admin, WordPress shows an HTML confirmation page (HTTP 200) rather than installing immediately. **WP < 6.9**: POST form with hidden inputs. **WP 6.9+**: `<a>` link with query params (GET). Push OP handles both formats.
 - **Hostinger disables `exec()` in PHP**: Connector `class-backup.php` wraps both `exec()` calls in `function_exists('exec')` guards. The pure-PHP unbuffered streaming fallback runs automatically.
@@ -735,6 +895,7 @@ sudo systemctl reload caddy
 - **deployer.py `last_failure_log` null**: `capabilities.last_failure_log` can be `None` — always use `(caps.get("last_failure_log") or "")` before string operations.
 - **`POST /wp/v2/plugins` is NOT a ZIP uploader**: This endpoint installs plugins from WordPress.org by slug. Sending a ZIP to it fails with `rest_missing_callback_param: slug`. The `_push_via_rest_api()` function is therefore a no-op that falls through to admin_upload.
 - **Task logger audit writes**: `services/task_logger.py` uses the shared `tools/shared/audit.py` helper which internally uses `fcntl.flock(LOCK_EX)` for cross-process safe writes to `tasks/audit.json`. Never write `audit.json` directly from another service without using the shared helper.
+- **Shared site access 404 on all per-site endpoints** (fixed 2026-03-05): All `_get_site()` helpers across 8 route files (`routes_sites.py`, `routes_agents.py`, `routes_content.py`, `routes_management.py`, `routes_updates.py`, `routes_woo.py`, `routes_ai.py`, `routes_avada.py`) only checked `user_id=eq.{user.id}`, so users with shared access via `team_app_sharing` got 404 on every endpoint except the site list. The site list (`GET /sites`) already had sharing logic via `_get_shared_site_owner_ids()`, but per-site access checks did not. **Fix**: if direct ownership returns empty and user is not admin, fall back to querying `team_app_sharing` for shared-by owner IDs and check if the site belongs to any of those owners. In `routes_agents.py`, `_verify_site_access()` was updated with the same pattern, and all agent/scan queries now filter by `site["user_id"]` (the actual site owner) instead of `user.id` (the viewer), so shared users correctly see the owner's agents and scan results.
 
 ## Push OP — Task Logging
 
@@ -758,7 +919,7 @@ def log_push_op(
 
 **How it works**:
 1. Counts pushed/manual/error sites from `results` list (each entry has `status`: `"pushed"`, `"manual_required"`, or `"error"`)
-2. Builds a summary string: `"Push OP v1.4.0 — 4/5 pushed, 1 manual"`
+2. Builds a summary string: `"Push OP v1.5.0 — 4/5 pushed, 1 manual"`
 3. Determines overall status: `"completed"` (all pushed), `"partial"` (some manual), `"failed"` (any errors)
 4. Calls `log_audit()` with these parameters:
 
@@ -1006,6 +1167,22 @@ OP WordPress is included in the **OPAI Feedback System** auto-fix loop (added 20
 The fixer agent has access to all files under `tools/opai-wordpress/` — routes, services, static JS, config, and the WP plugin. HIGH severity items auto-run; MEDIUM items queue for manual Run or auto-act.
 
 See [Feedback System](feedback-system.md) for the full loop architecture.
+
+## Security Hardening (2026-03-05)
+
+### CORS Policy
+
+CORS was tightened from `allow_origins=["*"]` with credentials to explicit origin allowlisting:
+
+- **Allowed origins**: `https://opai.boutabyte.com`, `http://localhost:3000`, `http://localhost:8090`
+- **Allowed methods**: GET, POST, PUT, DELETE, PATCH (explicit list, not wildcard)
+- **Allowed headers**: Content-Type, Authorization (explicit list, not wildcard)
+
+The previous wildcard CORS with `allow_credentials=True` was a security risk (browsers block this combination, but the misconfiguration signaled intent to allow any origin with cookies).
+
+### Dependency Pinning
+
+All 8 Python packages in `requirements.txt` are now pinned with `>=` minimum versions (e.g., `flask>=3.0.0`). This prevents silent downgrades and ensures reproducible installs while still allowing patch updates.
 
 ## Related
 

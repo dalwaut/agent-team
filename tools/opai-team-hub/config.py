@@ -17,7 +17,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL = os.getenv("TEAM_HUB_CLAUDE_MODEL", "claude-sonnet-4-6")
 
 # ClickUp
-CLICKUP_API_KEY = os.getenv("CLICKUP_API_KEY", "pk_12684773_506E7BHJVG1DWN9GTHKM2LF9WSO5HQHN")
+CLICKUP_API_KEY = os.getenv("CLICKUP_API_KEY", "")
 CLICKUP_TEAM_ID = os.getenv("CLICKUP_TEAM_ID", "8500473")
 CLICKUP_BASE = "https://api.clickup.com/api/v2"
 

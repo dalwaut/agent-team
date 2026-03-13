@@ -15,7 +15,7 @@ from pathlib import Path
 
 _start_time = time.time()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -32,6 +32,9 @@ class _HealthCheckFilter(logging.Filter):
 
 
 logging.getLogger("uvicorn.access").addFilter(_HealthCheckFilter())
+
+# Set root log level so opai.* loggers (INFO) actually emit
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(name)s: %(message)s")
 
 # Ensure the module directory is on the path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -57,6 +60,20 @@ from routes.bottleneck import router as bottleneck_router
 from routes.bottleneck import set_detector as set_bottleneck_detector
 from routes.fleet import router as fleet_router
 from routes.fleet import set_coordinator as set_fleet_coordinator
+from routes.action_items import router as action_items_router
+from routes.nfs import router as nfs_router
+from routes.nfs import set_dispatcher as set_nfs_dispatcher
+from routes.assembly import router as assembly_router
+from routes.assembly import set_pipeline as set_assembly_pipeline
+from routes.demos import router as demos_router
+from routes.mail import router as mail_router
+from routes.mail import set_mail as set_worker_mail
+from routes.google_chat import router as google_chat_router
+from routes.notifications import router as notifications_router
+from routes.newsletter import router as newsletter_router
+from routes.newsletter import set_scheduler as set_newsletter_scheduler
+from routes.notebooklm import router as notebooklm_router
+from routes.agent_feedback import router as agent_feedback_router
 from ws.streams import router as ws_router
 
 from background.updater import UpdaterAgent
@@ -71,6 +88,10 @@ from background.worker_manager import WorkerManager
 from background.heartbeat import Heartbeat
 from background.consolidator import MemoryConsolidator
 from background.fleet_coordinator import FleetCoordinator
+from background.nfs_dispatcher import NfsDispatcher
+from background.process_sweeper import process_sweeper_loop
+from background.assembly import AssemblyPipeline
+from services.worker_mail import WorkerMail
 import services.task_processor as task_processor
 
 logger = logging.getLogger("opai-engine")
@@ -80,8 +101,11 @@ updater = UpdaterAgent()
 resource_monitor = ResourceMonitor()
 scheduler = Scheduler()
 worker_manager = WorkerManager()
+worker_mail = WorkerMail()
 bottleneck_detector = BottleneckDetector()
-fleet_coordinator = FleetCoordinator(worker_manager, scheduler)
+fleet_coordinator = FleetCoordinator(worker_manager, scheduler, worker_mail)
+nfs_dispatcher = NfsDispatcher(fleet_coordinator)
+assembly_pipeline = AssemblyPipeline(fleet_coordinator, worker_manager, worker_mail)
 
 
 @asynccontextmanager
@@ -97,7 +121,14 @@ async def lifespan(app: FastAPI):
     # Load scheduler config and worker registrations
     scheduler.load()
     worker_manager.load()
+    scheduler.worker_manager = worker_manager
     set_worker_manager(worker_manager)
+    set_newsletter_scheduler(scheduler)
+
+    # Wire worker mail to manager and set registry
+    worker_manager._mail = worker_mail
+    worker_mail.set_worker_registry(worker_manager.workers)
+    set_worker_mail(worker_mail)
 
     # Initialize heartbeat (after scheduler + worker_manager)
     heartbeat = Heartbeat(scheduler, worker_manager)
@@ -114,6 +145,13 @@ async def lifespan(app: FastAPI):
     # Initialize fleet coordinator (v3.5)
     set_fleet_coordinator(fleet_coordinator)
 
+    # Initialize NFS dispatcher (v3.5 — external workers)
+    set_nfs_dispatcher(nfs_dispatcher)
+
+    # Initialize Assembly Line pipeline (v3.7)
+    set_assembly_pipeline(assembly_pipeline)
+    assembly_pipeline.resume_active_runs()
+
     # Start engine-managed worker processes
     worker_manager.startup_managed_workers()
 
@@ -129,7 +167,24 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(heartbeat.loop(), name="heartbeat"),
         asyncio.create_task(bottleneck_detector.run(), name="bottleneck-detector"),
         asyncio.create_task(fleet_coordinator.run(), name="fleet-coordinator"),
+        asyncio.create_task(nfs_dispatcher.run(), name="nfs-dispatcher"),
+        asyncio.create_task(process_sweeper_loop(worker_manager), name="process-sweeper"),
+        asyncio.create_task(feedback_loop(), name="feedback-decay"),
     ]
+
+    # NotebookLM wiki sync (daily, non-critical)
+    try:
+        from background.notebooklm_sync import sync_loop as nlm_sync_loop
+        bg_tasks.append(asyncio.create_task(nlm_sync_loop(), name="notebooklm-sync"))
+    except ImportError as e:
+        logger.debug("NotebookLM sync not available: %s", e)
+
+    # Fast chat poll loop (30s) — runs independently of cron scheduler
+    try:
+        from background.workspace_chat import chat_fast_loop
+        bg_tasks.append(asyncio.create_task(chat_fast_loop(), name="chat-fast-loop"))
+    except ImportError as e:
+        logger.warning("Chat fast loop not available: %s", e)
 
     yield
 
@@ -162,6 +217,16 @@ app.include_router(consolidator_router)
 app.include_router(command_channels_router)
 app.include_router(bottleneck_router)
 app.include_router(fleet_router)
+app.include_router(action_items_router)
+app.include_router(nfs_router)
+app.include_router(assembly_router)
+app.include_router(demos_router)
+app.include_router(mail_router)
+app.include_router(google_chat_router)
+app.include_router(notifications_router)
+app.include_router(newsletter_router)
+app.include_router(notebooklm_router)
+app.include_router(agent_feedback_router)
 app.include_router(ws_router)
 
 # Serve static files (dashboard UI)
@@ -184,6 +249,11 @@ async def index():
 if static_dir.is_dir():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
+# Serve portal auth JS for direct access (when not through Caddy)
+portal_static = Path(__file__).parent.parent / "opai-portal" / "static"
+if portal_static.is_dir():
+    app.mount("/auth/static", StaticFiles(directory=str(portal_static)), name="auth-static")
+
 
 @app.get("/health")
 def health():
@@ -201,6 +271,17 @@ def health():
 def api_health():
     """Alias so services probing /api/health also work."""
     return health()
+
+
+@app.get("/auth/config")
+def root_auth_config(request: Request):
+    """Auth config at root path — for direct access (not through Caddy)."""
+    from_local = request.client and request.client.host in ("127.0.0.1", "::1", "localhost")
+    return {
+        "supabase_url": config.SUPABASE_URL,
+        "supabase_anon_key": config.SUPABASE_ANON_KEY,
+        "auth_disabled": bool(from_local),
+    }
 
 
 if __name__ == "__main__":

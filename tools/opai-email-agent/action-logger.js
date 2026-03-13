@@ -89,7 +89,7 @@ function maybeRotate() {
 /**
  * Log an agent action.
  * @param {Object} entry
- * @param {string} entry.action - Action type: classify, tag, draft, send, skip, organize, suggest
+ * @param {string} entry.action - Action type: classify, tag, draft, send, skip, organize, suggest, prd-submit
  * @param {string} entry.emailId - Message-ID or subject identifier
  * @param {string} entry.sender - Sender address
  * @param {string} entry.subject - Email subject
@@ -153,7 +153,7 @@ function getActions(limit = 50, filter = null, accountId = null) {
   }
 
   if (accountId) {
-    entries = entries.filter(e => e.accountId === accountId);
+    entries = entries.filter(e => e.accountId === accountId || !e.accountId);
   }
   if (filter) {
     entries = entries.filter(e => e.action === filter);
@@ -222,7 +222,7 @@ function getActionsForDate(date, filter = null, accountId = null) {
       entries = [];
     }
   }
-  if (accountId) entries = entries.filter(e => e.accountId === accountId);
+  if (accountId) entries = entries.filter(e => e.accountId === accountId || !e.accountId);
   if (filter) entries = entries.filter(e => e.action === filter);
   return entries.reverse();
 }

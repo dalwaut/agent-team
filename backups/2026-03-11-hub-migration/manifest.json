@@ -1,0 +1,37 @@
+{
+  "created_at": "2026-03-11T23:15:29.521506+00:00",
+  "purpose": "TeamHub table backup before migration",
+  "project_id": "idorgloobxkmlnwnxbej",
+  "tables": {
+    "team_workspaces": {
+      "file": "team_workspaces.json",
+      "row_count": 27,
+      "columns": "all",
+      "size_bytes": 16421
+    },
+    "team_statuses": {
+      "file": "team_statuses.json",
+      "row_count": 245,
+      "columns": "all",
+      "size_bytes": 69710
+    },
+    "team_tags": {
+      "file": "team_tags.json",
+      "row_count": 124,
+      "columns": "all",
+      "size_bytes": 30029
+    },
+    "team_membership": {
+      "file": "team_membership.json",
+      "row_count": 46,
+      "columns": "all",
+      "size_bytes": 12399
+    },
+    "team_items": {
+      "file": "team_items.json",
+      "row_count": 4825,
+      "columns": "id,workspace_id,title,status,priority,type",
+      "size_bytes": 1211161
+    }
+  }
+}

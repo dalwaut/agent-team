@@ -1,165 +1,124 @@
-"""OPAI Docs — Documentation portal with auto-updating from wiki sources."""
+"""
+OPAI Docs — Backend API for secure workspace file viewing.
 
-import asyncio
-import resource
+Serves workspace markdown files through an auth-gated API.
+Static SPA + wiki files continue to be served by Caddy.
+This backend handles only /api/* routes for file viewing.
+"""
+
+import os
 import sys
-import time
-from contextlib import asynccontextmanager
 from pathlib import Path
 
-_start_time = time.time()
+from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi.responses import HTMLResponse, JSONResponse
+import aiofiles
 
-# Add shared modules to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
+# Shared auth
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+from auth import get_current_user, AuthUser  # noqa: E402
 
-from dotenv import load_dotenv
+# ── Config ──────────────────────────────────────────────────────
+WORKSPACE_ROOT = Path(os.getenv("OPAI_WORKSPACE", "/workspace/synced/opai"))
+MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB max for rendering
 
-load_dotenv()
+# Allowed base directories (relative to workspace root)
+ALLOWED_DIRS = {
+    "notes", "Library", "reports", "Templates", "workflows",
+    "tools", "config", "scripts", "tasks", "Research", "Documents",
+}
 
-import config
-import generator
-from routes_api import router
-from audit import log_audit
-
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-from typing import Optional
-
-from auth import AuthUser, get_current_user
+app = FastAPI(title="OPAI Docs API", docs_url=None, redoc_url=None)
 
 
-# ── Background watcher ───────────────────────────────────────
+# ── Path Safety ─────────────────────────────────────────────────
 
-_scheduler_tick: int = config.WATCHER_INTERVAL
-_scheduler_paused: bool = False
+def _resolve_safe_path(relative_path: str) -> Path:
+    """Resolve and validate a workspace-relative path. Prevents traversal."""
+    clean = relative_path.strip().lstrip("/").lstrip("\\")
 
+    if not clean:
+        raise HTTPException(status_code=400, detail="Path is required")
 
-def get_scheduler_settings() -> dict:
-    return {"tick_seconds": _scheduler_tick, "paused": _scheduler_paused}
+    # Block obvious traversal
+    if ".." in clean.split("/") or ".." in clean.split("\\"):
+        raise HTTPException(status_code=403, detail="Path traversal denied")
 
+    target = (WORKSPACE_ROOT / clean).resolve()
+    root_resolved = WORKSPACE_ROOT.resolve()
 
-def set_scheduler_settings(*, tick_seconds: int | None = None, paused: bool | None = None) -> dict:
-    global _scheduler_tick, _scheduler_paused
-    if tick_seconds is not None:
-        _scheduler_tick = max(10, min(3600, tick_seconds))
-    if paused is not None:
-        _scheduler_paused = paused
-    return get_scheduler_settings()
+    # Must remain inside workspace
+    if not str(target).startswith(str(root_resolved) + os.sep) and target != root_resolved:
+        raise HTTPException(status_code=403, detail="Access denied — path outside workspace")
 
-
-async def _watcher_loop():
-    """Periodically check wiki sources and regenerate if changed."""
-    while True:
-        await asyncio.sleep(_scheduler_tick)
-        if _scheduler_paused:
-            continue
-        try:
-            if generator.check_for_changes():
-                generator.generate()
-                print(f"[watcher] Regenerated docs.json at {time.strftime('%H:%M:%S')}")
-                try:
-                    log_audit(
-                        tier="health",
-                        service="opai-docs",
-                        event="docs-regenerated",
-                        status="completed",
-                        summary="Docs regenerated from wiki sources",
-                    )
-                except Exception:
-                    pass
-        except Exception as e:
-            print(f"[watcher] Error: {e}")
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Start background watcher on startup."""
-    # Generate initial docs if missing
-    if not config.DOCS_JSON.exists():
-        try:
-            docs = generator.generate()
-            print(f"[startup] Generated docs.json with {len(docs['sections'])} sections")
-            try:
-                log_audit(
-                    tier="health",
-                    service="opai-docs",
-                    event="docs-regenerated",
-                    status="completed",
-                    summary=f"Startup: generated docs.json with {len(docs['sections'])} sections",
-                )
-            except Exception:
-                pass
-        except Exception as e:
-            print(f"[startup] Failed to generate docs: {e}")
-
-    task = asyncio.create_task(_watcher_loop())
-    yield
-    task.cancel()
+    # Must be in an allowed top-level directory
     try:
-        await task
-    except asyncio.CancelledError:
-        pass
+        rel = target.relative_to(root_resolved)
+        top_dir = rel.parts[0] if rel.parts else ""
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if top_dir not in ALLOWED_DIRS:
+        raise HTTPException(status_code=403, detail=f"Directory '{top_dir}' is not viewable")
+
+    return target
 
 
-# ── App ──────────────────────────────────────────────────────
+def _is_binary(data: bytes, sample_size: int = 8192) -> bool:
+    """Check if file content appears to be binary."""
+    chunk = data[:sample_size]
+    # Null bytes are a strong binary indicator
+    if b"\x00" in chunk:
+        return True
+    # High ratio of non-text bytes
+    non_text = sum(1 for b in chunk if b < 8 or (b > 13 and b < 32 and b != 27))
+    return non_text / max(len(chunk), 1) > 0.1
 
-app = FastAPI(
-    title="OPAI Docs",
-    version="1.0.0",
-    description="Documentation portal for OPAI tools and system architecture",
-    lifespan=lifespan,
-)
 
-config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+# ── API Routes ──────────────────────────────────────────────────
 
+@app.get("/view")
+async def view_file(
+    path: str = Query(..., description="Workspace-relative file path"),
+    user: AuthUser = Depends(get_current_user),
+):
+    """Read a workspace file. Requires authentication."""
+    target = _resolve_safe_path(path)
 
-@app.get("/health")
-def health():
-    mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if not target.is_file():
+        raise HTTPException(status_code=400, detail="Not a file")
+
+    size = target.stat().st_size
+    if size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="File too large for viewing")
+
+    async with aiofiles.open(target, "rb") as f:
+        raw = await f.read()
+
+    if _is_binary(raw):
+        raise HTTPException(status_code=415, detail="Binary files cannot be viewed")
+
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        content = raw.decode("latin-1")
+
+    # Determine file type for rendering hints
+    suffix = target.suffix.lower()
+    file_type = "markdown" if suffix in (".md", ".mdx") else "text"
+
     return {
-        "status": "ok",
-        "service": "opai-docs",
-        "version": "1.0.0",
-        "uptime_seconds": int(time.time() - _start_time),
-        "memory_mb": round(mem / 1024, 1),
+        "path": path,
+        "name": target.name,
+        "content": content,
+        "type": file_type,
+        "size": size,
     }
 
 
-app.include_router(router)
-
-
-# ── Scheduler Settings (heartbeat control) ─────────────────────────────────
-
-class _SchedulerSettingsBody(BaseModel):
-    tick_seconds: Optional[int] = None
-    paused: Optional[bool] = None
-
-
-@app.get("/api/scheduler/settings")
-async def get_scheduler_settings_endpoint(user: AuthUser = Depends(get_current_user)):
-    if getattr(user, "role", "") != "admin":
-        raise HTTPException(403, "Admin only")
-    return get_scheduler_settings()
-
-
-@app.put("/api/scheduler/settings")
-async def update_scheduler_settings_endpoint(body: _SchedulerSettingsBody, user: AuthUser = Depends(get_current_user)):
-    if getattr(user, "role", "") != "admin":
-        raise HTTPException(403, "Admin only")
-    return set_scheduler_settings(tick_seconds=body.tick_seconds, paused=body.paused)
-
-
-# Serve static frontend
-app.mount("/static", StaticFiles(directory=str(config.STATIC_DIR)), name="static")
-
-
-@app.get("/")
-async def index():
-    return FileResponse(str(config.STATIC_DIR / "index.html"))
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("app:app", host=config.HOST, port=config.PORT, reload=False)
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "opai-docs"}

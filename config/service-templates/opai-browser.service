@@ -17,6 +17,7 @@ EnvironmentFile=-%t/opai-vault/opai-browser.env
 ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8107
 Restart=on-failure
 RestartSec=10
+TimeoutStopSec=10
 StandardOutput=journal
 StandardError=journal
 

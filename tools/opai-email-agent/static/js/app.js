@@ -7,6 +7,7 @@ let _expandedEmail = null;
 let _expandedActivity = null;
 let _emailGroups = [];
 let _editingQueue = {};
+let _expandedQueueDraft = {};
 let _currentDate = null;   // null = "recent" (default cross-day view)
 let _availableDates = [];  // populated from /api/logs/dates
 
@@ -304,7 +305,7 @@ function updateControlsSidebar() {
 
   // Mode description
   const modeDescs = {
-    suggestion: 'Classify and tag only. No drafting or sending. Safe observation mode.',
+    suggestion: 'Classify and label only. No drafting or sending. Safe observation mode.',
     internal: 'Classify, tag, organize, and draft responses. All drafts queued for your approval.',
     auto: 'Full autonomy: classify, tag, organize, draft, and send (rate-limited). Use with caution.',
   };
@@ -353,7 +354,7 @@ function renderPermissionToggles(account) {
 
   const permDefs = [
     { key: 'classify', label: 'Classify Emails', desc: 'AI reads and categorizes incoming emails', icon: '&#128270;' },
-    { key: 'tag', label: 'Tag Emails', desc: 'Apply IMAP labels and priority tags', icon: '&#127991;' },
+    { key: 'label', label: 'Label Emails', desc: 'Apply Gmail labels and priority', icon: '&#127991;' },
     { key: 'organize', label: 'Organize Inbox', desc: 'Sort emails into folders automatically', icon: '&#128193;' },
     { key: 'draft', label: 'Draft Responses', desc: 'AI writes reply drafts for your review', icon: '&#9997;' },
     { key: 'send', label: 'Send Emails', desc: 'Auto-send responses (rate limited)', icon: '&#128228;' },
@@ -874,7 +875,7 @@ function groupActionsByEmail(actions) {
         subject: a.subject || '(no subject)',
         date: a.timestamp,
         actions: [],
-        tags: [],
+        labels: [],
         outcome: 'classified',
         draft: null,
       });
@@ -885,31 +886,37 @@ function groupActionsByEmail(actions) {
 
     if (a.timestamp < group.date) group.date = a.timestamp;
 
+    // Fill in sender/subject from any action that has it
+    if (a.sender && group.sender === '--') group.sender = a.sender;
+    if (a.subject && group.subject === '(no subject)') group.subject = a.subject;
+
     if ((a.action === 'tag' || a.action === 'classify' || a.action === 'suggest') && a.details) {
       const d = a.details;
       const found = [];
-      if (Array.isArray(d.tags)) d.tags.forEach(t => { if (typeof t === 'string') found.push(t); });
+      if (Array.isArray(d.labels)) d.labels.forEach(t => { if (typeof t === 'string') found.push(t); });
+      if (Array.isArray(d.tags)) d.tags.forEach(t => { if (typeof t === 'string') found.push(t); }); // legacy compat
       if (Array.isArray(d.labels)) d.labels.forEach(t => { if (typeof t === 'string') found.push(t); });
       if (d.classification && typeof d.classification === 'object') {
-        if (Array.isArray(d.classification.tags)) d.classification.tags.forEach(t => { if (typeof t === 'string') found.push(t); });
+        if (Array.isArray(d.classification.labels)) d.classification.labels.forEach(t => { if (typeof t === 'string') found.push(t); });
+        if (Array.isArray(d.classification.tags)) d.classification.tags.forEach(t => { if (typeof t === 'string') found.push(t); }); // legacy compat
         if (typeof d.classification.priority === 'string' && d.classification.priority !== 'normal') found.push(d.classification.priority);
       }
       if (typeof d.category === 'string') found.push(d.category);
       if (typeof d.classification === 'string') found.push(d.classification);
       for (const t of found) {
-        if (!group.tags.includes(t)) group.tags.push(t);
+        if (!group.labels.includes(t)) group.labels.push(t);
       }
     }
 
-    const priority = { skip: 1, classify: 2, tag: 3, suggest: 3, organize: 3, queue: 4, draft: 5, send: 6, error: 7 };
+    const priority = { skip: 1, classify: 2, label: 3, tag: 3, suggest: 3, organize: 3, queue: 4, draft: 5, send: 6, 'arl-draft': 5, 'arl-respond': 6, error: 7, 'arl-respond-failed': 7 };
     const currentPri = priority[group.outcome] || 0;
     const newPri = priority[a.action] || 0;
     if (newPri > currentPri) {
-      if (a.action === 'send') group.outcome = 'sent';
-      else if (a.action === 'draft' || a.action === 'queue') group.outcome = 'draft';
-      else if (a.action === 'tag') group.outcome = 'tagged';
+      if (a.action === 'send' || a.action === 'arl-respond') group.outcome = 'sent';
+      else if (a.action === 'draft' || a.action === 'queue' || a.action === 'arl-draft') group.outcome = 'draft';
+      else if (a.action === 'label' || a.action === 'tag') group.outcome = 'labeled';
       else if (a.action === 'skip') group.outcome = 'skipped';
-      else if (a.action === 'error') group.outcome = 'error';
+      else if (a.action === 'error' || a.action === 'arl-respond-failed') group.outcome = 'error';
       else group.outcome = 'classified';
     }
 
@@ -932,8 +939,8 @@ function renderActionDetails(a) {
 
   if (a.action === 'classify' || a.action === 'suggest') {
     const cls = a.details.classification || {};
-    const tags = cls.tags || a.details.tags || [];
-    const pills = tags.map(t => '<span class="tag-pill ' + tagClass(t) + '">' + esc(t) + '</span>').join('');
+    const lbls = cls.labels || cls.tags || a.details.labels || a.details.tags || [];
+    const pills = lbls.map(t => '<span class="label-pill ' + labelClass(t) + '">' + esc(t) + '</span>').join('');
     const decision = cls.summary || cls.reason || cls.decision || a.details.suggestion || '';
 
     let out = '';
@@ -955,23 +962,24 @@ function renderActionDetails(a) {
 
 // ── Tag pill class mapping ───────────────────────────────
 
-function tagClass(tag) {
-  const t = (tag || '').toLowerCase();
-  if (t.includes('urgent') || t.includes('priority')) return 'tag-urgent';
-  if (t.includes('client') || t.includes('customer')) return 'tag-client';
-  if (t.includes('internal') || t.includes('team')) return 'tag-internal';
-  if (t.includes('invoice') || t.includes('billing')) return 'tag-invoice';
-  if (t.includes('newsletter') || t.includes('marketing')) return 'tag-newsletter';
-  if (t.includes('task') || t.includes('action')) return 'tag-task';
-  if (t.includes('info')) return 'tag-informational';
-  return 'tag-default';
+function labelClass(lbl) {
+  const t = (lbl || '').toLowerCase();
+  if (t.includes('urgent') || t.includes('priority')) return 'label-urgent';
+  if (t.includes('client') || t.includes('customer')) return 'label-client';
+  if (t.includes('internal') || t.includes('team')) return 'label-internal';
+  if (t.includes('invoice') || t.includes('billing')) return 'label-invoice';
+  if (t.includes('newsletter') || t.includes('marketing')) return 'label-newsletter';
+  if (t.includes('task') || t.includes('action')) return 'label-task';
+  if (t.includes('info')) return 'label-informational';
+  return 'label-default';
 }
 
 function outcomeClass(outcome) {
   const map = {
     skipped: 'outcome-skipped',
     classified: 'outcome-classified',
-    tagged: 'outcome-tagged',
+    labeled: 'outcome-labeled',
+    tagged: 'outcome-labeled',
     draft: 'outcome-draft',
     sent: 'outcome-sent',
     error: 'outcome-error',
@@ -988,7 +996,8 @@ function outcomeLabel(outcome) {
   const map = {
     skipped: 'Skipped',
     classified: 'Classified',
-    tagged: 'Tagged',
+    labeled: 'Labeled',
+    tagged: 'Labeled',
     draft: 'Draft Pending',
     sent: 'Sent',
     error: 'Error',
@@ -1031,6 +1040,7 @@ async function loadEmails() {
     const dateParam = _currentDate ? '?date=' + _currentDate : '';
     const data = await api('GET', '/api/emails' + dateParam);
     _emailGroups = (data && data.emails) ? data.emails : [];
+    clearLoadedMeta();
     applyInboxFilter();
   } catch (e) {
     console.error('Load emails failed:', e);
@@ -1039,7 +1049,8 @@ async function loadEmails() {
 
 const OUTCOME_FILTER_MAP = {
   classify: 'classified',
-  tag: 'tagged',
+  label: 'labeled',
+  tag: 'labeled',
   draft: 'draft',
   send: 'sent',
   skip: 'skipped',
@@ -1080,7 +1091,7 @@ function renderInbox(groups) {
     const time = new Date(g.date);
     const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const dateStr = isToday(time) ? timeStr : time.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + timeStr;
-    const tags = (g.tags || []).map(t => '<span class="tag-pill ' + tagClass(t) + '">' + esc(t) + '</span>').join('');
+    const lbls = (g.labels || []).map(t => '<span class="label-pill ' + labelClass(t) + '">' + esc(t) + '</span>').join('');
     const actionCount = g.actions ? g.actions.length : 0;
 
     return '<div class="email-card" id="email-' + i + '">' +
@@ -1093,7 +1104,7 @@ function renderInbox(groups) {
           '</div>' +
           '<div class="email-subject">' + esc(g.subject) + '</div>' +
           '<div class="email-meta">' +
-            tags +
+            lbls +
             (actionCount > 0 ? '<span style="font-size:0.7rem;color:var(--text-dim);margin-left:0.3rem">&#9654; ' + actionCount + ' action' + (actionCount !== 1 ? 's' : '') + '</span>' : '') +
           '</div>' +
         '</div>' +
@@ -1270,6 +1281,10 @@ function renderEmailDetail(group, idx) {
 
 const _loadedMeta = {};
 
+function clearLoadedMeta() {
+  for (const k of Object.keys(_loadedMeta)) delete _loadedMeta[k];
+}
+
 async function toggleEmailContent(idx, encodedMsgId) {
   const toggle = document.getElementById('ec-toggle-' + idx);
   const body = document.getElementById('ec-body-' + idx);
@@ -1279,8 +1294,10 @@ async function toggleEmailContent(idx, encodedMsgId) {
   body.classList.toggle('open', !isOpen);
   toggle.classList.toggle('open', !isOpen);
 
-  if (!isOpen && !_loadedMeta[idx]) {
-    _loadedMeta[idx] = true;
+  // Cache by emailId (not idx) to survive re-renders
+  const cacheKey = decodeURIComponent(encodedMsgId);
+  if (!isOpen && !_loadedMeta[cacheKey]) {
+    _loadedMeta[cacheKey] = true;
     try {
       const meta = await api('GET', '/api/email-meta/' + encodedMsgId);
       renderEmailContentPanel(idx, meta);
@@ -1779,6 +1796,13 @@ function toggleClassifyDropdown(idx) {
         '<label for="cls-needs-action-' + idx + '" style="font-size:0.75rem;color:var(--text-muted);cursor:pointer">Needs Action</label>' +
       '</div>' +
       '<div id="cls-action-panel-' + idx + '" style="display:none;margin-top:0.5rem;font-size:0.75rem">' +
+        // Mark as Spam
+        '<div style="margin-bottom:0.4rem">' +
+          '<label style="display:flex;align-items:center;gap:0.3rem;color:var(--text-muted);cursor:pointer">' +
+            '<input type="checkbox" id="cls-act-spam-' + idx + '" style="accent-color:var(--red)">' +
+            '<span style="color:var(--red)">Mark as Spam</span>' +
+          '</label>' +
+        '</div>' +
         // Move to folder
         '<div style="margin-bottom:0.4rem">' +
           '<label style="display:flex;align-items:center;gap:0.3rem;color:var(--text-muted);cursor:pointer">' +
@@ -1846,6 +1870,10 @@ function collectActions(idx) {
 
   const actions = [];
 
+  if (document.getElementById('cls-act-spam-' + idx)?.checked) {
+    actions.push({ type: 'mark-spam' });
+  }
+
   if (document.getElementById('cls-act-folder-' + idx)?.checked) {
     const folder = (document.getElementById('cls-act-folder-val-' + idx)?.value || '').trim();
     if (folder) actions.push({ type: 'move-to-folder', folder });
@@ -1902,8 +1930,8 @@ async function assignEmail(clsId, clsName, clsColor, encodedEmailId, sender, sub
   const emailId = decodeURIComponent(encodedEmailId);
   const needsReply = document.getElementById('cls-needs-reply-' + cardIdx)?.checked || false;
   const actions = collectActions(cardIdx);
-  await api('POST', '/api/classifications/' + encodeURIComponent(clsId) + '/assign', {
-    emailId, sender, subject, tags: [], needsReply, actions,
+  const resp = await api('POST', '/api/classifications/' + encodeURIComponent(clsId) + '/assign', {
+    emailId, sender, subject, labels: [], needsReply, actions,
   });
   // Close any open dropdowns
   document.querySelectorAll('.classify-dropdown-menu.open').forEach(m => m.classList.remove('open'));
@@ -1930,32 +1958,39 @@ async function assignEmail(clsId, clsName, clsColor, encodedEmailId, sender, sub
       if (detail) detail.innerHTML = renderEmailDetail(_emailGroups[cardIdx], cardIdx);
     }
   }
-  await loadClassifications();
+
+  // Show action results toast if any actions were executed
+  const executed = resp?.executedActions || [];
+  if (executed.length > 0) {
+    const msgs = executed.map(a => {
+      if (a.type === 'label') return a.success ? 'Label applied to Gmail' : 'Label failed';
+      if (a.type === 'mark-spam') return a.success ? 'Marked as spam + blacklisted' : 'Spam marking failed';
+      if (a.type === 'move-to-folder') return a.success ? 'Moved to ' + a.folder : 'Move failed';
+      if (a.type === 'forward-to') return a.success ? 'Forwarded to ' + a.email : 'Forward failed';
+      if (a.type === 'delete-after') return a.success ? 'Scheduled for deletion' : 'Schedule failed';
+      if (a.type === 'create-task') return a.success ? 'Task created' : 'Task creation failed';
+      return a.type + (a.success ? ' done' : ' failed');
+    });
+    showToast(msgs.join(' | '), executed.every(a => a.success) ? 'success' : 'warning');
+  } else {
+    showToast('Classified as ' + clsName, 'success');
+  }
+
+  // Full reload to pick up new action timeline entries + updated state
+  _expandedEmail = null; // allow loadEmails to run
+  await Promise.all([loadEmails(), loadClassifications()]);
+  // Re-expand the card we just classified
+  const newIdx = _emailGroups.findIndex(g => g.emailId === emailId);
+  if (newIdx !== -1) toggleEmailCard(newIdx);
 }
 
 async function undoClassify(clsId, encodedEmailId, cardIdx) {
   const emailId = decodeURIComponent(encodedEmailId);
   await api('POST', '/api/classifications/' + encodeURIComponent(clsId) + '/unassign', { emailId });
 
-  const card = document.getElementById('email-' + cardIdx);
-  if (card) {
-    // Restore badge
-    const wrap = card.querySelector('.outcome-badge-wrap');
-    if (wrap) {
-      const badge = document.createElement('span');
-      badge.className = 'outcome-badge outcome-skipped';
-      badge.textContent = 'Skipped';
-      wrap.replaceWith(badge);
-    }
-    // Update group data and re-render detail section
-    if (_emailGroups[cardIdx]) {
-      _emailGroups[cardIdx].outcome = 'skipped';
-      delete _emailGroups[cardIdx].classificationId;
-      delete _emailGroups[cardIdx].classificationColor;
-      const detail = card.querySelector('.email-detail');
-      if (detail) detail.innerHTML = renderEmailDetail(_emailGroups[cardIdx], cardIdx);
-    }
-  }
+  // Full reload to get clean data — avoids stale DOM/group state
+  _expandedEmail = null;
+  await Promise.all([loadEmails(), loadClassifications(), loadActivity()]);
   await loadClassifications();
 }
 
@@ -1972,11 +2007,22 @@ function isToday(date) {
 
 // ── Queue Rendering ──────────────────────────────────────
 
+let _queueItems = [];   // cached items for re-render without fetch
+
 async function loadQueue() {
+  // Never touch the queue DOM while user is mid-edit
   if (Object.keys(_editingQueue).length > 0) return;
 
-  const data = await api('GET', '/api/queue?status=pending');
-  const items = data.items || [];
+  const [pending, edited] = await Promise.all([
+    api('GET', '/api/queue?status=pending'),
+    api('GET', '/api/queue?status=edited'),
+  ]);
+  _queueItems = [...(pending.items || []), ...(edited.items || [])];
+  renderQueue();
+}
+
+function renderQueue() {
+  const items = _queueItems;
   const list = document.getElementById('queue-list');
 
   document.getElementById('count-queue').textContent = items.length;
@@ -1984,25 +2030,39 @@ async function loadQueue() {
 
   list.innerHTML = items.map(item => {
     const isEditing = _editingQueue[item.id];
+    const isExpanded = _expandedQueueDraft[item.id];
+    const draftText = item.draft || '';
+    const isLong = draftText.length > 300;
+    const noDraft = !draftText;
 
-    return '<div class="queue-card">' +
+    return '<div class="queue-card" id="qcard-' + item.id + '">' +
       '<div class="queue-left">' +
         '<h4>' + esc(item.subject) + '</h4>' +
         '<div class="queue-sender">From: ' + esc(item.sender) + ' &middot; ' + new Date(item.createdAt).toLocaleString() + '</div>' +
+        (item.reason ? '<div class="queue-reason">' + esc(item.reason) + '</div>' : '') +
+        (item.savedToGmail ? '<div class="queue-saved-badge">Saved to Gmail Drafts</div>' : '') +
       '</div>' +
       '<div class="queue-right">' +
-        '<div class="queue-right-header">Draft Response</div>' +
+        '<div class="queue-right-header">Draft Response' +
+          (item.status === 'edited' ? ' <span class="queue-edited-badge">Edited</span>' : '') +
+        '</div>' +
         (isEditing
-          ? '<textarea class="queue-draft-edit" id="edit-' + item.id + '">' + esc(item.draft) + '</textarea>'
-          : '<div class="queue-draft-text" id="draft-' + item.id + '">' + esc(item.draft) + '</div>'
+          ? '<textarea class="queue-draft-edit" id="edit-' + item.id + '">' + esc(draftText) + '</textarea>'
+          : noDraft
+            ? '<div class="queue-draft-text expanded" style="color:var(--text-muted);font-style:italic">No draft generated yet. Use Regenerate to create one.</div>'
+            : '<div class="queue-draft-text' + (isExpanded || !isLong ? ' expanded' : '') + '" id="draft-' + item.id + '">' + esc(draftText) + '</div>' +
+              (isLong && !isExpanded ? '<button class="btn-link queue-expand-btn" onclick="toggleQueueDraft(\'' + item.id + '\')">Show full draft</button>' : '') +
+              (isLong && isExpanded ? '<button class="btn-link queue-expand-btn" onclick="toggleQueueDraft(\'' + item.id + '\')">Show less</button>' : '')
         ) +
       '</div>' +
       '<div class="queue-actions">' +
         (isEditing
-          ? '<button class="btn btn-green btn-sm" onclick="saveQueueEdit(\'' + item.id + '\')">Save Edit</button>' +
+          ? '<button class="btn btn-green btn-sm" onclick="saveQueueEdit(\'' + item.id + '\')">Save &amp; Exit</button>' +
             '<button class="btn btn-outline btn-sm" onclick="cancelQueueEdit(\'' + item.id + '\')">Cancel</button>'
-          : '<button class="btn btn-green btn-sm" onclick="approveQueue(\'' + item.id + '\')">Approve &amp; Send</button>' +
-            '<button class="btn btn-outline btn-sm" onclick="startQueueEdit(\'' + item.id + '\')">Edit</button>' +
+          : (draftText ? '<button class="btn btn-green btn-sm" onclick="approveQueue(\'' + item.id + '\')" id="approve-' + item.id + '">Approve &amp; Send</button>' : '') +
+            (draftText ? '<button class="btn btn-outline btn-sm" onclick="saveDraftToGmail(\'' + item.id + '\')">Save to Drafts</button>' : '') +
+            '<button class="btn btn-outline btn-sm" onclick="startQueueEdit(\'' + item.id + '\')">&#9998; Edit</button>' +
+            '<button class="btn btn-outline btn-sm" style="color:var(--green);border-color:var(--green)" onclick="regenerateQueueDraft(\'' + item.id + '\', \'' + esc(item.sender || '').replace(/'/g, "\\'") + '\', \'' + esc(item.subject || '').replace(/'/g, "\\'") + '\')">&#8635; Regenerate</button>' +
             '<button class="btn btn-red btn-sm" onclick="rejectQueue(\'' + item.id + '\')">Reject</button>'
         ) +
       '</div>' +
@@ -2011,20 +2071,52 @@ async function loadQueue() {
 }
 
 async function approveQueue(id) {
-  showModal('Approve and Send?', 'This will send the draft email to the sender.', async () => {
-    await api('POST', '/api/queue/' + id + '/approve');
-    await Promise.all([loadQueue(), loadActivity(), refreshStatus()]);
+  showModal('Approve and Send?', 'This will send the draft email as a reply from this account.', async () => {
+    const btn = document.getElementById('modal-confirm');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
+    const result = await api('POST', '/api/queue/' + id + '/approve');
+    if (result.error) {
+      showToast('Send failed: ' + result.error, 'error');
+      return;
+    }
+    showToast('Email sent successfully');
+    _queueItems = _queueItems.filter(i => i.id !== id);
+    renderQueue();
+    loadActivity();
+    refreshStatus();
   });
+}
+
+async function saveDraftToGmail(id) {
+  const approveBtn = document.getElementById('approve-' + id);
+  const card = document.getElementById('qcard-' + id);
+  if (card) card.style.opacity = '0.6';
+  try {
+    const result = await api('POST', '/api/queue/' + id + '/save-draft');
+    if (result.error) {
+      showToast('Save failed: ' + result.error, 'error');
+    } else {
+      showToast('Draft saved to Gmail Drafts');
+      const cached = _queueItems.find(i => i.id === id);
+      if (cached) cached.savedToGmail = true;
+    }
+  } catch (err) {
+    showToast('Save failed: ' + err.message, 'error');
+  }
+  if (card) card.style.opacity = '1';
+  renderQueue();
 }
 
 function startQueueEdit(id) {
   _editingQueue[id] = true;
-  loadQueue();
+  renderQueue();  // renders from _queueItems cache, no fetch
+  const ta = document.getElementById('edit-' + id);
+  if (ta) ta.focus();
 }
 
 function cancelQueueEdit(id) {
   delete _editingQueue[id];
-  loadQueue();
+  renderQueue();  // re-renders read-only view from cache
 }
 
 async function saveQueueEdit(id) {
@@ -2033,14 +2125,91 @@ async function saveQueueEdit(id) {
   const draft = textarea.value;
   await api('POST', '/api/queue/' + id + '/edit', { draft });
   delete _editingQueue[id];
-  await loadQueue();
+  // Update cached item with new draft
+  const item = _queueItems.find(i => i.id === id);
+  if (item) { item.draft = draft; item.status = 'edited'; }
+  renderQueue();
 }
 
 async function rejectQueue(id) {
-  showModal('Reject Draft?', 'This will discard the draft and log the rejection.', async () => {
-    await api('POST', '/api/queue/' + id + '/reject', { reason: 'Rejected from UI' });
-    await Promise.all([loadQueue(), loadActivity()]);
-  });
+  // Remove card immediately, call API in background
+  const card = document.getElementById('qcard-' + id);
+  if (card) card.style.opacity = '0.3';
+  await api('POST', '/api/queue/' + id + '/reject', { reason: 'Rejected from UI' });
+  _queueItems = _queueItems.filter(i => i.id !== id);
+  renderQueue();
+  loadActivity();
+}
+
+function toggleQueueDraft(id) {
+  _expandedQueueDraft[id] = !_expandedQueueDraft[id];
+  renderQueue();
+}
+
+async function regenerateQueueDraft(id, sender, subject) {
+  showModal(
+    'Regenerate Draft',
+    '',
+    async () => {
+      const guidance = (document.getElementById('modal-input')?.value || '').trim();
+      const model = document.getElementById('regen-model')?.value || 'haiku';
+      const length = document.getElementById('regen-length')?.value || 'simple';
+      const btn = document.getElementById('modal-confirm');
+      if (btn) { btn.disabled = true; btn.textContent = 'Generating draft...'; }
+      try {
+        const result = await api('POST', '/api/queue/' + id + '/regenerate', {
+          draftGuidance: guidance || undefined,
+          model,
+          length,
+        });
+        delete _expandedQueueDraft[id];
+        if (result.error) {
+          showToast('Draft generation failed: ' + result.error, 'error');
+        } else if (result.item && result.item.draft) {
+          const cached = _queueItems.find(i => i.id === id);
+          if (cached) { cached.draft = result.item.draft; cached.status = 'pending'; }
+          showToast('Draft generated successfully');
+        }
+      } catch (err) {
+        showToast('Regenerate failed: ' + err.message, 'error');
+      }
+      renderQueue();
+      loadActivity();
+    },
+    {
+      input: true,
+      inputPlaceholder: 'Optional guidance \u2014 e.g. "politely decline", "ask for a call"...',
+      customBody: '<div class="regen-options">' +
+        '<div class="regen-row">' +
+          '<label>Model</label>' +
+          '<select id="regen-model" class="regen-select">' +
+            '<option value="haiku">Haiku (fast)</option>' +
+            '<option value="sonnet">Sonnet (smarter)</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="regen-row">' +
+          '<label>Length</label>' +
+          '<select id="regen-length" class="regen-select">' +
+            '<option value="simple">Simple (1-2 paragraphs)</option>' +
+            '<option value="long">Detailed (3-5 paragraphs)</option>' +
+          '</select>' +
+        '</div>' +
+      '</div>',
+    }
+  );
+}
+
+function showToast(message, type) {
+  let toast = document.getElementById('opai-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'opai-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.className = 'toast show' + (type === 'error' ? ' toast-error' : '');
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { toast.className = 'toast'; }, 4000);
 }
 
 // ── Activity Rendering ───────────────────────────────────
@@ -2177,7 +2346,12 @@ async function deactivateRule(id) {
 
 function showModal(title, body, callback, opts) {
   document.getElementById('modal-title').textContent = title;
-  document.getElementById('modal-body').textContent = body;
+  const bodyEl = document.getElementById('modal-body');
+  if (opts?.customBody) {
+    bodyEl.innerHTML = (body ? '<p>' + esc(body) + '</p>' : '') + opts.customBody;
+  } else {
+    bodyEl.textContent = body;
+  }
   const inputWrap = document.getElementById('modal-input-wrap');
   const inputEl = document.getElementById('modal-input');
   if (opts?.input) {
@@ -2203,11 +2377,13 @@ async function confirmModal() {
   if (!cb) return;
   _modalCallback = null; // Prevent double-submit
   const btn = document.getElementById('modal-confirm');
-  if (btn) { btn.disabled = true; btn.textContent = 'Working...'; }
+  // Only set Working... if callback hasn't already set a custom message
+  if (btn && !btn.disabled) { btn.disabled = true; btn.textContent = 'Working...'; }
   try {
     await cb();
   } catch (err) {
     console.error('Modal action failed:', err);
+    showToast('Action failed: ' + err.message, 'error');
   }
   if (btn) { btn.disabled = false; btn.textContent = 'Confirm'; }
   closeModal();
@@ -2283,9 +2459,9 @@ async function runClassifyTest() {
 
     if (result.classification) {
       const cls = result.classification;
-      const tags = (cls.tags || []).map(t => '<span class="tag-pill ' + tagClass(t) + '">' + esc(t) + '</span>').join('');
+      const lbls = (cls.labels || cls.tags || []).map(t => '<span class="label-pill ' + labelClass(t) + '">' + esc(t) + '</span>').join('');
       content.innerHTML =
-        (tags ? '<div class="classify-tags" style="margin-bottom:0.5rem">' + tags + '</div>' : '') +
+        (lbls ? '<div class="classify-labels" style="margin-bottom:0.5rem">' + lbls + '</div>' : '') +
         '<div class="classify-meta">Priority: <strong>' + esc(cls.priority || 'normal') + '</strong>' +
         (cls.urgency ? ' &middot; Urgency: <strong>' + esc(cls.urgency) + '</strong>' : '') +
         ' &middot; Requires response: <strong>' + (cls.requiresResponse ? 'yes' : 'no') + '</strong></div>' +

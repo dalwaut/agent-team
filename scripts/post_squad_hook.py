@@ -41,10 +41,10 @@ TO_ADDRESS   = "Dallas@paradisewebfl.com"
 FROM_ADDRESS = "Agent@paradisewebfl.com"
 
 # Squads that should always trigger email + tasks (scheduled security runs)
-ALWAYS_NOTIFY_SQUADS = {"dep_scan", "secrets_scan", "security_quick", "secure", "workspace", "audit", "evolve"}
+ALWAYS_NOTIFY_SQUADS = {"dep_scan", "secrets_scan", "security_quick", "secure", "workspace", "audit", "evolve", "auto_safe"}
 
 # Squads that should send Telegram notification on completion
-TELEGRAM_NOTIFY_SQUADS = {"rd", "incident", "secure", "evolve"}
+TELEGRAM_NOTIFY_SQUADS = {"rd", "incident", "secure", "evolve", "auto_safe"}
 
 # Squads whose primary report should be filed to notes/Improvements/
 IMPROVEMENTS_SQUADS = {"rd"}
@@ -68,6 +68,9 @@ def load_dotenv(path: Path) -> dict:
 
 ACTION_PATTERN = re.compile(
     r"^[-*]\s*(P0|P1|P2)[:\s]+(.+)$", re.MULTILINE | re.IGNORECASE
+)
+FEEDBACK_PATTERN = re.compile(
+    r'<!-- FEEDBACK\s*(\{.*?\})\s*-->', re.DOTALL
 )
 FINDING_COUNT_PATTERN = re.compile(
     r"(?:Critical|High)\s*[:\|]\s*(\d+)", re.IGNORECASE
@@ -546,10 +549,12 @@ def file_rd_brief(reports: list[dict], date_str: str) -> str:
 
 sys.path.insert(0, str(OPAI_ROOT / "tools" / "shared"))
 from audit import log_audit
+from teamhub_client import TeamHubClient, DALLAS_UUID
 
 
 SQUAD_NAMES = {
     "evolve": "Self-Assessment (evolve squad)",
+    "auto_safe": "Auto-Safe Audit (daily evolve)",
     "audit": "System Audit",
     "workspace": "Workspace Audit",
     "dep_scan": "Dependency Scanner",
@@ -595,6 +600,153 @@ def write_squad_audit_entry(squad: str, date_str: str, reports: list[dict],
         print(f"[hook] Audit write error (non-fatal): {e}", file=sys.stderr)
 
 
+# ── Team Hub bridge ──────────────────────────────────────────────────────────
+
+def create_teamhub_tasks(squad: str, date_str: str, reports: list[dict]):
+    """Mirror squad findings to Team Hub as tasks with report comments.
+
+    Creates a parent task for the squad run, then adds comments with
+    P0/P1/P2 action items from each agent report. P0 items get an
+    @mention to Dallas for notification.
+    """
+    th = TeamHubClient()
+
+    total_findings = sum(r["critical_high"] for r in reports)
+    total_actions = sum(len(r["action_items"]) for r in reports)
+    agent_names = [r["agent"] for r in reports]
+
+    # Only create Team Hub tasks if there are actual findings
+    if total_findings == 0 and total_actions == 0:
+        print("[hook] No findings for Team Hub — skipping", file=sys.stderr)
+        return
+
+    # Priority mapping
+    priority = "medium"
+    if total_findings >= 3 or any(
+        any(a["priority"] == "P0" for a in r["action_items"]) for r in reports
+    ):
+        priority = "high"
+    if total_findings >= 8:
+        priority = "critical"
+
+    # Create parent task for the squad run
+    desc_lines = [
+        f"**Squad:** {squad}",
+        f"**Date:** {date_str}",
+        f"**Agents:** {', '.join(agent_names)}",
+        f"**Findings:** {total_findings} critical/high",
+        f"**Action items:** {total_actions}",
+    ]
+
+    parent = th.create_task(
+        title=f"[{squad.upper()}] Agent findings — {date_str}",
+        description="\n".join(desc_lines),
+        priority=priority,
+        source="squad-hook",
+        assignee_id=DALLAS_UUID,
+    )
+    if not parent or not parent.get("id"):
+        print("[hook] Failed to create Team Hub parent task", file=sys.stderr)
+        return
+
+    parent_id = parent["id"]
+    print(f"[hook] Team Hub parent task created: {parent_id}", file=sys.stderr)
+
+    # Add per-agent comments with findings
+    for report in reports:
+        if not report["action_items"] and report["critical_high"] == 0:
+            continue
+
+        lines = [f"### {report['agent']}"]
+        lines.append(f"Critical/High: {report['critical_high']}")
+
+        has_p0 = False
+        for a in report["action_items"]:
+            lines.append(f"- **{a['priority']}**: {a['description']}")
+            if a["priority"] == "P0":
+                has_p0 = True
+
+        comment_text = "\n".join(lines)
+
+        # P0 items get an @mention for immediate notification
+        if has_p0:
+            th.mention_dallas(parent_id, comment_text)
+        else:
+            th.add_comment(parent_id, comment_text, is_agent_report=True)
+
+    print(f"[hook] Team Hub tasks + comments created for {squad}", file=sys.stderr)
+
+
+# ── Agent feedback extraction ─────────────────────────────────────────────────
+
+ENGINE_FEEDBACK_URL = "http://localhost:8080/api/agent-feedback"
+
+
+def extract_agent_feedback(report_text: str) -> dict | None:
+    """Extract structured feedback from <!-- FEEDBACK {...} --> block in report."""
+    match = FEEDBACK_PATTERN.search(report_text)
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(1))
+        # Validate expected structure
+        if not isinstance(data, dict):
+            return None
+        return data
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def submit_agent_feedback(squad: str, agent_role: str, feedback: dict,
+                           report_path: str):
+    """POST extracted feedback items to Engine's agent-feedback API."""
+    import urllib.request
+    import urllib.error
+
+    source_run = f"{squad}/{report_path}"
+
+    type_map = {
+        "hints": "retrieval_hint",
+        "missing": "missing_context",
+        "corrections": "correction",
+    }
+
+    submitted = 0
+    for key, feedback_type in type_map.items():
+        items = feedback.get(key, [])
+        if not isinstance(items, list):
+            continue
+        for item_text in items:
+            if not isinstance(item_text, str) or len(item_text.strip()) < 5:
+                continue
+            payload = json.dumps({
+                "agent_role": agent_role,
+                "feedback_type": feedback_type,
+                "content": item_text.strip(),
+                "source_run": source_run,
+                "confidence": 0.5,
+            }).encode("utf-8")
+            try:
+                headers = {"Content-Type": "application/json"}
+                svc_key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+                if svc_key:
+                    headers["Authorization"] = f"Bearer {svc_key}"
+                req = urllib.request.Request(
+                    ENGINE_FEEDBACK_URL,
+                    data=payload,
+                    headers=headers,
+                    method="POST",
+                )
+                urllib.request.urlopen(req, timeout=5)
+                submitted += 1
+            except Exception:
+                pass  # Non-fatal — Engine may not be running
+
+    if submitted:
+        print(f"[hook] Submitted {submitted} feedback items for {agent_role}",
+              file=sys.stderr)
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
@@ -619,6 +771,17 @@ def main():
         sys.exit(0)
 
     print(f"[hook] Processing {len(reports)} report(s) for squad '{args.squad}'", file=sys.stderr)
+
+    # Extract and submit agent feedback from reports
+    for report in reports:
+        try:
+            text = Path(report["path"]).read_text(errors="replace")
+            fb = extract_agent_feedback(text)
+            if fb:
+                submit_agent_feedback(args.squad, report["agent"], fb, report["path"])
+        except Exception as e:
+            print(f"[hook] Feedback extraction error for {report['agent']} (non-fatal): {e}",
+                  file=sys.stderr)
 
     # Always write an audit entry for every squad run (no findings filter)
     if not args.no_audit:
@@ -653,6 +816,12 @@ def main():
             create_tasks_from_reports(args.squad, args.date, reports)
         except Exception as e:
             print(f"[hook] Task creation error (non-fatal): {e}", file=sys.stderr)
+
+        # Mirror findings to Team Hub
+        try:
+            create_teamhub_tasks(args.squad, args.date, reports)
+        except Exception as e:
+            print(f"[hook] Team Hub bridge error (non-fatal): {e}", file=sys.stderr)
 
     if not args.no_email:
         try:

@@ -401,4 +401,43 @@ function isTextFile(filePath) {
   return ['.md', '.txt', '.json', '.log', '.csv', '.yaml', '.yml', '.js', '.ts', '.py', '.sh', '.html', '.css'].includes(ext);
 }
 
-module.exports = { handleFileCommand, isFileSafe, ALLOWED_DIRS };
+/**
+ * Check if a file is allowed to be sent during conversation (via <<SEND_FILE:>> markers).
+ * Broader than isFileSafe — does NOT require being in ALLOWED_DIRS.
+ * Admin can request any non-sensitive workspace file in conversation context.
+ *
+ * @param {string} filePath - Absolute path
+ * @returns {{ safe: boolean, reason?: string }}
+ */
+function isFileAllowedForConversation(filePath) {
+  const normalized = path.resolve(filePath);
+
+  // Must be under OPAI_ROOT
+  if (!normalized.startsWith(OPAI_ROOT)) {
+    return { safe: false, reason: 'Outside workspace' };
+  }
+
+  const relative = path.relative(OPAI_ROOT, normalized);
+
+  // Block traversal attempts
+  if (relative.includes('..')) {
+    return { safe: false, reason: 'Path traversal' };
+  }
+
+  // Check blocked patterns (no .env, secrets, credentials, etc.)
+  for (const pattern of BLOCKED_PATTERNS) {
+    if (pattern.test(relative) || pattern.test(path.basename(normalized))) {
+      return { safe: false, reason: 'Blocked file type' };
+    }
+  }
+
+  // Check extension
+  const ext = path.extname(normalized).toLowerCase();
+  if (ext && !SAFE_EXTENSIONS.has(ext)) {
+    return { safe: false, reason: `Unsupported extension: ${ext}` };
+  }
+
+  return { safe: true };
+}
+
+module.exports = { handleFileCommand, isFileSafe, isFileAllowedForConversation, ALLOWED_DIRS };

@@ -1,22 +1,22 @@
 # Sandbox System (NAS-backed User Workspaces)
-> Last updated: 2026-02-20 | Source: `scripts/provision-sandbox.sh`, `config/sandbox-*`, `/workspace/users/`
+> Last updated: 2026-03-04 | Source: `scripts/provision-sandbox.sh`, `config/sandbox-*`, `/workspace/users/`
 
 ## Overview
 
 Each non-admin OPAI user gets an isolated "mini-OPAI" sandbox — a personal workspace with their own AI agent team, file storage, task queue, and knowledge base. Sandboxes are backed by the **Synology DS418 NAS** (10TB+, Btrfs) mounted via NFS, and provisioned automatically during the user onboarding flow.
 
-Dallas (admin/superuser) does NOT have a sandbox — admin access bypasses all sandboxing.
+Dallas (admin/superuser) has a sandbox directory on the NAS (`/workspace/users/Dallas`) but primarily uses the server workspace. OPAI Files provides an admin-only **context switcher** to toggle between server files and the personal folder (see [OPAI Files](opai-files.md)).
 
 ## Architecture
 
 ```
-Synology DS418 NAS (192.168.2.138)
+Synology DS418 NAS (ds418.local / 192.168.1.200)
   /volume2/opai-users/
     Denise/        ← NAS folder per user
     Caitlin/
     Dallas/
         ↓ NFS v4.1 mount
-OPAI Server (192.168.2.92)
+OPAI Server (192.168.1.191)
   /workspace/users/
     Denise/        ← User sandbox (NFS-mounted)
     Caitlin/
@@ -105,23 +105,25 @@ Using `-a` (archive) will fail with "Operation not permitted" on chgrp.
 
 - **Mount point**: `/workspace/users`
 - **NFS options**: `rw,soft,timeo=50,retrans=3,nfsvers=4.1,_netdev`
-- **fstab entry**: `192.168.2.138:/volume2/opai-users /workspace/users nfs rw,soft,timeo=50,retrans=3,nfsvers=4.1,_netdev 0 0`
+- **fstab entry**: `ds418.local:/volume2/opai-users /workspace/users nfs4 rw,soft,timeo=50,retrans=3,nfsvers=4.1,_netdev 0 0`
 - **Setup script**: `scripts/setup-nfs.sh`
 
 ### NAS Side (Synology DSM)
 
 - **Shared folder**: `opai-users` on Volume 2 (Btrfs)
-- **NFS permissions**: IP `192.168.2.92`, Read/Write, "Map all users to admin" squash
+- **NFS permissions**: `192.168.1.0/24` subnet, Read/Write, "Map all users to admin" squash
 - **Recycle Bin**: Enabled (admin-only access)
 
 ### Network
 
 | Host | LAN IP | Tailscale IP | Tailscale Hostname |
 |------|--------|-------------|-------------------|
-| OPAI Server | 192.168.2.92 | 100.91.27.73 | opai-server |
-| Synology NAS | 192.168.2.138 | 100.113.66.23 | ds418 |
+| OPAI Server | 192.168.1.191 | 100.91.27.73 | opai-server |
+| Synology NAS | 192.168.1.200 (ds418.local) | 100.113.66.23 | ds418 |
 
-NFS uses LAN IP for sub-millisecond latency (both on same subnet).
+NFS uses LAN IP / mDNS hostname for sub-millisecond latency (both on same subnet). The `ds418.local` hostname provides resilience against IP changes — NFS export uses subnet-wide `192.168.1.0/24` to allow any server IP on the subnet.
+
+**Historical note**: Server was previously at `192.168.2.92`, NAS at `192.168.2.138`. Network migrated to `192.168.1.x` subnet on 2026-03-04.
 
 ## Onboarding Flow
 
@@ -170,13 +172,15 @@ In `index.html`, after login:
 
 ## API Endpoints
 
-### Monitor API (`tools/opai-monitor/routes_users.py`)
+### Engine API (`tools/opai-engine/routes/users.py`)
 
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
 | `/api/users/{id}/provision-sandbox` | POST | Self or Admin | Trigger provisioning (runs script in background) |
 | `/api/users/{id}/sandbox-status` | GET | Self or Admin | Poll provisioning completion |
 | `/api/users/{id}/profile-setup` | PUT | Self or Admin | Save onboarding answers + completion flag |
+
+**Note**: These endpoints live on the Engine (port 8080), reached via Caddy at `/tasks/api/users/...`. Legacy `/tasks/api/monitor/users/...` paths are supported via backward-compatibility aliases (added 2026-03-04). The onboarding wizard (`onboard.js`) calls these endpoints during step 4 (provisioning).
 
 ### Portal API (`tools/opai-portal/app.py`)
 
@@ -248,7 +252,7 @@ Config in `config/orchestrator.json`:
 - **Synology DS418 NAS**: Btrfs storage, NFS server, Synology Drive (optional client sync)
 - **NFS v4.1**: `nfs-common` package on server, `nfsvers=4.1` mount option
 - **Supabase**: profiles table, auth invite flow, service key for admin operations
-- **Provisioned by**: [Portal](portal.md) onboarding wizard → [Monitor](monitor.md) provision API → `provision-sandbox.sh`
+- **Provisioned by**: [Portal](portal.md) onboarding wizard → Engine (`/api/users/{id}/provision-sandbox`) → `provision-sandbox.sh`
 - **Scanned by**: [Orchestrator](orchestrator.md) (`scanUserSandboxes` every 5 min)
 - **Isolated by**: [Auth & Network](auth-network.md) (role-based path scoping)
 - **User management**: [User Controls](user-controls.md) (invite, role assignment)

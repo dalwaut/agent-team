@@ -34,6 +34,7 @@ let _hierarchyCache = {};
 let _allAssignees = [];  // [{id, name, type:'opai'|'clickup'}]
 let _supabase = null;
 let _realtimeChannel = null;
+let _itemsChannel = null;      // postgres_changes subscription for current list's items
 let _createNewType = null;    // wizard: space|folder|list|task
 let _savedTemplates = [];     // saved templates from DB (all)
 let _personalTemplates = [];  // user's own private templates
@@ -53,13 +54,28 @@ let _aiMessages = [];         // [{role, content}] conversation history
 let _aiStreaming = false;
 let _aiCurrentSpaceId = null;  // tracks which space the user is viewing (optional context hint)
 let _homeLayout = null;       // tile layout from localStorage
+let _customTileData = {};     // cached data for custom tiles {tileId: {items, total}}
 let _hideClosedTasks = true;  // hide done/closed tasks by default
+let _favorites = [];          // user's favorites
+let _hubs = [];               // user's hubs [{id, name, slug, icon, color, my_role}]
+let _currentHubId = null;     // active hub context
 
 function _myPersonalSpaceId() {
     return _spaces.find(s => s.is_personal)?.id;
 }
 
+function _myHub() {
+    return _hubs.length ? _hubs[0] : null;
+}
+
+function _isHubAdmin() {
+    const hub = _myHub();
+    return hub?.my_role === 'admin';
+}
+
 function _isSettingsOwner() {
+    // Hub admin or personal workspace owner
+    if (_isHubAdmin()) return true;
     const ps = _spaces.find(s => s.is_personal);
     return ps?.my_role === 'owner';
 }
@@ -94,8 +110,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     bindEvents();
-    loadSpaces();
+    await loadSpaces();
+    // Update header with hub name if user belongs to one
+    const hub = _myHub();
+    if (hub) {
+        const logo = document.querySelector('.th-logo');
+        if (logo) logo.textContent = (hub.icon || '🏢') + ' ' + hub.name;
+    }
     loadProfiles();
+    loadFavorites();
     startNotifPolling();
     // Show home dashboard by default (no space selected)
     renderHome();
@@ -115,6 +138,19 @@ async function api(method, path, body) {
     try { return JSON.parse(text); } catch { return { ok: true, raw: text }; }
 }
 
+async function apiFetch(path, opts = {}) {
+    const token = await opaiAuth.getToken();
+    const headers = { ...(opts.headers || {}) };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    if (!headers['Content-Type'] && opts.body) headers['Content-Type'] = 'application/json';
+    const resp = await fetch(API.replace('/api', '') + path, { ...opts, headers });
+    if (!resp.ok) throw new Error(await resp.text() || 'HTTP ' + resp.status);
+    if (resp.status === 204) return { ok: true };
+    const text = await resp.text();
+    if (!text) return { ok: true };
+    try { return JSON.parse(text); } catch { return { ok: true, raw: text }; }
+}
+
 // ── Realtime ─────────────────────────────────────────────────
 
 function initRealtime() {
@@ -125,25 +161,13 @@ function initRealtime() {
         config: { broadcast: { self: false } },
     });
 
-    _realtimeChannel.on('broadcast', { event: 'task_updated' }, (payload) => {
-        const { taskId, changes, listId } = payload.payload;
-        if (listId === _currentListId) {
-            const task = _tasks.find(t => t.id === taskId);
-            if (task) {
-                Object.assign(task, changes);
-                renderMainContent();
-            }
-        }
-        if (_detailTask && _detailTask.id === taskId && !document.querySelector('#detail-body :focus')) {
-            openDetail(taskId);
-        }
-    });
+    // task_updated broadcast: Postgres Changes UPDATE listener handles the actual data sync.
+    // This broadcast is kept as a no-op placeholder for backward compatibility.
+    _realtimeChannel.on('broadcast', { event: 'task_updated' }, () => {});
 
-    _realtimeChannel.on('broadcast', { event: 'task_created' }, (payload) => {
-        if (payload.payload.listId === _currentListId) {
-            selectList(_currentListId, _currentListName, _currentSpaceId);
-        }
-    });
+    // task_created broadcast: Postgres Changes INSERT listener handles the actual data sync.
+    // This broadcast is kept as a no-op placeholder for backward compatibility.
+    _realtimeChannel.on('broadcast', { event: 'task_created' }, () => {});
 
     _realtimeChannel.on('broadcast', { event: 'comment_added' }, (payload) => {
         if (_detailTask && _detailTask.id === payload.payload.taskId) {
@@ -202,6 +226,76 @@ function broadcast(event, payload) {
     }
 }
 
+// ── Live Items Channel (Postgres Changes) ────────────────────
+
+function subscribeToListItems(listId) {
+    unsubscribeFromListItems();
+    if (!_supabase || !listId) return;
+
+    _itemsChannel = _supabase
+        .channel('team-items-' + listId)
+        .on('postgres_changes', {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'team_items',
+            filter: 'list_id=eq.' + listId,
+        }, (payload) => {
+            const updated = payload.new;
+            const idx = _tasks.findIndex(t => t.id === updated.id);
+            if (idx >= 0) {
+                // Preserve enriched fields (assignees, tags) that aren't in the DB row
+                const enriched = _tasks[idx];
+                Object.assign(enriched, updated);
+                _tasks[idx] = enriched;
+            }
+            // Update detail panel if viewing this task (skip if user is editing)
+            if (_detailTask && _detailTask.id === updated.id) {
+                if (!document.querySelector('#detail-body :focus')) {
+                    Object.assign(_detailTask, updated);
+                    renderDetailPanel();
+                }
+            }
+            renderMainContent();
+        })
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'team_items',
+            filter: 'list_id=eq.' + listId,
+        }, (payload) => {
+            const newItem = payload.new;
+            // Avoid duplicates (e.g. if we already added it optimistically)
+            if (!_tasks.find(t => t.id === newItem.id)) {
+                newItem.assignees = newItem.assignees || [];
+                newItem.tags = newItem.tags || [];
+                _tasks.unshift(newItem);
+                renderMainContent();
+            }
+        })
+        .on('postgres_changes', {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'team_items',
+            filter: 'list_id=eq.' + listId,
+        }, (payload) => {
+            const deletedId = payload.old.id;
+            _tasks = _tasks.filter(t => t.id !== deletedId);
+            if (_detailTask && _detailTask.id === deletedId) {
+                closeDetail();
+                showToast('This item was deleted');
+            }
+            renderMainContent();
+        })
+        .subscribe();
+}
+
+function unsubscribeFromListItems() {
+    if (_itemsChannel) {
+        _supabase.removeChannel(_itemsChannel);
+        _itemsChannel = null;
+    }
+}
+
 // ── Events ───────────────────────────────────────────────────
 
 function bindEvents() {
@@ -215,9 +309,8 @@ function bindEvents() {
         });
     });
 
-    // Detail close
+    // Detail close — only via explicit close button
     document.getElementById('detail-close').addEventListener('click', closeDetail);
-    document.getElementById('detail-backdrop').addEventListener('click', closeDetail);
 
     // Search
     const searchInput = document.getElementById('search-input');
@@ -262,12 +355,7 @@ function bindEvents() {
         }
     });
 
-    // Modal close handlers
-    document.querySelectorAll('.modal-overlay').forEach(overlay => {
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) overlay.classList.remove('visible');
-        });
-    });
+    // Modal close handlers — only close via explicit close/cancel buttons, not backdrop click
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', () => btn.closest('.modal-overlay').classList.remove('visible'));
     });
@@ -288,8 +376,13 @@ async function loadSpaces() {
     try {
         const data = await api('GET', API + '/workspaces');
         _spaces = data.workspaces || [];
+        _hubs = data.hubs || [];
+        if (_hubs.length && !_currentHubId) {
+            _currentHubId = _hubs[0].id;
+        }
     } catch (e) {
         _spaces = [];
+        _hubs = [];
         showToast('Failed to load spaces');
     }
     renderSpaceTree();
@@ -329,10 +422,26 @@ function renderSpaceTree() {
     }
 
     let html = '';
+
+    // Hub header (if user belongs to a hub)
+    const hub = _myHub();
+    if (hub) {
+        html += '<div class="th-hub-header" style="padding:8px 16px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#888;display:flex;align-items:center;gap:6px;">'
+            + '<span>' + esc(hub.icon || '🏢') + '</span>'
+            + '<span>' + esc(hub.name) + '</span>'
+            + '</div>';
+    }
+
+    // "All Tasks" quick nav — shows list view of all hub tasks
+    html += '<div class="th-tree-all-tasks" style="padding:6px 16px;cursor:pointer;font-size:13px;color:#aaa;display:flex;align-items:center;gap:6px;" '
+        + 'onclick="showAllHubTasks()">'
+        + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>'
+        + '<span>All Tasks</span></div>';
+
     for (const space of _spaces) {
         const expanded = _expandedSpaces[space.id];
         const active = _currentSpaceId === space.id;
-        html += '<div class="th-tree-space" data-space-id="' + esc(space.id) + '" data-drop-type="space" data-drop-id="' + esc(space.id) + '">'
+        html += '<div class="th-tree-space" data-space-id="' + esc(space.id) + '" data-drop-type="space" data-drop-id="' + esc(space.id) + '" draggable="true">'
             + '<div class="th-tree-toggle' + (active && !_currentListId ? ' active' : '') + '">'
             + '<span class="th-tree-arrow-btn" onclick="event.stopPropagation();toggleSpace(\'' + esc(space.id) + '\')">'
             + '<svg class="th-tree-arrow' + (expanded ? ' open' : '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>'
@@ -349,6 +458,7 @@ function renderSpaceTree() {
     }
     tree.innerHTML = html;
     bindSidebarDragAndDrop();
+    bindSpaceReorder();
 }
 
 async function clickSpace(spaceId, spaceName) {
@@ -486,6 +596,7 @@ async function selectList(listId, listName, spaceId) {
         showToast('Failed to load tasks');
     }
     renderMainContent();
+    subscribeToListItems(listId);
     _aiOnContextChange();
 }
 
@@ -496,6 +607,7 @@ async function openSpaceDashboard(spaceId, spaceName) {
     _currentSpaceName = spaceName;
     _currentListId = null;
     _currentView = 'dashboard';
+    unsubscribeFromListItems();
     document.querySelectorAll('.th-view-btn').forEach(b => b.classList.remove('active'));
     document.querySelector('.th-view-btn[data-view="board"]')?.classList.remove('active');
     renderSpaceTree();
@@ -521,12 +633,39 @@ function renderDashboard(el, data, spaceName) {
     const activity = d.activity || [];
     const total = d.total_items || 0;
 
+    const openTasks = d.open_tasks || [];
+    const openCount = d.open_count || openTasks.length;
+
     let html = '<div class="th-dashboard">'
         + '<div class="th-dashboard-header">'
         + '<h2>' + esc(spaceName) + ' Dashboard</h2>'
         + '<span class="th-dashboard-total">' + total + ' items</span>'
         + '</div>'
         + '<div class="th-dashboard-grid">';
+
+    // Open Tasks widget (position #1)
+    html += '<div class="th-widget th-widget-open-tasks">'
+        + '<div class="th-widget-title">Open Tasks <span class="th-widget-count">' + openCount + '</span></div>'
+        + '<div class="th-widget-body">';
+    if (openTasks.length === 0) {
+        html += '<div style="color:var(--text-muted);font-size:13px;padding:8px;">No open tasks</div>';
+    } else {
+        for (const item of openTasks) {
+            const due = item.due_date ? new Date(item.due_date).toLocaleDateString('en', { month: 'short', day: 'numeric' }) : '';
+            const isOverdue = item.due_date && item.due_date.slice(0, 10) < new Date().toISOString().split('T')[0];
+            const sColor = { 'in_progress': '#fdcb6e', 'Working on': '#fdcb6e', 'Not Started': '#d3d3d3', 'review': '#6c5ce7', 'Manager Review': '#6c5ce7', 'Quality Review': '#74b9ff', 'Client Review': '#a29bfe', 'Back to You': '#e17055', 'Stuck': '#d63031', 'Waiting on Client': '#fd79a8' }[item.status] || '#74b9ff';
+            html += '<div class="th-widget-item" onclick="openDetail(\'' + esc(item.id) + '\')">'
+                + '<span class="th-widget-item-dot" style="background:' + sColor + ';"></span>'
+                + '<span class="th-widget-item-title">' + esc(item.title || item.id) + '</span>'
+                + '<span class="th-widget-item-status" style="color:' + sColor + ';">' + esc(item.status || '') + '</span>'
+                + (due ? '<span class="th-widget-item-due' + (isOverdue ? ' overdue' : '') + '">' + esc(due) + '</span>' : '')
+                + '</div>';
+        }
+        if (openCount > openTasks.length) {
+            html += '<div class="th-widget-item" style="text-align:center;color:var(--accent);cursor:pointer;" onclick="_currentView=\'list\';renderMainContent();">+' + (openCount - openTasks.length) + ' more</div>';
+        }
+    }
+    html += '</div></div>';
 
     // Status chart widget
     html += '<div class="th-widget">'
@@ -680,15 +819,58 @@ function renderMainContent() {
 // ── Home Dashboard ───────────────────────────────────────────
 
 const DEFAULT_HOME_TILES = [
-    { id: 'top3', title: 'Top 3 Priorities', visible: true, order: 0, size: '1x1' },
-    { id: 'overdue', title: 'Overdue', visible: true, order: 1, size: '1x1' },
-    { id: 'due_week', title: 'Due This Week', visible: true, order: 2, size: '1x1' },
-    { id: 'follow_ups', title: 'Follow-ups Due', visible: true, order: 3, size: '1x1' },
-    { id: 'todos', title: 'Recent Todos', visible: true, order: 4, size: '1x1' },
-    { id: 'workspaces', title: 'My Workspaces', visible: true, order: 5, size: '1x1' },
-    { id: 'mentions', title: 'Mentions', visible: true, order: 6, size: '1x1' },
-    { id: 'activity', title: 'Recent Activity', visible: true, order: 7, size: '1x1' },
+    { id: 'priorities', title: 'Priorities', visible: true, order: 0, size: '1x1' },
+    { id: 'top3', title: 'Top 3 Priorities', visible: true, order: 1, size: '1x1' },
+    { id: 'overdue', title: 'Overdue', visible: true, order: 2, size: '1x1' },
+    { id: 'due_week', title: 'Due This Week', visible: true, order: 3, size: '1x1' },
+    { id: 'follow_ups', title: 'Follow-ups Due', visible: true, order: 4, size: '1x1' },
+    { id: 'todos', title: 'Recent Todos', visible: true, order: 5, size: '1x1' },
+    { id: 'workspaces', title: 'My Workspaces', visible: true, order: 6, size: '1x1' },
+    { id: 'mentions', title: 'Mentions', visible: true, order: 7, size: '1x1' },
+    { id: 'activity', title: 'Recent Activity', visible: true, order: 8, size: '1x1' },
 ];
+
+// Tile tooltip descriptions
+const TILE_TOOLTIPS = {
+    priorities: 'Your most important tasks to focus on — ranked by urgency, priority, and recency',
+    top3: 'Your highest-priority open tasks, sorted by urgency. Pin tasks from the detail panel.',
+    overdue: 'All tasks assigned to you that are past their due date',
+    due_week: 'Tasks due within the next 7 days',
+    follow_ups: 'Tasks with follow-up dates due soon',
+    todos: 'Recently updated tasks across your workspaces',
+    workspaces: 'Overview of your workspace progress',
+    mentions: 'Comments where you were @mentioned',
+    activity: 'Recent changes across your workspaces',
+};
+
+// ── Dismissed (Cleared) Items ────────────────────────────────
+function getDismissedItems(tileId) {
+    try {
+        const key = 'teamhub_dismissed_' + tileId + '_' + (_user ? _user.id : 'anon');
+        return JSON.parse(localStorage.getItem(key) || '[]');
+    } catch { return []; }
+}
+
+function dismissItem(tileId, itemId) {
+    const dismissed = getDismissedItems(tileId);
+    if (!dismissed.includes(itemId)) dismissed.push(itemId);
+    const key = 'teamhub_dismissed_' + tileId + '_' + (_user ? _user.id : 'anon');
+    localStorage.setItem(key, JSON.stringify(dismissed));
+    renderHomeTiles();
+}
+
+function filterDismissed(items, tileId, idField) {
+    const dismissed = getDismissedItems(tileId);
+    if (!dismissed.length) return items;
+    return items.filter(i => !dismissed.includes(i[idField || 'id']));
+}
+
+// Clean ClickUp import prefixes from mention content
+function cleanMentionContent(content) {
+    if (!content) return '';
+    // Strip patterns like "**Name** (from ClickUp):" at start
+    return content.replace(/^\*\*[^*]+\*\*\s*\(from\s+\w+\)\s*:\s*/i, '');
+}
 
 // ── Top 3 Pinning ────────────────────────────────────────────
 function getPinnedItems() {
@@ -800,7 +982,26 @@ async function renderHome() {
         showToast('Failed to load home data');
     }
 
+    // Fetch custom tile data in parallel
+    await fetchAllCustomTileData();
+
     renderHomeTiles();
+}
+
+async function fetchAllCustomTileData() {
+    const layout = _homeLayout || loadHomeLayout();
+    const customTiles = layout.tiles.filter(t => t.custom && t.visible && t.criteria);
+    if (!customTiles.length) return;
+
+    const promises = customTiles.map(async (tile) => {
+        try {
+            const result = await api('POST', API + '/my/custom-tile', tile.criteria);
+            _customTileData[tile.id] = result;
+        } catch {
+            _customTileData[tile.id] = { items: [], total: 0 };
+        }
+    });
+    await Promise.all(promises);
 }
 
 function renderHomeTiles() {
@@ -821,10 +1022,21 @@ function renderHomeTiles() {
 
     for (const tile of visibleTiles) {
         const sizeClass = tileSizeClass(tile.size);
+        const tooltip = tile.custom ? (tile.criteria?.conditions?.length || 0) + ' filter(s)' : (TILE_TOOLTIPS[tile.id] || '');
+        const isCustom = tile.custom;
+        const customBtns = isCustom
+            ? '<button class="home-tile-edit" onclick="event.stopPropagation();openCustomTileWizard(\'' + esc(tile.id) + '\')" title="Edit tile">'
+              + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
+              + '</button>'
+              + '<button class="home-tile-delete" onclick="event.stopPropagation();deleteCustomTile(\'' + esc(tile.id) + '\')" title="Delete tile">'
+              + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'
+              + '</button>'
+            : '';
         html += '<div class="home-tile' + sizeClass + '" draggable="true" data-tile-id="' + esc(tile.id) + '">'
             + '<div class="home-tile-header">'
-            + '<span class="home-tile-title">' + esc(tile.title) + '</span>'
+            + '<span class="home-tile-title" title="' + esc(tooltip) + '">' + esc(tile.title) + '</span>'
             + '<span class="home-tile-size-label">' + (tile.size || '1x1') + '</span>'
+            + customBtns
             + '<button class="home-tile-resize" onclick="event.stopPropagation();toggleTileSize(\'' + esc(tile.id) + '\')" title="Cycle size: 1x1 → 2x1 → 3x1 → 1x2 → 2x2 → 3x2">'
             + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>'
             + '</button></div>'
@@ -844,19 +1056,58 @@ function renderHomeTileContent(tileId, data, size) {
     const rows = tileSizeRows(size);
     const area = cols * rows; // 1..6 — controls how much data to show
     const pri = { critical: '#e17055', high: '#fdcb6e', medium: '#74b9ff', low: '#8b8e96', none: '#595d66' };
-    const statusColor = (s) => s === 'done' ? '#00b894' : s === 'in_progress' ? '#fdcb6e' : s === 'closed' ? '#636e72' : '#74b9ff';
+    const statusColor = (s) => {
+        const m = { 'done': '#00b894', 'Complete': '#00b894', 'Approved': '#00cec9',
+            'in_progress': '#fdcb6e', 'Working on': '#fdcb6e',
+            'closed': '#636e72', 'Postponed': '#636e72',
+            'review': '#6c5ce7', 'Manager Review': '#6c5ce7', 'Quality Review': '#74b9ff',
+            'Client Review': '#a29bfe', 'Back to You': '#e17055', 'Stuck': '#d63031',
+            'Waiting on Client': '#fd79a8', 'Not Started': '#d3d3d3' };
+        return m[s] || '#74b9ff';
+    };
     const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en', { month: 'short', day: 'numeric' }) : '';
     const fmtDateLong = (d) => d ? new Date(d).toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
     const isWide = cols >= 2;
     const isExtraWide = cols >= 3;
     const isTall = rows >= 2;
 
+    // Clear button helper
+    const clearBtn = (tile, itemId) => {
+        if (['priorities', 'top3', 'todos', 'mentions'].includes(tile)) {
+            return '<button class="home-tile-clear" onclick="event.stopPropagation();dismissItem(\'' + esc(tile) + '\',\'' + esc(itemId) + '\')" title="Clear from dashboard">&times;</button>';
+        }
+        return '';
+    };
+
+    if (tileId === 'priorities') {
+        const limit = isTall ? (isExtraWide ? 25 : isWide ? 15 : 8) : (isExtraWide ? 8 : isWide ? 5 : 5);
+        const items = filterDismissed(data.priorities || [], 'priorities').slice(0, limit);
+        if (!items.length) return '<div class="home-tile-empty home-tile-empty-good">All caught up!</div>';
+        const todayStr = new Date().toISOString().split('T')[0];
+        return items.map(i => {
+            const pColor = pri[i.priority] || '#595d66';
+            const due = i.due_date ? fmtDate(i.due_date) : '';
+            const isOverdue = i.due_date && i.due_date < todayStr;
+            const isDueToday = i.due_date && i.due_date === todayStr;
+            const dueClass = isOverdue ? ' style="color:var(--red);font-weight:600;"' : isDueToday ? ' style="color:var(--orange);font-weight:600;"' : '';
+            const statusBadge = (isWide || isTall) ? '<span class="home-tile-meta">' + esc(i.status || '') + '</span>' : '';
+            return '<div class="home-tile-item' + (isWide ? ' tile-item-row' : '') + '" onclick="openDetail(\'' + esc(i.id) + '\')">'
+                + '<span class="home-tile-status-dot" style="background:' + statusColor(i.status) + ';"></span>'
+                + '<span class="home-tile-item-title">' + esc(i.title) + '</span>'
+                + '<span class="cu-priority-pill" style="background:' + pColor + '22;color:' + pColor + ';font-size:10px;">' + esc(i.priority || 'none') + '</span>'
+                + (due ? '<span class="home-tile-due"' + dueClass + '>' + (isOverdue ? 'Overdue ' : '') + esc(due) + '</span>' : '')
+                + statusBadge
+                + clearBtn('priorities', i.id)
+                + '</div>';
+        }).join('');
+    }
+
     if (tileId === 'top3') {
         // 1x1:3  2x1:5  3x1:8  1x2:8  2x2:15  3x2:25
         const limit = isTall ? (isExtraWide ? 25 : isWide ? 15 : 8) : (isExtraWide ? 8 : isWide ? 5 : 3);
         // Merge pinned items (shown first) with auto-priority items
         const pinnedIds = getPinnedItems();
-        const autoItems = data.top_items || [];
+        const autoItems = filterDismissed(data.top_items || [], 'top3');
         const pinned = autoItems.filter(i => pinnedIds.includes(i.id));
         const unpinned = autoItems.filter(i => !pinnedIds.includes(i.id));
         const items = [...pinned, ...unpinned].slice(0, limit);
@@ -878,6 +1129,7 @@ function renderHomeTileContent(tileId, data, size) {
                 + statusBadge
                 + (due ? '<span class="home-tile-due">' + esc(due) + '</span>' : '')
                 + wsBadge
+                + clearBtn('top3', i.id)
                 + '</div>' + desc;
         }).join('');
     }
@@ -885,7 +1137,7 @@ function renderHomeTileContent(tileId, data, size) {
     if (tileId === 'todos') {
         // 1x1:6  2x1:10  3x1:14  1x2:15  2x2:25  3x2:40
         const limit = isTall ? (isExtraWide ? 40 : isWide ? 25 : 15) : (isExtraWide ? 14 : isWide ? 10 : 6);
-        const items = (data.recent_todos || []).slice(0, limit);
+        const items = filterDismissed(data.recent_todos || [], 'todos').slice(0, limit);
         if (!items.length) return '<div class="home-tile-empty">No recent todos</div>';
         return items.map(i => {
             const due = (isWide || isTall) ? fmtDate(i.due_date) : '';
@@ -898,6 +1150,7 @@ function renderHomeTileContent(tileId, data, size) {
                 + '<span class="home-tile-meta">' + esc(i.status) + '</span>'
                 + (due ? '<span class="home-tile-due">' + esc(due) + '</span>' : '')
                 + updated
+                + clearBtn('todos', i.id)
                 + '</div>';
         }).join('');
     }
@@ -920,7 +1173,7 @@ function renderHomeTileContent(tileId, data, size) {
                 + urgency
                 + '</div>';
         }).join('');
-        if (items.length > limit) html += '<div class="home-tile-overflow">+' + (items.length - limit) + ' more</div>';
+        if (items.length > limit) html += '<div class="home-tile-overflow" onclick="showAllFromTile(\'overdue\')" style="cursor:pointer;" title="View all overdue tasks">+' + (items.length - limit) + ' more</div>';
         return html;
     }
 
@@ -952,7 +1205,7 @@ function renderHomeTileContent(tileId, data, size) {
                         + '</div>';
                 }).join('');
             }
-            if (items.length > limit) html += '<div class="home-tile-overflow">+' + (items.length - limit) + ' more</div>';
+            if (items.length > limit) html += '<div class="home-tile-overflow" onclick="showAllFromTile(\'due_week\')" style="cursor:pointer;" title="View all tasks due this week">+' + (items.length - limit) + ' more</div>';
             return html;
         }
 
@@ -965,7 +1218,7 @@ function renderHomeTileContent(tileId, data, size) {
                 + '<span class="home-tile-due">' + esc(due) + '</span>'
                 + '</div>';
         }).join('');
-        if (items.length > limit) html += '<div class="home-tile-overflow">+' + (items.length - limit) + ' more</div>';
+        if (items.length > limit) html += '<div class="home-tile-overflow" onclick="showAllFromTile(\'due_week\')" style="cursor:pointer;" title="View all tasks due this week">+' + (items.length - limit) + ' more</div>';
         return html;
     }
 
@@ -990,7 +1243,7 @@ function renderHomeTileContent(tileId, data, size) {
                 + urgency
                 + '</div>';
         }).join('');
-        if (items.length > fuLimit) html += '<div class="home-tile-overflow">+' + (items.length - fuLimit) + ' more</div>';
+        if (items.length > fuLimit) html += '<div class="home-tile-overflow" onclick="showAllFromTile(\'follow_ups\')" style="cursor:pointer;" title="View all follow-ups">+' + (items.length - fuLimit) + ' more</div>';
         return html;
     }
 
@@ -998,7 +1251,7 @@ function renderHomeTileContent(tileId, data, size) {
         // 1x1:5  2x1:8  3x1:10  1x2:12  2x2:20  3x2:30
         const limit = isTall ? (isExtraWide ? 30 : isWide ? 20 : 12) : (isExtraWide ? 10 : isWide ? 8 : 5);
         const charLimit = isExtraWide ? 200 : isWide ? 120 : isTall ? 100 : 60;
-        const items = (data.mentions || []).slice(0, limit);
+        const items = filterDismissed(data.mentions || [], 'mentions').slice(0, limit);
         if (!items.length) return '<div class="home-tile-empty">No recent mentions</div>';
 
         // Build item lookup from all available home data arrays
@@ -1016,8 +1269,9 @@ function renderHomeTileContent(tileId, data, size) {
             const itemObj = c.item_id ? itemMap[c.item_id] : null;
             const itemTitle = itemObj ? itemObj.title : '';
 
-            // Build preview with @mention highlighting
-            const rawPreview = (c.content || '').substring(0, charLimit) + ((c.content || '').length > charLimit ? '...' : '');
+            // Clean ClickUp import prefixes and build preview with @mention highlighting
+            const cleanedContent = cleanMentionContent(c.content || '');
+            const rawPreview = cleanedContent.substring(0, charLimit) + (cleanedContent.length > charLimit ? '...' : '');
             const hlPreview = esc(rawPreview).replace(/@(\w[\w\s]*?\w|\w)/g, '<span class="mention-hl">@$1</span>');
 
             // Header line: AuthorName in TaskTitle
@@ -1030,11 +1284,12 @@ function renderHomeTileContent(tileId, data, size) {
             }
 
             const fullContent = isTall && isWide
-                ? '<div class="home-tile-item-desc">' + esc((c.content || '').substring(0, 300)).replace(/@(\w[\w\s]*?\w|\w)/g, '<span class="mention-hl">@$1</span>') + '</div>' : '';
+                ? '<div class="home-tile-item-desc">' + esc(cleanMentionContent(c.content || '').substring(0, 300)).replace(/@(\w[\w\s]*?\w|\w)/g, '<span class="mention-hl">@$1</span>') + '</div>' : '';
             return '<div class="home-tile-item' + (isWide ? ' tile-item-row' : '') + '" onclick="' + (c.item_id ? 'openDetail(\'' + esc(c.item_id) + '\')' : '') + '">'
                 + headerHtml
                 + '<span class="home-tile-item-title">' + hlPreview + '</span>'
                 + '<span class="home-tile-meta">' + timeAgo(c.created_at) + '</span>'
+                + clearBtn('mentions', c.id)
                 + '</div>' + fullContent;
         }).join('');
     }
@@ -1081,6 +1336,30 @@ function renderHomeTileContent(tileId, data, size) {
                 + '<span class="home-tile-meta">' + timeAgo(a.created_at) + '</span>'
                 + '</div>' + fullDetails;
         }).join('');
+    }
+
+    // Custom tiles — render from _customTileData
+    if (tileId.startsWith('custom_')) {
+        const tileData = _customTileData[tileId];
+        if (!tileData) return '<div class="home-tile-empty"><div class="spinner" style="width:20px;height:20px;"></div></div>';
+        const limit = isTall ? (isExtraWide ? 25 : isWide ? 15 : 8) : (isExtraWide ? 8 : isWide ? 5 : 5);
+        const items = filterDismissed(tileData.items || [], tileId).slice(0, limit);
+        if (!items.length) return '<div class="home-tile-empty home-tile-empty-good">No matching items</div>';
+        const totalBadge = tileData.total > items.length
+            ? '<div class="custom-tile-preview-count">' + tileData.total + ' total</div>' : '';
+        return items.map(i => {
+            const pColor = pri[i.priority] || '#595d66';
+            const due = i.due_date ? fmtDate(i.due_date) : '';
+            const statusBadge = (isWide || isTall) ? '<span class="home-tile-meta">' + esc(i.status || '') + '</span>' : '';
+            return '<div class="home-tile-item' + (isWide ? ' tile-item-row' : '') + '" onclick="openDetail(\'' + esc(i.id) + '\')">'
+                + '<span class="home-tile-status-dot" style="background:' + statusColor(i.status) + ';"></span>'
+                + '<span class="home-tile-item-title">' + esc(i.title) + '</span>'
+                + '<span class="cu-priority-pill" style="background:' + pColor + '22;color:' + pColor + ';font-size:10px;">' + esc(i.priority || 'none') + '</span>'
+                + (due ? '<span class="home-tile-due">' + esc(due) + '</span>' : '')
+                + statusBadge
+                + '<button class="home-tile-clear" onclick="event.stopPropagation();dismissItem(\'' + esc(tileId) + '\',\'' + esc(i.id) + '\')" title="Clear from tile">&times;</button>'
+                + '</div>';
+        }).join('') + totalBadge;
     }
 
     return '<div class="home-tile-empty">No data</div>';
@@ -1173,6 +1452,7 @@ function goHome() {
     _currentSpaceName = '';
     _currentListName = '';
     _homeData = null;
+    unsubscribeFromListItems();
     document.querySelectorAll('.th-view-btn').forEach(b => b.classList.remove('active'));
     document.querySelector('.th-view-btn[data-view="board"]')?.classList.add('active');
     _currentView = 'board';
@@ -1180,19 +1460,39 @@ function goHome() {
     renderHome();
 }
 
+function showAllHubTasks() {
+    _currentSpaceId = null;
+    _currentListId = null;
+    _currentSpaceName = '';
+    _currentListName = '';
+    _homeData = null;
+    _homeListItems = null;
+    _homeListShowAll = true;       // show ALL tasks, not just "my tasks"
+    _homeListHideCompleted = true;
+    unsubscribeFromListItems();
+    // Switch to list view
+    document.querySelectorAll('.th-view-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.th-view-btn[data-view="list"]')?.classList.add('active');
+    _currentView = 'list';
+    renderSpaceTree();
+    renderMainContent();
+}
+
 // ── Home List View (All Tasks) ────────────────────────────────
 
 let _homeListItems = null;
 let _homeListSort = 'updated_at';
 let _homeListDir = 'desc';
-let _homeListStatusFilter = '';
-let _homeListPriorityFilter = '';
+let _homeListStatusFilters = [];   // multi-select
+let _homeListPriorityFilters = []; // multi-select
 let _homeListSearch = '';
 let _homeListWorkspaceFilter = '';
-let _homeListTagFilter = '';
+let _homeListTagFilters = [];      // multi-select
 let _homeListShowAll = false;
+let _homeListHideCompleted = true; // default: hide completed
 let _homeListWorkspaces = {};
 let _homeListAllTags = [];
+const HOME_COMPLETED_STATUSES = ['Complete', 'done', 'closed', 'Approved'];
 
 async function renderHomeListView(el) {
     const userName = _user ? ', ' + esc(_user.user_metadata?.display_name || _user.email?.split('@')[0] || '') : '';
@@ -1213,11 +1513,12 @@ async function renderHomeListView(el) {
             direction: _homeListDir,
             limit: '200',
         });
-        if (_homeListStatusFilter) params.set('status', _homeListStatusFilter);
-        if (_homeListPriorityFilter) params.set('priority', _homeListPriorityFilter);
+        if (_homeListStatusFilters.length) params.set('status', _homeListStatusFilters.join(','));
+        if (_homeListPriorityFilters.length) params.set('priority', _homeListPriorityFilters.join(','));
         if (_homeListWorkspaceFilter) params.set('workspace_id', _homeListWorkspaceFilter);
-        if (_homeListTagFilter) params.set('tag', _homeListTagFilter);
+        if (_homeListTagFilters.length) params.set('tag', _homeListTagFilters.join(','));
         if (_homeListShowAll) params.set('show_all', 'true');
+        if (_homeListHideCompleted) params.set('hide_completed', 'true');
         const data = await api('GET', API + '/my/all-items?' + params.toString());
         _homeListItems = data.items || [];
         _homeListWorkspaces = data.workspaces || {};
@@ -1231,27 +1532,28 @@ async function renderHomeListView(el) {
 }
 
 function buildHomeListRows(items) {
-    const statusColor = (s) => s === 'done' ? '#00b894' : s === 'in_progress' ? '#fdcb6e' : s === 'review' ? '#a29bfe' : s === 'closed' ? '#636e72' : '#74b9ff';
+    const statusColor = (s) => { const m = { 'done': '#00b894', 'Complete': '#00b894', 'Approved': '#00cec9', 'in_progress': '#fdcb6e', 'Working on': '#fdcb6e', 'Not Started': '#d3d3d3', 'closed': '#636e72', 'Postponed': '#636e72', 'review': '#6c5ce7', 'Manager Review': '#6c5ce7', 'Quality Review': '#74b9ff', 'Client Review': '#a29bfe', 'Back to You': '#e17055', 'Stuck': '#d63031', 'Waiting on Client': '#fd79a8' }; return m[s] || '#74b9ff'; };
     if (!items.length) {
         return '<tr><td colspan="10" style="text-align:center;color:var(--text-muted);padding:40px;">No items found</td></tr>';
     }
     let rows = '';
     for (const t of items) {
         const due = t.due_date ? new Date(t.due_date).toLocaleDateString('en', { month: 'short', day: 'numeric' }) : '-';
-        const dueOverdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done' && t.status !== 'closed' ? ' overdue' : '';
+        const dueOverdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done' && t.status !== 'closed' && t.status !== 'Complete' ? ' overdue' : '';
         const assignees = (t.assignees || []).map(a => resolveAssigneeName(a.assignee_id)).filter(Boolean).join(', ') || '-';
         const sColor = statusColor(t.status);
         const pObj = PRIORITIES.find(p => p.value === t.priority);
         const tags = (t.tags || []).map(tg => '<span class="th-tag-pill th-tag-clickable" style="background:' + esc(tg.color || '#6366f1') + '22;color:' + esc(tg.color || '#6366f1') + ';font-size:10px;cursor:pointer;" onclick="event.stopPropagation();filterByTag(\'' + esc(tg.name) + '\')" title="Filter by ' + esc(tg.name) + '">' + esc(tg.name) + '</span>').join(' ');
         const updated = timeAgo(t.updated_at);
         const checked = _selectedItems.has(t.id);
+        const cidHtml = t.custom_id ? '<span class="th-custom-id">' + esc(t.custom_id) + '</span>' : '';
         rows += '<tr class="' + (checked ? 'th-batch-selected' : '') + '" onclick="openDetail(\'' + esc(t.id) + '\')">'
             + '<td class="th-list-check-col" onclick="event.stopPropagation()"><input type="checkbox" class="th-batch-check" ' + (checked ? 'checked' : '') + ' onchange="batchToggleItem(\'' + esc(t.id) + '\', this.checked)"></td>'
-            + '<td class="th-list-title-cell">' + esc(t.title || '') + '</td>'
+            + '<td class="th-list-title-cell">' + cidHtml + '<span class="th-inline-edit-cell" ondblclick="event.stopPropagation();inlineEditTitle(this,\'' + esc(t.id) + '\')">' + esc(t.title || '') + '</span></td>'
             + '<td><span class="home-list-ws-badge" style="background:' + esc(t.workspace_color || '#6c5ce7') + '22;color:' + esc(t.workspace_color || '#6c5ce7') + ';">' + esc(t.workspace_name || '') + '</span></td>'
             + '<td style="font-size:12px;color:var(--text-muted);">' + esc(t.list_name || '-') + '</td>'
-            + '<td><span class="cu-status-pill" style="background:' + sColor + '22;color:' + sColor + ';">' + esc(t.status || '') + '</span></td>'
-            + '<td>' + (pObj ? '<span class="cu-priority-pill" style="background:' + pObj.color + '22;color:' + pObj.color + ';">' + esc(pObj.label) + '</span>' : '-') + '</td>'
+            + '<td onclick="event.stopPropagation()"><span class="cu-status-pill th-inline-edit-cell" style="background:' + sColor + '22;color:' + sColor + ';" ondblclick="inlineEditStatus(this,\'' + esc(t.id) + '\',\'' + esc(t.status || '') + '\')">' + esc(t.status || '') + '</span></td>'
+            + '<td onclick="event.stopPropagation()">' + (pObj ? '<span class="cu-priority-pill th-inline-edit-cell" style="background:' + pObj.color + '22;color:' + pObj.color + ';" ondblclick="inlineEditPriority(this,\'' + esc(t.id) + '\',\'' + esc(t.priority || '') + '\')">' + esc(pObj.label) + '</span>' : '-') + '</td>'
             + '<td style="font-size:12px;color:var(--text-muted);">' + esc(assignees) + '</td>'
             + '<td style="font-size:12px;" class="' + dueOverdue + '">' + esc(due) + '</td>'
             + '<td>' + tags + '</td>'
@@ -1261,13 +1563,66 @@ function buildHomeListRows(items) {
     return rows;
 }
 
+function renderMultiSelectDropdown(id, label, options, selected, onChangeFn) {
+    const hasSelection = selected.length > 0;
+    const displayLabel = hasSelection ? label + ' (' + selected.length + ')' : label;
+    let html = '<div class="hl-multiselect" id="ms-' + id + '">'
+        + '<button class="hl-multiselect-btn' + (hasSelection ? ' has-selection' : '') + '" onclick="toggleMultiSelect(\'' + id + '\')">'
+        + '<span>' + esc(displayLabel) + '</span>'
+        + '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"/></svg>'
+        + '</button>'
+        + '<div class="hl-multiselect-dropdown" id="msd-' + id + '" style="display:none;">';
+    if (hasSelection) {
+        html += '<button class="hl-ms-clear" onclick="' + onChangeFn + '([])">Clear all</button>';
+    }
+    for (const opt of options) {
+        const val = typeof opt === 'string' ? opt : opt.value;
+        const lbl = typeof opt === 'string' ? opt : opt.label;
+        const color = (typeof opt === 'object' && opt.color) ? opt.color : null;
+        const checked = selected.includes(val);
+        const colorDot = color ? '<span class="hl-ms-dot" style="background:' + esc(color) + ';"></span>' : '';
+        html += '<label class="hl-ms-option' + (checked ? ' checked' : '') + '">'
+            + '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="handleMultiSelectChange(\'' + id + '\',\'' + esc(val).replace(/'/g, "\\'") + '\',this.checked,\'' + onChangeFn + '\')">'
+            + colorDot + esc(lbl)
+            + '</label>';
+    }
+    html += '</div></div>';
+    return html;
+}
+
+function toggleMultiSelect(id) {
+    const dd = document.getElementById('msd-' + id);
+    if (!dd) return;
+    // Close all other dropdowns first
+    document.querySelectorAll('.hl-multiselect-dropdown').forEach(d => { if (d.id !== 'msd-' + id) d.style.display = 'none'; });
+    dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+}
+
+function handleMultiSelectChange(id, val, checked, fnName) {
+    let current;
+    if (id === 'status') current = [..._homeListStatusFilters];
+    else if (id === 'priority') current = [..._homeListPriorityFilters];
+    else if (id === 'tag') current = [..._homeListTagFilters];
+    else return;
+    if (checked && !current.includes(val)) current.push(val);
+    else if (!checked) current = current.filter(v => v !== val);
+    window[fnName](current);
+}
+
+// Close multi-select dropdowns when clicking outside
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.hl-multiselect')) {
+        document.querySelectorAll('.hl-multiselect-dropdown').forEach(d => d.style.display = 'none');
+    }
+});
+
 function renderHomeListTable(el) {
     const items = filterHomeListItems(_homeListItems || []);
     const sortIcon = (col) => {
         if (col !== _homeListSort) return '';
         return _homeListDir === 'asc' ? ' &#9650;' : ' &#9660;';
     };
-    const sortAttr = (col) => 'onclick="homeListSortBy(\'' + col + '\')"';
+    const sortAttr = (col) => 'onclick="homeListSortBy(\'' + col + '\')" style="cursor:pointer;user-select:none;"';
 
     // If the list view already exists with table, do a surgical update to preserve input focus
     const existingView = el.querySelector('.home-list-view');
@@ -1298,13 +1653,29 @@ function renderHomeListTable(el) {
     for (const [id, ws] of Object.entries(_homeListWorkspaces)) {
         wsOptions += '<option value="' + esc(id) + '"' + (_homeListWorkspaceFilter === id ? ' selected' : '') + '>' + esc(ws.name) + '</option>';
     }
-    // Build tag options
-    let tagOptions = '<option value="">All Tags</option>';
-    for (const tg of _homeListAllTags) {
-        tagOptions += '<option value="' + esc(tg.name) + '"' + (_homeListTagFilter === tg.name ? ' selected' : '') + '>' + esc(tg.name) + '</option>';
-    }
-    const toggleLabel = _homeListShowAll ? 'All Tasks' : 'My Tasks';
-    const toggleTitle = _homeListShowAll ? 'Showing all workspace tasks — click to show only your assigned tasks' : 'Showing your assigned tasks — click to show all workspace tasks';
+
+    // Status multi-select options with colors
+    const statusOpts = ['Not Started', 'Working on', 'Manager Review', 'Back to You', 'Stuck', 'Waiting on Client', 'Client Review', 'Approved', 'Postponed', 'Quality Review', 'Complete'].map(s => {
+        const colors = { 'Not Started': '#d3d3d3', 'Working on': '#fdcb6e', 'Manager Review': '#6c5ce7', 'Back to You': '#e17055', 'Stuck': '#d63031', 'Waiting on Client': '#fd79a8', 'Client Review': '#a29bfe', 'Approved': '#00cec9', 'Postponed': '#636e72', 'Quality Review': '#74b9ff', 'Complete': '#00b894' };
+        return { value: s, label: s, color: colors[s] || '#74b9ff' };
+    });
+    const priorityOpts = PRIORITIES.map(p => ({ value: p.value, label: p.label, color: p.color }));
+    const tagOpts = _homeListAllTags.map(tg => ({ value: tg.name, label: tg.name, color: tg.color || '#6366f1' }));
+
+    // My Tasks toggle — clear on/off with toggle switch
+    const myTasksOn = !_homeListShowAll;
+    const myTasksToggle = '<label class="hl-toggle" title="' + (myTasksOn ? 'Showing only your assigned tasks' : 'Showing all workspace tasks') + '">'
+        + '<input type="checkbox" ' + (myTasksOn ? 'checked' : '') + ' onchange="homeListToggleShowAll()">'
+        + '<span class="hl-toggle-track"><span class="hl-toggle-thumb"></span></span>'
+        + '<span class="hl-toggle-label">My Tasks</span>'
+        + '</label>';
+
+    // Hide Completed toggle
+    const hideCompletedToggle = '<label class="hl-toggle" title="' + (_homeListHideCompleted ? 'Completed tasks are hidden' : 'Showing completed tasks') + '">'
+        + '<input type="checkbox" ' + (_homeListHideCompleted ? 'checked' : '') + ' onchange="homeListToggleHideCompleted()">'
+        + '<span class="hl-toggle-track"><span class="hl-toggle-thumb"></span></span>'
+        + '<span class="hl-toggle-label">Hide Completed</span>'
+        + '</label>';
 
     let html = '<div class="home-list-view">'
         + '<div class="home-header">'
@@ -1315,38 +1686,29 @@ function renderHomeListTable(el) {
         + '</div>'
         + '<div class="home-list-subheader">'
         + '<span class="home-list-subtitle">' + items.length + ' item' + (items.length !== 1 ? 's' : '') + ' across all spaces</span>'
-        + '<button class="btn btn-small' + (_homeListShowAll ? ' btn-accent' : ' btn-ghost') + '" onclick="homeListToggleShowAll()" title="' + toggleTitle + '" style="margin-left:12px;font-size:11px;">' + toggleLabel + '</button>'
+        + '<div class="hl-toggles">'
+        + myTasksToggle
+        + hideCompletedToggle
+        + '</div>'
         + '</div>'
         + '<div class="home-list-filters">'
         + '<input type="text" class="home-list-search" placeholder="Filter tasks..." value="' + esc(_homeListSearch) + '" oninput="homeListSearchChanged(this.value)">'
         + '<select class="home-list-filter-select" onchange="homeListFilterWorkspace(this.value)">' + wsOptions + '</select>'
-        + '<select class="home-list-filter-select" onchange="homeListFilterStatus(this.value)">'
-        + '<option value="">All Statuses</option>'
-        + '<option value="open"' + (_homeListStatusFilter === 'open' ? ' selected' : '') + '>Open</option>'
-        + '<option value="in_progress"' + (_homeListStatusFilter === 'in_progress' ? ' selected' : '') + '>In Progress</option>'
-        + '<option value="review"' + (_homeListStatusFilter === 'review' ? ' selected' : '') + '>Review</option>'
-        + '<option value="done"' + (_homeListStatusFilter === 'done' ? ' selected' : '') + '>Done</option>'
-        + '<option value="closed"' + (_homeListStatusFilter === 'closed' ? ' selected' : '') + '>Closed</option>'
-        + '</select>'
-        + '<select class="home-list-filter-select" onchange="homeListFilterPriority(this.value)">'
-        + '<option value="">All Priorities</option>';
-    for (const p of PRIORITIES) {
-        html += '<option value="' + p.value + '"' + (_homeListPriorityFilter === p.value ? ' selected' : '') + '>' + p.label + '</option>';
-    }
-    html += '</select>'
-        + '<select class="home-list-filter-select" onchange="homeListFilterTag(this.value)">' + tagOptions + '</select>'
+        + renderMultiSelectDropdown('status', 'Status', statusOpts, _homeListStatusFilters, 'homeListFilterStatus')
+        + renderMultiSelectDropdown('priority', 'Priority', priorityOpts, _homeListPriorityFilters, 'homeListFilterPriority')
+        + renderMultiSelectDropdown('tag', 'Tags', tagOpts, _homeListTagFilters, 'homeListFilterTag')
         + '</div>'
         + renderBatchToolbar()
         + '<table class="th-list-table home-list-table"><thead><tr>'
         + '<th class="th-list-check-col"><input type="checkbox" class="th-batch-check" title="Select all" ' + (items.length > 0 && items.every(t => _selectedItems.has(t.id)) ? 'checked' : '') + ' onchange="batchToggleAllHome(this.checked)"></th>'
         + '<th class="sortable" ' + sortAttr('title') + '>Title' + sortIcon('title') + '</th>'
-        + '<th>Space</th>'
-        + '<th>List</th>'
+        + '<th class="sortable" ' + sortAttr('workspace_name') + '>Space' + sortIcon('workspace_name') + '</th>'
+        + '<th class="sortable" ' + sortAttr('list_name') + '>List' + sortIcon('list_name') + '</th>'
         + '<th class="sortable" ' + sortAttr('status') + '>Status' + sortIcon('status') + '</th>'
         + '<th class="sortable" ' + sortAttr('priority') + '>Priority' + sortIcon('priority') + '</th>'
-        + '<th>Assignees</th>'
+        + '<th class="sortable" ' + sortAttr('assignee') + '>Assignee' + sortIcon('assignee') + '</th>'
         + '<th class="sortable" ' + sortAttr('due_date') + '>Due' + sortIcon('due_date') + '</th>'
-        + '<th>Tags</th>'
+        + '<th class="sortable" ' + sortAttr('tags') + '>Tags' + sortIcon('tags') + '</th>'
         + '<th class="sortable" ' + sortAttr('updated_at') + '>Updated' + sortIcon('updated_at') + '</th>'
         + '</tr></thead><tbody>'
         + buildHomeListRows(items)
@@ -1355,14 +1717,17 @@ function renderHomeListTable(el) {
 }
 
 function filterHomeListItems(items) {
-    if (!_homeListSearch) return items;
-    const q = _homeListSearch.toLowerCase();
-    return items.filter(i =>
-        (i.title || '').toLowerCase().includes(q) ||
-        (i.workspace_name || '').toLowerCase().includes(q) ||
-        (i.list_name || '').toLowerCase().includes(q) ||
-        (i.status || '').toLowerCase().includes(q)
-    );
+    let filtered = items;
+    if (_homeListSearch) {
+        const q = _homeListSearch.toLowerCase();
+        filtered = filtered.filter(i =>
+            (i.title || '').toLowerCase().includes(q) ||
+            (i.workspace_name || '').toLowerCase().includes(q) ||
+            (i.list_name || '').toLowerCase().includes(q) ||
+            (i.status || '').toLowerCase().includes(q)
+        );
+    }
+    return filtered;
 }
 
 function homeListSortBy(col) {
@@ -1370,20 +1735,56 @@ function homeListSortBy(col) {
         _homeListDir = _homeListDir === 'asc' ? 'desc' : 'asc';
     } else {
         _homeListSort = col;
-        _homeListDir = col === 'title' ? 'asc' : 'desc';
+        _homeListDir = (col === 'title' || col === 'workspace_name' || col === 'list_name' || col === 'assignee' || col === 'tags') ? 'asc' : 'desc';
     }
+    // Client-side sortable columns don't need API re-fetch
+    const clientSortCols = ['workspace_name', 'list_name', 'assignee', 'tags'];
+    if (clientSortCols.includes(col) && _homeListItems) {
+        _homeListItems = sortHomeListItemsClient(_homeListItems, col, _homeListDir);
+        renderHomeListTable(document.getElementById('main-content'));
+    } else {
+        _homeListItems = null;
+        renderHomeListView(document.getElementById('main-content'));
+    }
+}
+
+function sortHomeListItemsClient(items, col, dir) {
+    const sorted = [...items];
+    sorted.sort((a, b) => {
+        let va, vb;
+        if (col === 'workspace_name') {
+            va = (a.workspace_name || '').toLowerCase();
+            vb = (b.workspace_name || '').toLowerCase();
+        } else if (col === 'list_name') {
+            va = (a.list_name || '').toLowerCase();
+            vb = (b.list_name || '').toLowerCase();
+        } else if (col === 'assignee') {
+            va = (a.assignees || []).map(x => resolveAssigneeName(x.assignee_id)).filter(Boolean).join(', ').toLowerCase();
+            vb = (b.assignees || []).map(x => resolveAssigneeName(x.assignee_id)).filter(Boolean).join(', ').toLowerCase();
+        } else if (col === 'tags') {
+            va = (a.tags || []).map(t => t.name).join(', ').toLowerCase();
+            vb = (b.tags || []).map(t => t.name).join(', ').toLowerCase();
+        } else {
+            va = (a[col] || '').toString().toLowerCase();
+            vb = (b[col] || '').toString().toLowerCase();
+        }
+        if (va < vb) return dir === 'asc' ? -1 : 1;
+        if (va > vb) return dir === 'asc' ? 1 : -1;
+        return 0;
+    });
+    return sorted;
+}
+
+function homeListFilterStatus(vals) {
+    _homeListStatusFilters = Array.isArray(vals) ? vals : [vals];
+    if (vals === '' || (Array.isArray(vals) && !vals.length)) _homeListStatusFilters = [];
     _homeListItems = null;
     renderHomeListView(document.getElementById('main-content'));
 }
 
-function homeListFilterStatus(val) {
-    _homeListStatusFilter = val;
-    _homeListItems = null;
-    renderHomeListView(document.getElementById('main-content'));
-}
-
-function homeListFilterPriority(val) {
-    _homeListPriorityFilter = val;
+function homeListFilterPriority(vals) {
+    _homeListPriorityFilters = Array.isArray(vals) ? vals : [vals];
+    if (vals === '' || (Array.isArray(vals) && !vals.length)) _homeListPriorityFilters = [];
     _homeListItems = null;
     renderHomeListView(document.getElementById('main-content'));
 }
@@ -1394,8 +1795,9 @@ function homeListFilterWorkspace(val) {
     renderHomeListView(document.getElementById('main-content'));
 }
 
-function homeListFilterTag(val) {
-    _homeListTagFilter = val;
+function homeListFilterTag(vals) {
+    _homeListTagFilters = Array.isArray(vals) ? vals : [vals];
+    if (vals === '' || (Array.isArray(vals) && !vals.length)) _homeListTagFilters = [];
     _homeListItems = null;
     renderHomeListView(document.getElementById('main-content'));
 }
@@ -1406,9 +1808,44 @@ function homeListToggleShowAll() {
     renderHomeListView(document.getElementById('main-content'));
 }
 
+function homeListToggleHideCompleted() {
+    _homeListHideCompleted = !_homeListHideCompleted;
+    _homeListItems = null;
+    renderHomeListView(document.getElementById('main-content'));
+}
+
+// Navigate from a dashboard tile's "+N more" to the full list view with appropriate sorting
+function showAllFromTile(tileType) {
+    _homeListItems = null;
+    _homeListStatusFilters = [];
+    _homeListPriorityFilters = [];
+    _homeListTagFilters = [];
+    _homeListWorkspaceFilter = '';
+    _homeListSearch = '';
+    if (tileType === 'overdue') {
+        _homeListSort = 'due_date';
+        _homeListDir = 'asc';
+    } else if (tileType === 'due_week') {
+        _homeListSort = 'due_date';
+        _homeListDir = 'asc';
+    } else if (tileType === 'follow_ups') {
+        _homeListSort = 'follow_up_date';
+        _homeListDir = 'asc';
+    } else {
+        _homeListSort = 'updated_at';
+        _homeListDir = 'desc';
+    }
+    _currentView = 'list';
+    _currentSpaceId = null;
+    _currentListId = null;
+    document.querySelectorAll('.th-view-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.th-view-btn[data-view="list"]')?.classList.add('active');
+    renderMainContent();
+}
+
 // Click a tag pill anywhere to filter the home list by that tag
 function filterByTag(tagName) {
-    _homeListTagFilter = tagName;
+    _homeListTagFilters = [tagName];
     _homeListItems = null;
     _currentView = 'list';
     _currentSpaceId = null;
@@ -1453,7 +1890,7 @@ function renderBoard(el) {
     for (const s of _currentStatuses) { statusColors[s.name] = s.color; }
 
     for (const t of visible) {
-        const s = t.status || 'open';
+        const s = t.status || 'Not Started';
         if (!statusGroups[s]) statusGroups[s] = [];
         statusGroups[s].push(t);
     }
@@ -1531,7 +1968,7 @@ async function submitBoardQuickAdd(status, title) {
             title: title, type: 'task', status: status,
         });
         showToast('Task created');
-        await selectList(_currentListId, _currentListName, _currentSpaceId);
+        // Postgres Changes INSERT listener will add the new task automatically
         broadcast('task_created', { listId: _currentListId });
     } catch (err) {
         showToast('Failed: ' + (err.message || err));
@@ -1558,13 +1995,16 @@ function renderCard(t, statusColors) {
         ).join('') + '</div>';
     }
 
+    const customIdHtml = t.custom_id ? '<span class="th-custom-id">' + esc(t.custom_id) + '</span>' : '';
+    const subtaskBadge = t.subtask_count ? '<span class="th-subtask-badge" title="' + (t.subtask_done || 0) + '/' + t.subtask_count + ' done">&#9776; ' + (t.subtask_done || 0) + '/' + t.subtask_count + '</span>' : '';
+
     return '<div class="th-card' + (checked ? ' th-batch-selected' : '') + '" draggable="true" data-task-id="' + esc(t.id) + '" onclick="openDetail(\'' + esc(t.id) + '\')" oncontextmenu="showCtxMenu(event,\'task\',\'' + esc(t.id) + '\',\'' + esc((t.title || t.name || '').replace(/'/g, '')) + '\',\'' + esc(_currentSpaceId || '') + '\')">'
         + '<div class="th-card-check" onclick="event.stopPropagation()"><input type="checkbox" class="th-batch-check" ' + (checked ? 'checked' : '') + ' onchange="batchToggleItem(\'' + esc(t.id) + '\', this.checked)"></div>'
-        + '<div class="th-card-title">' + esc(t.title || t.name || '') + '</div>'
+        + '<div class="th-card-title">' + customIdHtml + esc(t.title || t.name || '') + '</div>'
         + descPreview
         + '<div class="th-card-meta">'
         + '<span class="cu-status-pill" style="background:' + color + '22;color:' + color + ';">' + esc(t.status) + '</span>'
-        + priorityHtml + dueHtml + fuHtml + assigneeHtml
+        + priorityHtml + dueHtml + fuHtml + subtaskBadge + assigneeHtml
         + '</div>'
         + tagsHtml
         + '</div>';
@@ -1719,7 +2159,10 @@ function renderDetailPanel() {
         const pinned = isItemPinned(t.id);
         const pinLabel = pinned ? 'Unpin' : 'Pin to Top 3';
         const pinClass = pinned ? ' active' : '';
+        const isFav = _favorites.some(f => f.target_type === 'item' && f.target_id === t.id);
         headerActions.innerHTML = ''
+            + '<button class="th-star-btn' + (isFav ? ' active' : '') + '" onclick="toggleFavorite(\'item\',\'' + esc(t.id) + '\')" title="' + (isFav ? 'Remove from favorites' : 'Add to favorites') + '">&#9733;</button>'
+            + '<div style="position:relative;display:inline-block;"><button class="th-reminder-btn" onclick="toggleReminderDropdown(this,\'' + esc(t.id) + '\')" title="Set reminder">&#128276; Remind</button></div>'
             + '<button class="th-detail-action-btn' + pinClass + '" onclick="togglePinItem(\'' + esc(t.id) + '\')" title="' + pinLabel + '">'
             + '<svg width="14" height="14" viewBox="0 0 24 24" fill="' + (pinned ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2"><path d="M12 2l2.09 6.26L21 9.27l-5 3.64L17.18 20 12 16.77 6.82 20 8 12.91l-5-3.64 6.91-1.01z"/></svg> ' + pinLabel + '</button>'
             + '<button class="th-detail-action-btn" onclick="openMoveItemModal()" title="Move to another list">'
@@ -1732,7 +2175,10 @@ function renderDetailPanel() {
 
     let html = '';
 
-    // Editable title
+    // Custom ID badge + Editable title
+    if (t.custom_id) {
+        html += '<span class="th-custom-id-header">' + esc(t.custom_id) + '</span>';
+    }
     html += '<input class="th-detail-title-input" value="' + esc(t.title || t.name || '') + '" onblur="updateField(\'title\', this.value)" onkeydown="if(event.key===\'Enter\')this.blur();">';
 
     // Status + Priority + Due row (colored pill-dropdowns)
@@ -1888,6 +2334,54 @@ function renderDetailPanel() {
     html += '<div class="th-detail-field"><div class="th-detail-field-label">Files <button class="btn btn-small btn-ghost" onclick="openFileUpload(\'' + esc(t.id) + '\')" style="font-size:10px;margin-left:8px;">+ Upload</button></div>'
         + '<div id="detail-files">Loading...</div></div>';
 
+    // Subtasks section
+    html += '<div class="th-subtask-section">'
+        + '<div class="th-subtask-header"><span>Subtasks</span>'
+        + '<button class="btn btn-small btn-ghost" onclick="document.getElementById(\'subtask-add-input\').style.display=\'flex\'" style="font-size:11px;">+ Add</button></div>'
+        + '<div class="th-subtask-list" id="detail-subtasks">';
+    const subtasks = t.subtasks || [];
+    for (const sub of subtasks) {
+        const isDone = sub.status === 'done' || sub.status === 'closed' || sub.status === 'Complete';
+        html += '<div class="th-subtask-row" onclick="openDetail(\'' + esc(sub.id) + '\')">'
+            + '<div class="th-subtask-status' + (isDone ? ' done' : '') + '" onclick="event.stopPropagation();toggleSubtaskStatus(\'' + esc(sub.id) + '\',\'' + esc(sub.status) + '\')"></div>'
+            + (sub.custom_id ? '<span class="th-custom-id">' + esc(sub.custom_id) + '</span>' : '')
+            + '<span class="th-subtask-title' + (isDone ? ' done' : '') + '">' + esc(sub.title) + '</span>'
+            + '</div>';
+    }
+    html += '</div>'
+        + '<div class="th-subtask-add" id="subtask-add-input" style="display:none;">'
+        + '<input type="text" placeholder="Subtask title..." onkeydown="if(event.key===\'Enter\'){createSubtask(\'' + esc(t.id) + '\',this.value);this.value=\'\';}">'
+        + '</div></div>';
+
+    // Dependencies section (Phase 2)
+    html += '<div class="th-dep-section">'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'
+        + '<span style="font-size:13px;font-weight:600;">Dependencies</span>'
+        + '<button class="btn btn-small btn-ghost" onclick="openDepPicker()" style="font-size:11px;">+ Add</button></div>'
+        + '<div id="dep-picker" style="display:none;margin-bottom:8px;"></div>'
+        + '<div id="detail-dependencies">Loading...</div></div>';
+
+    // Custom Fields section (Phase 2)
+    if (_customFields.length) {
+        html += '<div class="th-cf-section">'
+            + '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Custom Fields</div>'
+            + '<div id="detail-custom-fields">Loading...</div></div>';
+    }
+
+    // Time Tracking section (Phase 2)
+    html += '<div class="th-time-section">'
+        + '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Time Tracking</div>'
+        + '<div id="detail-time-tracking">Loading...</div></div>';
+
+    // Checklists section
+    html += '<div class="th-checklist-section" id="detail-checklists">'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
+        + '<span style="font-size:13px;font-weight:600;">Checklists</span>'
+        + '<button class="btn btn-small btn-ghost" onclick="createChecklist(\'' + esc(t.id) + '\')" style="font-size:11px;">+ Add Checklist</button>'
+        + '</div>'
+        + '<div id="checklists-container">Loading...</div>'
+        + '</div>';
+
     // Comments
     html += '<div class="th-comments-section">'
         + '<div class="th-comments-title">Comments</div>'
@@ -1901,10 +2395,11 @@ function renderDetailPanel() {
     // Comment input
     html += '<div class="th-comment-input-wrap">'
         + '<div class="th-comment-input-row">'
-        + '<input class="th-comment-input" id="comment-input" placeholder="Add a comment... (@name to mention)" onkeydown="if(event.key===\'Enter\')postComment();">'
+        + '<textarea class="th-comment-input" id="comment-input" rows="1" placeholder="Add a comment... (Shift+Enter for new line)" onkeydown="commentKeyHandler(event)" oninput="autoResizeComment(this)"></textarea>'
         + '<button class="btn btn-small btn-ghost th-comment-img-btn" onclick="commentUploadImage()" title="Attach image">&#128247;</button>'
         + '<button class="btn btn-accent btn-small" onclick="postComment()">Send</button>'
         + '</div>'
+        + '<div class="th-comment-format-hint">**bold** *italic* `code` - list</div>'
         + '<div id="comment-image-preview" class="th-comment-img-preview" style="display:none;"></div>'
         + '</div></div>';
 
@@ -1919,9 +2414,13 @@ function renderDetailPanel() {
     // Bind paste handler for image paste in comments
     bindCommentPasteHandler();
 
-    // Load comments and files async
+    // Load comments, files, checklists, and Phase 2 sections async
     loadDetailComments();
     loadDetailFiles();
+    loadDetailChecklists();
+    loadDetailDependencies();
+    loadDetailCustomFields();
+    renderTimeTracking();
 }
 
 // ── Description Pretty/Raw Toggle ─────────────────────────────
@@ -2164,7 +2663,7 @@ function selectMention(input, member) {
     const cursor = input.selectionStart;
     const before = val.substring(0, cursor);
     const after = val.substring(cursor);
-    const replaced = before.replace(/@\w*$/, '@' + member.name + ' ');
+    const replaced = before.replace(/@\w*$/, '@[' + member.name + '](' + member.id + ') ');
     input.value = replaced + after;
     input.selectionStart = input.selectionEnd = replaced.length;
     hideMentionDropdown();
@@ -2264,9 +2763,8 @@ async function deleteDetailItem() {
     _tasks = _tasks.filter(t => t.id !== deletedId);
     if (_homeListItems) _homeListItems = _homeListItems.filter(t => t.id !== deletedId);
     closeDetail();
-    if (_currentListId) loadItems(_currentListId);
-    else if (_currentView === 'dashboard') loadDashboard();
-    else { _homeData = null; renderMainContent(); }
+    if (_currentView === 'dashboard') loadDashboard();
+    else { renderMainContent(); }
 }
 
 async function duplicateDetailItem() {
@@ -2279,11 +2777,11 @@ async function duplicateDetailItem() {
             title: t.title + ' (copy)',
             type: t.type || 'task',
             description: t.description || '',
-            status: t.status || 'open',
+            status: t.status || 'Not Started',
             priority: t.priority || 'none',
         });
         showToast('Item duplicated');
-        if (_currentListId) loadItems(_currentListId);
+        // Postgres Changes INSERT listener will add the new task automatically
     } catch (err) {
         showToast('Failed to duplicate: ' + (err.message || 'Unknown error'));
     }
@@ -2369,8 +2867,9 @@ async function confirmMoveItem() {
         showToast('Item moved');
         closeMoveItemModal();
         closeDetail();
-        if (_currentListId) loadItems(_currentListId);
-        else renderMainContent();
+        // Remove from current list locally — Postgres Changes will handle the update
+        if (_detailTask) _tasks = _tasks.filter(t => t.id !== _detailTask.id);
+        renderMainContent();
     } catch (err) {
         showToast('Failed to move: ' + (err.message || 'Unknown error'));
     }
@@ -2378,16 +2877,66 @@ async function confirmMoveItem() {
 
 // ── Field Updates ────────────────────────────────────────────
 
+function _syncHomeDataForItem(task) {
+    // Sync _homeData arrays in-place after a due_date or status change
+    if (!_homeData) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const closedStatuses = new Set(['done', 'closed', 'archived', 'Complete']);
+    const isClosed = closedStatuses.has(task.status);
+    const isOverdue = task.due_date && task.due_date < today && !isClosed;
+
+    // Helper: remove item from an array by id
+    const removeById = (arr, id) => { const idx = arr.findIndex(x => x.id === id); if (idx >= 0) arr.splice(idx, 1); };
+    // Helper: upsert item in an array (replace or push)
+    const upsertById = (arr, item) => { const idx = arr.findIndex(x => x.id === item.id); if (idx >= 0) arr[idx] = item; else arr.push(item); };
+
+    // Build a slim item object matching the shape returned by /my/home
+    const slim = { id: task.id, type: task.type, title: task.title, status: task.status,
+        priority: task.priority, due_date: task.due_date, follow_up_date: task.follow_up_date,
+        workspace_id: task.workspace_id, created_at: task.created_at, updated_at: task.updated_at };
+
+    // Overdue tile
+    if (_homeData.overdue) {
+        if (isOverdue) { upsertById(_homeData.overdue, slim); _homeData.overdue.sort((a, b) => (b.due_date || '').localeCompare(a.due_date || '')); }
+        else removeById(_homeData.overdue, task.id);
+    }
+
+    // Due this week tile
+    if (_homeData.due_this_week) {
+        const weekFromNow = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+        const isDueThisWeek = task.due_date && task.due_date >= today && task.due_date <= weekFromNow && !isClosed;
+        if (isDueThisWeek) { upsertById(_homeData.due_this_week, slim); _homeData.due_this_week.sort((a, b) => (a.due_date || '').localeCompare(b.due_date || '')); }
+        else removeById(_homeData.due_this_week, task.id);
+    }
+
+    // Recent todos / top items — update in place if present
+    for (const key of ['recent_todos', 'top_items', 'priorities']) {
+        if (_homeData[key]) {
+            const idx = _homeData[key].findIndex(x => x.id === task.id);
+            if (idx >= 0) _homeData[key][idx] = slim;
+        }
+    }
+}
+
 async function updateField(field, value) {
     if (!_detailTask) return;
     const oldVal = _detailTask[field];
     if (value === oldVal) return;
 
+    const onHomePage = !_currentListId && _currentView !== 'list' && _currentView !== 'calendar' && _currentView !== 'dashboard';
+
     _detailTask[field] = value;
     // Update local tasks array too
     const localTask = _tasks.find(t => t.id === _detailTask.id);
     if (localTask) localTask[field] = value;
-    renderMainContent();
+
+    // Optimistic: sync home data in-place and re-render tiles (no server refetch)
+    if (onHomePage && _homeData) {
+        _syncHomeDataForItem(_detailTask);
+        renderHomeTiles();
+    } else {
+        renderMainContent();
+    }
 
     try {
         await api('PATCH', API + '/items/' + _detailTask.id, { [field]: value || null });
@@ -2395,7 +2944,13 @@ async function updateField(field, value) {
     } catch {
         _detailTask[field] = oldVal;
         if (localTask) localTask[field] = oldVal;
-        renderMainContent();
+        // Revert home data sync
+        if (onHomePage && _homeData) {
+            _syncHomeDataForItem(_detailTask);
+            renderHomeTiles();
+        } else {
+            renderMainContent();
+        }
         showToast('Failed to update ' + field);
     }
 }
@@ -2569,6 +3124,18 @@ async function addTag(tagId) {
 
 // ── Comments ─────────────────────────────────────────────────
 
+function commentKeyHandler(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        postComment();
+    }
+}
+
+function autoResizeComment(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+}
+
 let _commentPendingImages = []; // [{url, name}] — signed URLs for images queued for next comment
 
 async function postComment() {
@@ -2728,10 +3295,22 @@ function renderMentions(text) {
         const decodedUrl = url.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
         return '<div class="th-comment-image"><img src="' + decodedUrl + '" alt="' + alt + '" loading="lazy" onclick="window.open(this.src,\'_blank\')"></div>';
     });
-    // Render @mentions
+    // Render structured @[Name](id) mentions as pills
+    result = result.replace(/@\[([^\]]+)\]\([0-9a-f\-]{36}\)/g, (match, name) => {
+        return '<span class="th-mention-pill">@' + name + '</span>';
+    });
+    // Render legacy @mentions
     result = result.replace(/@(\w[\w\s]*?\w|\w)/g, (match) => {
         return '<span class="mention">' + match + '</span>';
     });
+    // Basic markdown formatting for comments
+    result = result.replace(/`([^`]+)`/g, '<code class="th-comment-code">$1</code>');
+    result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    result = result.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    // Convert newlines to <br> for multiline comments
+    result = result.replace(/\n/g, '<br>');
+    // Simple unordered list lines: "- item" at start of line (after <br> or start)
+    result = result.replace(/(^|<br>)- ([^<]+)/g, '$1<span class="th-comment-li">&bull; $2</span>');
     return result;
 }
 
@@ -2872,7 +3451,7 @@ function selectCreateType(type) {
             + '</div>'
             + '<div class="form-row">'
             + '<div class="form-group"><label class="form-label">Status</label>'
-            + '<select class="form-select" id="cn-task-status"><option value="open">open</option></select></div>'
+            + '<select class="form-select" id="cn-task-status"><option value="Not Started">Not Started</option></select></div>'
             + '<div class="form-group"><label class="form-label">Due Date</label>'
             + '<input type="date" class="form-input" id="cn-task-due"></div>'
             + '</div>'
@@ -2984,9 +3563,9 @@ async function cnTaskSpaceChanged() {
             const stData = await api('GET', API + '/workspaces/' + spaceId + '/statuses');
             const sts = stData.statuses || [];
             statusSel.innerHTML = sts.map(s => '<option value="' + esc(s.name) + '">' + esc(s.name) + '</option>').join('');
-            if (!sts.length) statusSel.innerHTML = '<option value="open">open</option>';
+            if (!sts.length) statusSel.innerHTML = '<option value="Not Started">Not Started</option>';
         } catch {
-            statusSel.innerHTML = '<option value="open">open</option>';
+            statusSel.innerHTML = '<option value="Not Started">Not Started</option>';
         }
     }
 }
@@ -3045,15 +3624,13 @@ async function handleCreateNew(e) {
                 title,
                 type: document.getElementById('cn-task-type')?.value || 'task',
                 description: document.getElementById('cn-task-desc')?.value || '',
-                status: document.getElementById('cn-task-status')?.value || 'open',
+                status: document.getElementById('cn-task-status')?.value || 'Not Started',
                 priority: document.getElementById('cn-task-priority')?.value || 'medium',
                 due_date: document.getElementById('cn-task-due')?.value || null,
             };
             await api('POST', API + '/lists/' + listId + '/items', data);
             showToast('Task created!');
-            if (listId === _currentListId) {
-                selectList(_currentListId, _currentListName, _currentSpaceId);
-            }
+            // Postgres Changes INSERT listener will add the new task if viewing this list
             broadcast('task_created', { listId });
         } else if (type === 'structure') {
             const name = document.getElementById('cn-struct-space-name')?.value?.trim();
@@ -3589,9 +4166,15 @@ async function openSettingsModal() {
     const modal = document.getElementById('settings-modal');
     if (!modal) return;
     modal.classList.add('visible');
-    _discordAIWorkspaces = null; // Reset so Discord AI tab reloads fresh
+    const hub = _myHub();
+    document.getElementById('settings-space-label').textContent = hub
+        ? (hub.icon || '🏢') + ' ' + hub.name + ' Settings'
+        : 'TeamHub Settings';
 
-    document.getElementById('settings-space-label').textContent = 'TeamHub Settings';
+    // Bind sidebar nav click handlers
+    modal.querySelectorAll('.settings-nav-item').forEach(btn => {
+        btn.onclick = () => switchSettingsTab(btn.dataset.tab);
+    });
 
     _settingsTab = 'statuses';
     switchSettingsTab('statuses');
@@ -3599,44 +4182,59 @@ async function openSettingsModal() {
 }
 
 async function loadSettingsData() {
-    const wsId = _myPersonalSpaceId();
-    if (!wsId) {
-        _settingsStatuses = [];
-        _settingsTags = [];
-        renderSettingsTab();
-        return;
+    const hub = _myHub();
+
+    if (hub) {
+        // Hub mode: load from hub-level statuses/tags
+        try {
+            const data = await api('GET', API + '/hubs/' + hub.id + '/statuses');
+            _settingsStatuses = data.statuses || [];
+        } catch { _settingsStatuses = []; }
+        try {
+            const data = await api('GET', API + '/hubs/' + hub.id + '/tags');
+            _settingsTags = data.tags || [];
+        } catch { _settingsTags = []; }
+    } else {
+        // Legacy mode: load from personal workspace
+        const wsId = _myPersonalSpaceId();
+        if (!wsId) {
+            _settingsStatuses = [];
+            _settingsTags = [];
+            renderSettingsTab();
+            return;
+        }
+        try {
+            const data = await api('GET', API + '/workspaces/' + wsId + '/statuses');
+            _settingsStatuses = data.statuses || [];
+        } catch { _settingsStatuses = []; }
+        try {
+            const data = await api('GET', API + '/workspaces/' + wsId + '/tags');
+            _settingsTags = data.tags || [];
+        } catch { _settingsTags = []; }
     }
 
-    // Load statuses from personal workspace (global settings)
-    try {
-        const data = await api('GET', API + '/workspaces/' + wsId + '/statuses');
-        _settingsStatuses = data.statuses || [];
-    } catch { _settingsStatuses = []; }
-
-    // Load tags from personal workspace (global settings)
-    try {
-        const data = await api('GET', API + '/workspaces/' + wsId + '/tags');
-        _settingsTags = data.tags || [];
-    } catch { _settingsTags = []; }
+    // Load custom fields and automations for current workspace
+    const activeWs = _currentSpaceId || _myPersonalSpaceId();
+    if (activeWs) {
+        await loadCustomFields(activeWs);
+        await loadAutomations(activeWs);
+    }
 
     renderSettingsTab();
 }
 
 function switchSettingsTab(tab) {
     _settingsTab = tab;
-    document.querySelectorAll('#settings-modal .th-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('#settings-modal .th-tab').forEach(t => {
-        const txt = t.textContent.toLowerCase();
-        if (tab === 'landing' && txt.includes('land')) t.classList.add('active');
-        else if (tab !== 'landing' && txt.includes(tab.substring(0, 4))) t.classList.add('active');
+    // Toggle active class on sidebar nav items
+    document.querySelectorAll('#settings-modal .settings-nav-item').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
     });
-    document.getElementById('settings-tab-statuses').style.display = tab === 'statuses' ? '' : 'none';
-    document.getElementById('settings-tab-priorities').style.display = tab === 'priorities' ? '' : 'none';
-    document.getElementById('settings-tab-tags').style.display = tab === 'tags' ? '' : 'none';
-    document.getElementById('settings-tab-import').style.display = tab === 'import' ? '' : 'none';
-    document.getElementById('settings-tab-landing').style.display = tab === 'landing' ? '' : 'none';
-    document.getElementById('settings-tab-members').style.display = tab === 'members' ? '' : 'none';
-    document.getElementById('settings-tab-discord-ai').style.display = tab === 'discord-ai' ? '' : 'none';
+    // Show/hide content divs
+    const tabs = ['statuses','priorities','tags','import','landing','members','custom-fields','automations','discord-ai'];
+    tabs.forEach(t => {
+        const el = document.getElementById('settings-tab-' + t);
+        if (el) el.style.display = t === tab ? '' : 'none';
+    });
     renderSettingsTab();
 }
 
@@ -3647,15 +4245,18 @@ function renderSettingsTab() {
     else if (_settingsTab === 'import') renderSettingsImport();
     else if (_settingsTab === 'landing') renderSettingsLanding();
     else if (_settingsTab === 'members') renderSettingsMembers();
+    else if (_settingsTab === 'custom-fields') renderSettingsCustomFields();
+    else if (_settingsTab === 'automations') renderSettingsAutomations();
     else if (_settingsTab === 'discord-ai') renderSettingsDiscordAI();
 }
 
 function renderSettingsStatuses() {
     const el = document.getElementById('settings-tab-statuses');
     const isOwner = _isSettingsOwner();
+    const hubMode = !!_myHub();
     let html = '<div class="settings-info-box">' + (isOwner
-        ? 'Manage the workflow statuses for this space. Statuses define the lifecycle of your tasks.'
-        : 'These statuses are managed by the workspace owner. You can still assign them to tasks.') + '</div>';
+        ? (hubMode ? 'Manage hub-wide workflow statuses. These apply to all spaces in the hub.' : 'Manage the workflow statuses for this space. Statuses define the lifecycle of your tasks.')
+        : (hubMode ? 'These statuses are managed by hub admins and apply to all spaces.' : 'These statuses are managed by the workspace owner. You can still assign them to tasks.')) + '</div>';
     html += '<div class="settings-list">';
     for (const s of _settingsStatuses) {
         if (isOwner) {
@@ -3689,16 +4290,36 @@ function renderSettingsStatuses() {
     el.innerHTML = html;
 }
 
+function _settingsStatusUrl(action, statusId) {
+    const hub = _myHub();
+    if (hub) {
+        if (action === 'create') return API + '/hubs/' + hub.id + '/statuses';
+        return API + '/hubs/' + hub.id + '/statuses/' + statusId;
+    }
+    const wsId = _myPersonalSpaceId();
+    if (action === 'create') return API + '/workspaces/' + wsId + '/statuses';
+    return API + '/statuses/' + statusId;
+}
+
+function _settingsTagUrl(action, tagId) {
+    const hub = _myHub();
+    if (hub) {
+        if (action === 'create') return API + '/hubs/' + hub.id + '/tags';
+        return API + '/hubs/' + hub.id + '/tags/' + tagId;
+    }
+    const wsId = _myPersonalSpaceId();
+    if (action === 'create') return API + '/workspaces/' + wsId + '/tags';
+    return API + '/workspaces/' + wsId + '/tags/' + tagId;
+}
+
 async function addSettingsStatus() {
     if (!_isSettingsOwner()) { showToast('Only the workspace owner can manage statuses'); return; }
-    const wsId = _myPersonalSpaceId();
-    if (!wsId) return;
     const name = document.getElementById('settings-new-status-name')?.value?.trim();
     const color = document.getElementById('settings-new-status-color')?.value || '#6c5ce7';
     const type = document.getElementById('settings-new-status-type')?.value || 'active';
     if (!name) { showToast('Enter a status name'); return; }
     try {
-        await api('POST', API + '/workspaces/' + wsId + '/statuses', { name, color, type });
+        await api('POST', _settingsStatusUrl('create'), { name, color, type });
         showToast('Status added');
         document.getElementById('settings-new-status-name').value = '';
         _syncSettingsToAllSpaces();
@@ -3712,7 +4333,7 @@ async function updateSettingsStatus(statusId, newName, newColor) {
     if (newName) body.name = newName;
     if (newColor) body.color = newColor;
     try {
-        await api('PATCH', API + '/statuses/' + statusId, body);
+        await api('PATCH', _settingsStatusUrl('update', statusId), body);
         _syncSettingsToAllSpaces();
         await loadSettingsData();
     } catch { showToast('Failed to update status'); }
@@ -3745,7 +4366,7 @@ async function deleteSettingsStatus(statusId, name) {
     if (!_isSettingsOwner()) { showToast('Only the workspace owner can manage statuses'); return; }
     if (!confirm('Delete status "' + name + '"? Tasks with this status will keep their current value.')) return;
     try {
-        await api('DELETE', API + '/statuses/' + statusId);
+        await api('DELETE', _settingsStatusUrl('delete', statusId));
         showToast('Status deleted');
         _syncSettingsToAllSpaces();
         await loadSettingsData();
@@ -3776,9 +4397,10 @@ function renderSettingsPriorities() {
 function renderSettingsTags() {
     const el = document.getElementById('settings-tab-tags');
     const isOwner = _isSettingsOwner();
+    const hubMode = !!_myHub();
     let html = '<div class="settings-info-box">' + (isOwner
-        ? 'Tags help categorize and filter tasks. Create workspace-level tags that can be applied to any task in this space.'
-        : 'These tags are managed by the workspace owner. You can still assign them to tasks.') + '</div>';
+        ? (hubMode ? 'Manage hub-wide tags. These are available across all spaces in the hub.' : 'Tags help categorize and filter tasks. Create workspace-level tags that can be applied to any task in this space.')
+        : (hubMode ? 'These tags are managed by hub admins and are available across all spaces.' : 'These tags are managed by the workspace owner. You can still assign them to tasks.')) + '</div>';
     html += '<div class="settings-list">';
     for (const tag of _settingsTags) {
         if (isOwner) {
@@ -3809,13 +4431,11 @@ function renderSettingsTags() {
 
 async function addSettingsTag() {
     if (!_isSettingsOwner()) { showToast('Only the workspace owner can manage tags'); return; }
-    const wsId = _myPersonalSpaceId();
-    if (!wsId) return;
     const name = document.getElementById('settings-new-tag-name')?.value?.trim();
     const color = document.getElementById('settings-new-tag-color')?.value || '#6366f1';
     if (!name) { showToast('Enter a tag name'); return; }
     try {
-        await api('POST', API + '/workspaces/' + wsId + '/tags', { name, color });
+        await api('POST', _settingsTagUrl('create'), { name, color });
         showToast('Tag added');
         document.getElementById('settings-new-tag-name').value = '';
         _syncSettingsToAllSpaces();
@@ -3825,13 +4445,11 @@ async function addSettingsTag() {
 
 async function updateSettingsTag(tagId, newName, newColor) {
     if (!_isSettingsOwner()) { showToast('Only the workspace owner can manage tags'); return; }
-    const wsId = _myPersonalSpaceId();
-    if (!wsId) return;
     const body = {};
     if (newName) body.name = newName;
     if (newColor) body.color = newColor;
     try {
-        await api('PATCH', API + '/workspaces/' + wsId + '/tags/' + tagId, body);
+        await api('PATCH', _settingsTagUrl('update', tagId), body);
         _syncSettingsToAllSpaces();
         await loadSettingsData();
     } catch { showToast('Failed to update tag'); }
@@ -3862,11 +4480,9 @@ function editSettingsTag(tagId, currentName) {
 
 async function deleteSettingsTag(tagId, name) {
     if (!_isSettingsOwner()) { showToast('Only the workspace owner can manage tags'); return; }
-    const wsId = _myPersonalSpaceId();
-    if (!wsId) return;
     if (!confirm('Delete tag "' + name + '"? It will be removed from all tasks.')) return;
     try {
-        await api('DELETE', API + '/workspaces/' + wsId + '/tags/' + tagId);
+        await api('DELETE', _settingsTagUrl('delete', tagId));
         showToast('Tag deleted');
         _syncSettingsToAllSpaces();
         await loadSettingsData();
@@ -3886,18 +4502,29 @@ function renderSettingsLanding() {
     for (const tile of tiles) {
         const checked = tile.visible ? ' checked' : '';
         const sizeLabel = tile.size || '1x1';
+        const isCustom = tile.custom;
+        const customActions = isCustom
+            ? '<button class="btn btn-ghost btn-small" onclick="openCustomTileWizard(\'' + esc(tile.id) + '\')" title="Edit" style="padding:2px 6px;font-size:11px;">'
+              + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
+              + '</button>'
+              + '<button class="btn btn-ghost btn-small" onclick="deleteCustomTile(\'' + esc(tile.id) + '\')" title="Delete" style="padding:2px 6px;font-size:11px;color:var(--red);">'
+              + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>'
+              + '</button>'
+            : '';
         html += '<div class="settings-item landing-tile-item" draggable="true" data-tile-id="' + esc(tile.id) + '">'
             + '<span class="landing-drag-handle" title="Drag to reorder">&#9776;</span>'
             + '<label class="landing-toggle-label">'
             + '<input type="checkbox"' + checked + ' onchange="toggleLandingTile(\'' + esc(tile.id) + '\', this.checked)">'
-            + '<span class="settings-item-name">' + esc(tile.title) + '</span>'
+            + '<span class="settings-item-name">' + esc(tile.title) + (isCustom ? ' <span style="color:var(--accent);font-size:10px;">(custom)</span>' : '') + '</span>'
             + '</label>'
+            + customActions
             + '<span class="landing-size-btn" onclick="toggleLandingTileSize(\'' + esc(tile.id) + '\')" title="Click to cycle size">' + esc(sizeLabel) + '</span>'
             + '</div>';
     }
     html += '</div>';
-    html += '<div style="margin-top:12px;">'
+    html += '<div style="margin-top:12px;display:flex;gap:8px;">'
         + '<button class="btn btn-ghost btn-small" onclick="resetLandingDefaults()">Reset to Defaults</button>'
+        + '<button class="btn btn-accent btn-small" onclick="openCustomTileWizard()">+ Custom Tile</button>'
         + '</div>';
     el.innerHTML = html;
     bindLandingDragAndDrop();
@@ -3967,79 +4594,962 @@ function bindLandingDragAndDrop() {
     });
 }
 
-// ── Discord AI Settings Tab ──────────────────────────────────
-//
-// Single-server model: one Discord connection at the top level,
-// workspace scope checkboxes below to control what the bot can access.
-//
-// Future: per-workspace server/channel config is commented out below
-// this section — can be re-enabled for multi-server support later.
+// ── Custom Tile Wizard ──────────────────────────────────────
+
+let _customWizardStep = 1;
+let _customWizardEditId = null;
+let _customWizardConditions = [];
+let _customWizardTitle = 'My Custom Tile';
+let _customWizardSort = 'updated_at';
+let _customWizardSortDir = 'desc';
+let _customWizardLimit = 25;
+let _customWizardSize = '1x1';
+let _customWizardMode = 'manual'; // 'manual' | 'ai'
+let _customWizardPreviewData = null;
+let _customWizardPreviewTimer = null;
+
+const CRITERIA_FIELDS = [
+    { value: 'workspace_id', label: 'Workspace', type: 'workspace' },
+    { value: 'status', label: 'Status', type: 'multi', options: ['Not Started', 'Working on', 'Manager Review', 'Back to You', 'Stuck', 'Waiting on Client', 'Client Review', 'Approved', 'Postponed', 'Quality Review', 'Complete'] },
+    { value: 'priority', label: 'Priority', type: 'multi', options: ['critical', 'high', 'medium', 'low', 'none'] },
+    { value: 'assignee_id', label: 'Assignee', type: 'assignee' },
+    { value: 'due_date', label: 'Due Date', type: 'date' },
+    { value: 'follow_up_date', label: 'Follow-up Date', type: 'date' },
+    { value: 'type', label: 'Type', type: 'multi', options: ['task', 'note', 'idea', 'decision', 'bug'] },
+    { value: 'tag', label: 'Tag', type: 'tag' },
+    { value: 'list_id', label: 'List', type: 'text' },
+];
+
+const CRITERIA_OPS = {
+    default: [
+        { value: 'eq', label: 'equals' },
+        { value: 'neq', label: 'not equal' },
+        { value: 'in', label: 'in' },
+        { value: 'not_in', label: 'not in' },
+    ],
+    date: [
+        { value: 'eq', label: 'equals' },
+        { value: 'lt', label: 'before' },
+        { value: 'lte', label: 'on or before' },
+        { value: 'gt', label: 'after' },
+        { value: 'gte', label: 'on or after' },
+    ],
+};
+
+const DATE_PRESETS = [
+    { value: 'today', label: 'Today' },
+    { value: 'this_week', label: 'This week' },
+    { value: 'this_month', label: 'This month' },
+    { value: 'relative:7d', label: 'Next 7 days' },
+    { value: 'relative:14d', label: 'Next 14 days' },
+    { value: 'relative:30d', label: 'Next 30 days' },
+    { value: 'relative:-1d', label: 'Yesterday' },
+    { value: 'relative:-3d', label: '3 days ago' },
+    { value: 'relative:-7d', label: '7 days ago' },
+];
+
+function openCustomTileWizard(editId) {
+    _customWizardEditId = editId || null;
+    _customWizardStep = 1;
+    _customWizardMode = 'manual';
+    _customWizardPreviewData = null;
+
+    if (editId) {
+        const layout = _homeLayout || loadHomeLayout();
+        const tile = layout.tiles.find(t => t.id === editId);
+        if (tile) {
+            _customWizardTitle = tile.title || 'My Custom Tile';
+            _customWizardConditions = JSON.parse(JSON.stringify(tile.criteria?.conditions || []));
+            _customWizardSort = tile.criteria?.sort || 'updated_at';
+            _customWizardSortDir = tile.criteria?.sort_dir || 'desc';
+            _customWizardLimit = tile.criteria?.limit || 25;
+            _customWizardSize = tile.size || '1x1';
+        }
+    } else {
+        _customWizardTitle = 'My Custom Tile';
+        _customWizardConditions = [];
+        _customWizardSort = 'updated_at';
+        _customWizardSortDir = 'desc';
+        _customWizardLimit = 25;
+        _customWizardSize = '1x1';
+    }
+
+    renderCustomWizard();
+}
+
+function renderCustomWizard() {
+    // Remove existing wizard if present
+    let overlay = document.getElementById('custom-tile-wizard-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'custom-tile-wizard-overlay';
+        overlay.className = 'modal-overlay visible';
+        document.body.appendChild(overlay);
+    }
+
+    const isEdit = !!_customWizardEditId;
+    const stepTitles = ['Name & Mode', 'Criteria Builder', 'Preview & Confirm'];
+
+    let html = '<div class="modal" style="max-width:640px;">'
+        + '<button class="modal-close" onclick="closeCustomTileWizard()">&times;</button>'
+        + '<div class="modal-title">' + (isEdit ? 'Edit' : 'New') + ' Custom Tile</div>'
+        + '<div class="custom-tile-wizard-steps">';
+
+    for (let i = 1; i <= 3; i++) {
+        const active = i === _customWizardStep ? ' active' : '';
+        const done = i < _customWizardStep ? ' done' : '';
+        html += '<div class="custom-tile-wizard-step-indicator' + active + done + '">'
+            + '<span class="step-num">' + i + '</span> ' + stepTitles[i - 1] + '</div>';
+    }
+    html += '</div>';
+
+    if (_customWizardStep === 1) {
+        html += renderWizardStep1();
+    } else if (_customWizardStep === 2) {
+        html += renderWizardStep2();
+    } else {
+        html += renderWizardStep3();
+    }
+
+    html += '</div>';
+    overlay.innerHTML = html;
+    overlay.style.display = 'flex';
+
+    // Trigger live preview if on step 2
+    if (_customWizardStep === 2) {
+        refreshCustomTilePreview();
+    }
+}
+
+function renderWizardStep1() {
+    let html = '<div class="custom-tile-wizard-body">';
+    html += '<div class="form-group">'
+        + '<label class="form-label">Tile Name</label>'
+        + '<input class="form-input" id="ctw-title" value="' + esc(_customWizardTitle) + '" placeholder="My Custom Tile" onchange="_customWizardTitle=this.value">'
+        + '</div>';
+
+    html += '<div class="form-group">'
+        + '<label class="form-label">Build Mode</label>'
+        + '<div class="ai-mode-toggle">'
+        + '<button class="btn btn-small' + (_customWizardMode === 'manual' ? ' btn-accent' : ' btn-ghost') + '" onclick="_customWizardMode=\'manual\';renderCustomWizard()">Manual</button>'
+        + '<button class="btn btn-small' + (_customWizardMode === 'ai' ? ' btn-accent' : ' btn-ghost') + '" onclick="_customWizardMode=\'ai\';renderCustomWizard()">AI Assist</button>'
+        + '</div>'
+        + '</div>';
+
+    if (_customWizardMode === 'ai') {
+        html += '<div class="form-group">'
+            + '<label class="form-label">Describe what you want to see</label>'
+            + '<textarea class="form-input" id="ctw-ai-desc" rows="3" placeholder="e.g. Show me overdue high priority tasks across all projects"></textarea>'
+            + '<button class="btn btn-accent btn-small" style="margin-top:8px;" onclick="generateCustomTileCriteria()" id="ctw-ai-btn">Generate Criteria</button>'
+            + '<div id="ctw-ai-status" style="font-size:12px;color:var(--text-muted);margin-top:6px;"></div>'
+            + '</div>';
+    }
+
+    html += '<div class="wizard-actions">'
+        + '<button class="btn btn-ghost" onclick="closeCustomTileWizard()">Cancel</button>'
+        + '<button class="btn btn-accent" onclick="wizardGoStep(2)">Next</button>'
+        + '</div></div>';
+    return html;
+}
+
+function renderWizardStep2() {
+    let html = '<div class="custom-tile-wizard-body">';
+
+    // Condition rows
+    html += '<div class="form-group"><label class="form-label">Conditions</label>';
+    html += '<div id="ctw-conditions">';
+    _customWizardConditions.forEach((cond, idx) => {
+        html += renderConditionRow(idx, cond);
+    });
+    html += '</div>';
+    html += '<button class="btn btn-ghost btn-small criteria-add-btn" onclick="addWizardCondition()">+ Add Condition</button>';
+    html += '</div>';
+
+    // Sort
+    html += '<div class="form-group" style="display:flex;gap:12px;">'
+        + '<div style="flex:1;">'
+        + '<label class="form-label">Sort by</label>'
+        + '<select class="form-input" onchange="_customWizardSort=this.value;refreshCustomTilePreview()">';
+    for (const f of CRITERIA_FIELDS) {
+        html += '<option value="' + f.value + '"' + (_customWizardSort === f.value ? ' selected' : '') + '>' + f.label + '</option>';
+    }
+    html += '</select></div>'
+        + '<div style="flex:1;">'
+        + '<label class="form-label">Direction</label>'
+        + '<select class="form-input" onchange="_customWizardSortDir=this.value;refreshCustomTilePreview()">'
+        + '<option value="asc"' + (_customWizardSortDir === 'asc' ? ' selected' : '') + '>Ascending</option>'
+        + '<option value="desc"' + (_customWizardSortDir === 'desc' ? ' selected' : '') + '>Descending</option>'
+        + '</select></div></div>';
+
+    // Limit
+    html += '<div class="form-group">'
+        + '<label class="form-label">Max items</label>'
+        + '<input class="form-input" type="number" min="1" max="100" value="' + _customWizardLimit + '" onchange="_customWizardLimit=parseInt(this.value)||25;refreshCustomTilePreview()">'
+        + '</div>';
+
+    // Live preview
+    html += '<div class="form-group">'
+        + '<label class="form-label">Preview</label>'
+        + '<div class="custom-tile-preview" id="ctw-preview"><div class="home-tile-empty">Add conditions and preview will appear here</div></div>'
+        + '</div>';
+
+    html += '<div class="wizard-actions">'
+        + '<button class="btn btn-ghost" onclick="wizardGoStep(1)">Back</button>'
+        + '<button class="btn btn-accent" onclick="wizardGoStep(3)">Next</button>'
+        + '</div></div>';
+    return html;
+}
+
+function renderConditionRow(idx, cond) {
+    const fieldDef = CRITERIA_FIELDS.find(f => f.value === cond.field) || CRITERIA_FIELDS[0];
+    const isDate = fieldDef.type === 'date';
+    const ops = isDate ? CRITERIA_OPS.date : CRITERIA_OPS.default;
+
+    let html = '<div class="criteria-row">';
+
+    // Field dropdown
+    html += '<select class="form-input criteria-field" onchange="updateConditionField(' + idx + ', this.value)">';
+    for (const f of CRITERIA_FIELDS) {
+        html += '<option value="' + f.value + '"' + (cond.field === f.value ? ' selected' : '') + '>' + f.label + '</option>';
+    }
+    html += '</select>';
+
+    // Operator dropdown
+    html += '<select class="form-input criteria-op" onchange="updateConditionOp(' + idx + ', this.value)">';
+    for (const o of ops) {
+        html += '<option value="' + o.value + '"' + (cond.op === o.value ? ' selected' : '') + '>' + o.label + '</option>';
+    }
+    html += '</select>';
+
+    // Value input — contextual based on field type
+    html += renderConditionValue(idx, cond, fieldDef);
+
+    // Remove button
+    html += '<button class="btn btn-ghost btn-small" onclick="removeWizardCondition(' + idx + ')" style="padding:4px 6px;color:var(--red);">&times;</button>';
+    html += '</div>';
+    return html;
+}
+
+function renderConditionValue(idx, cond, fieldDef) {
+    const currentVal = cond.value;
+    const isMulti = cond.op === 'in' || cond.op === 'not_in';
+
+    if (fieldDef.type === 'date') {
+        // Date presets
+        let html = '<div class="criteria-value">'
+            + '<select class="form-input" onchange="updateConditionValue(' + idx + ', this.value)">'
+            + '<option value="">Select...</option>';
+        for (const p of DATE_PRESETS) {
+            html += '<option value="' + p.value + '"' + (currentVal === p.value ? ' selected' : '') + '>' + p.label + '</option>';
+        }
+        html += '</select></div>';
+        return html;
+    }
+
+    if (fieldDef.type === 'multi' && fieldDef.options) {
+        // Multi-select checkboxes for in/not_in, single select for eq/neq
+        const selectedVals = Array.isArray(currentVal) ? currentVal : (currentVal ? [currentVal] : []);
+        if (isMulti) {
+            let html = '<div class="criteria-value criteria-value-multi">';
+            for (const opt of fieldDef.options) {
+                const checked = selectedVals.includes(opt) ? ' checked' : '';
+                html += '<label class="criteria-check-label">'
+                    + '<input type="checkbox"' + checked + ' onchange="toggleConditionMultiValue(' + idx + ', \'' + opt + '\', this.checked)">'
+                    + '<span>' + esc(opt) + '</span></label>';
+            }
+            html += '</div>';
+            return html;
+        } else {
+            let html = '<select class="form-input criteria-value" onchange="updateConditionValue(' + idx + ', this.value)">'
+                + '<option value="">Select...</option>';
+            for (const opt of fieldDef.options) {
+                html += '<option value="' + opt + '"' + (currentVal === opt ? ' selected' : '') + '>' + esc(opt) + '</option>';
+            }
+            html += '</select>';
+            return html;
+        }
+    }
+
+    if (fieldDef.type === 'workspace') {
+        const selectedVals = Array.isArray(currentVal) ? currentVal : (currentVal ? [currentVal] : []);
+        if (isMulti) {
+            let html = '<div class="criteria-value criteria-value-multi">';
+            for (const s of _spaces) {
+                const checked = selectedVals.includes(s.id) ? ' checked' : '';
+                html += '<label class="criteria-check-label">'
+                    + '<input type="checkbox"' + checked + ' onchange="toggleConditionMultiValue(' + idx + ', \'' + s.id + '\', this.checked)">'
+                    + '<span>' + esc(s.name) + '</span></label>';
+            }
+            html += '</div>';
+            return html;
+        } else {
+            let html = '<select class="form-input criteria-value" onchange="updateConditionValue(' + idx + ', this.value)">'
+                + '<option value="">All workspaces</option>';
+            for (const s of _spaces) {
+                html += '<option value="' + s.id + '"' + (currentVal === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>';
+            }
+            html += '</select>';
+            return html;
+        }
+    }
+
+    if (fieldDef.type === 'assignee') {
+        const selectedVals = Array.isArray(currentVal) ? currentVal : (currentVal ? [currentVal] : []);
+        if (isMulti) {
+            let html = '<div class="criteria-value criteria-value-multi">';
+            for (const p of _profiles) {
+                const name = p.display_name || p.email || p.id;
+                const checked = selectedVals.includes(p.id) ? ' checked' : '';
+                html += '<label class="criteria-check-label">'
+                    + '<input type="checkbox"' + checked + ' onchange="toggleConditionMultiValue(' + idx + ', \'' + p.id + '\', this.checked)">'
+                    + '<span>' + esc(name) + '</span></label>';
+            }
+            html += '</div>';
+            return html;
+        } else {
+            let html = '<select class="form-input criteria-value" onchange="updateConditionValue(' + idx + ', this.value)">'
+                + '<option value="">Anyone</option>';
+            for (const p of _profiles) {
+                const name = p.display_name || p.email || p.id;
+                html += '<option value="' + p.id + '"' + (currentVal === p.id ? ' selected' : '') + '>' + esc(name) + '</option>';
+            }
+            html += '</select>';
+            return html;
+        }
+    }
+
+    // Default: text input
+    const val = Array.isArray(currentVal) ? currentVal.join(', ') : (currentVal || '');
+    return '<input class="form-input criteria-value" value="' + esc(val) + '" placeholder="Value..." onchange="updateConditionValue(' + idx + ', this.value)">';
+}
+
+function addWizardCondition() {
+    _customWizardConditions.push({ field: 'status', op: 'in', value: [] });
+    renderCustomWizard();
+}
+
+function removeWizardCondition(idx) {
+    _customWizardConditions.splice(idx, 1);
+    renderCustomWizard();
+}
+
+function updateConditionField(idx, field) {
+    _customWizardConditions[idx].field = field;
+    const fieldDef = CRITERIA_FIELDS.find(f => f.value === field);
+    // Reset op and value when field changes
+    if (fieldDef?.type === 'date') {
+        _customWizardConditions[idx].op = 'lte';
+        _customWizardConditions[idx].value = '';
+    } else {
+        _customWizardConditions[idx].op = 'in';
+        _customWizardConditions[idx].value = [];
+    }
+    renderCustomWizard();
+}
+
+function updateConditionOp(idx, op) {
+    const oldOp = _customWizardConditions[idx].op;
+    _customWizardConditions[idx].op = op;
+    const wasMulti = oldOp === 'in' || oldOp === 'not_in';
+    const isMulti = op === 'in' || op === 'not_in';
+    // Convert value between array/scalar when switching multi/single
+    if (wasMulti && !isMulti) {
+        const val = _customWizardConditions[idx].value;
+        _customWizardConditions[idx].value = Array.isArray(val) ? (val[0] || '') : val;
+    } else if (!wasMulti && isMulti) {
+        const val = _customWizardConditions[idx].value;
+        _customWizardConditions[idx].value = val ? [val] : [];
+    }
+    renderCustomWizard();
+}
+
+function updateConditionValue(idx, value) {
+    _customWizardConditions[idx].value = value;
+    refreshCustomTilePreview();
+}
+
+function toggleConditionMultiValue(idx, val, checked) {
+    let current = _customWizardConditions[idx].value;
+    if (!Array.isArray(current)) current = current ? [current] : [];
+    if (checked && !current.includes(val)) current.push(val);
+    if (!checked) current = current.filter(v => v !== val);
+    _customWizardConditions[idx].value = current;
+    refreshCustomTilePreview();
+}
+
+function refreshCustomTilePreview() {
+    clearTimeout(_customWizardPreviewTimer);
+    _customWizardPreviewTimer = setTimeout(async () => {
+        const previewEl = document.getElementById('ctw-preview');
+        if (!previewEl) return;
+
+        // Only fetch if we have conditions
+        const validConditions = _customWizardConditions.filter(c => c.field && c.op && c.value && (Array.isArray(c.value) ? c.value.length : true));
+        if (!validConditions.length) {
+            previewEl.innerHTML = '<div class="home-tile-empty">Add conditions to see a preview</div>';
+            return;
+        }
+
+        previewEl.innerHTML = '<div style="text-align:center;padding:12px;"><div class="spinner" style="width:20px;height:20px;"></div></div>';
+
+        try {
+            const criteria = {
+                conditions: validConditions,
+                sort: _customWizardSort,
+                sort_dir: _customWizardSortDir,
+                limit: Math.min(_customWizardLimit, 10), // preview limit
+            };
+            const result = await api('POST', API + '/my/custom-tile', criteria);
+            _customWizardPreviewData = result;
+
+            if (!result.items?.length) {
+                previewEl.innerHTML = '<div class="home-tile-empty">No items match these criteria</div>';
+                return;
+            }
+
+            const pri = { critical: '#e17055', high: '#fdcb6e', medium: '#74b9ff', low: '#8b8e96', none: '#595d66' };
+            const statusColor = (s) => {
+        const m = { 'done': '#00b894', 'Complete': '#00b894', 'Approved': '#00cec9',
+            'in_progress': '#fdcb6e', 'Working on': '#fdcb6e',
+            'closed': '#636e72', 'Postponed': '#636e72',
+            'review': '#6c5ce7', 'Manager Review': '#6c5ce7', 'Quality Review': '#74b9ff',
+            'Client Review': '#a29bfe', 'Back to You': '#e17055', 'Stuck': '#d63031',
+            'Waiting on Client': '#fd79a8', 'Not Started': '#d3d3d3' };
+        return m[s] || '#74b9ff';
+    };
+
+            let previewHtml = result.items.slice(0, 8).map(i => {
+                const pColor = pri[i.priority] || '#595d66';
+                return '<div class="home-tile-item">'
+                    + '<span class="home-tile-status-dot" style="background:' + statusColor(i.status) + ';"></span>'
+                    + '<span class="home-tile-item-title">' + esc(i.title) + '</span>'
+                    + '<span class="cu-priority-pill" style="background:' + pColor + '22;color:' + pColor + ';font-size:10px;">' + esc(i.priority || 'none') + '</span>'
+                    + '</div>';
+            }).join('');
+
+            if (result.total > result.items.length) {
+                previewHtml += '<div class="custom-tile-preview-count">' + result.total + ' total items</div>';
+            }
+            previewEl.innerHTML = previewHtml;
+        } catch {
+            previewEl.innerHTML = '<div class="home-tile-empty" style="color:var(--red);">Preview failed</div>';
+        }
+    }, 300);
+}
+
+function renderWizardStep3() {
+    let html = '<div class="custom-tile-wizard-body">';
+
+    // Full preview
+    html += '<div class="form-group">'
+        + '<label class="form-label">Tile Preview: ' + esc(_customWizardTitle) + '</label>'
+        + '<div class="custom-tile-preview" id="ctw-preview-final" style="min-height:120px;">'
+        + '<div class="home-tile-empty">Loading preview...</div>'
+        + '</div></div>';
+
+    // Size selector
+    html += '<div class="form-group">'
+        + '<label class="form-label">Tile Size</label>'
+        + '<div class="ai-mode-toggle">';
+    for (const s of TILE_SIZES) {
+        html += '<button class="btn btn-small' + (_customWizardSize === s ? ' btn-accent' : ' btn-ghost') + '" onclick="_customWizardSize=\'' + s + '\';renderCustomWizard()">' + s + '</button>';
+    }
+    html += '</div></div>';
+
+    // Summary
+    html += '<div class="settings-info-box" style="font-size:12px;">'
+        + '<strong>Conditions:</strong> ' + (_customWizardConditions.length || 'None') + '<br>'
+        + '<strong>Sort:</strong> ' + esc(_customWizardSort) + ' ' + esc(_customWizardSortDir) + '<br>'
+        + '<strong>Limit:</strong> ' + _customWizardLimit
+        + '</div>';
+
+    html += '<div class="wizard-actions">'
+        + '<button class="btn btn-ghost" onclick="wizardGoStep(2)">Back</button>'
+        + '<button class="btn btn-accent" onclick="saveCustomTileFromWizard()">Save Tile</button>'
+        + '</div></div>';
+    return html;
+}
+
+function wizardGoStep(step) {
+    // Capture current title input before navigating away
+    const titleInput = document.getElementById('ctw-title');
+    if (titleInput) _customWizardTitle = titleInput.value || 'My Custom Tile';
+
+    _customWizardStep = step;
+    renderCustomWizard();
+
+    // Load final preview on step 3
+    if (step === 3) {
+        setTimeout(async () => {
+            const el = document.getElementById('ctw-preview-final');
+            if (!el) return;
+            const validConditions = _customWizardConditions.filter(c => c.field && c.op && c.value && (Array.isArray(c.value) ? c.value.length : true));
+            if (!validConditions.length) {
+                el.innerHTML = '<div class="home-tile-empty">No conditions set</div>';
+                return;
+            }
+            try {
+                const result = await api('POST', API + '/my/custom-tile', {
+                    conditions: validConditions,
+                    sort: _customWizardSort, sort_dir: _customWizardSortDir,
+                    limit: _customWizardLimit,
+                });
+                const pri = { critical: '#e17055', high: '#fdcb6e', medium: '#74b9ff', low: '#8b8e96', none: '#595d66' };
+                const statusColor = (s) => {
+        const m = { 'done': '#00b894', 'Complete': '#00b894', 'Approved': '#00cec9',
+            'in_progress': '#fdcb6e', 'Working on': '#fdcb6e',
+            'closed': '#636e72', 'Postponed': '#636e72',
+            'review': '#6c5ce7', 'Manager Review': '#6c5ce7', 'Quality Review': '#74b9ff',
+            'Client Review': '#a29bfe', 'Back to You': '#e17055', 'Stuck': '#d63031',
+            'Waiting on Client': '#fd79a8', 'Not Started': '#d3d3d3' };
+        return m[s] || '#74b9ff';
+    };
+                const items = result.items || [];
+                if (!items.length) { el.innerHTML = '<div class="home-tile-empty">No matching items</div>'; return; }
+                const limit = Math.min(items.length, 12);
+                el.innerHTML = items.slice(0, limit).map(i => {
+                    const pColor = pri[i.priority] || '#595d66';
+                    const due = i.due_date ? new Date(i.due_date).toLocaleDateString('en', { month: 'short', day: 'numeric' }) : '';
+                    return '<div class="home-tile-item">'
+                        + '<span class="home-tile-status-dot" style="background:' + statusColor(i.status) + ';"></span>'
+                        + '<span class="home-tile-item-title">' + esc(i.title) + '</span>'
+                        + '<span class="cu-priority-pill" style="background:' + pColor + '22;color:' + pColor + ';font-size:10px;">' + esc(i.priority || 'none') + '</span>'
+                        + (due ? '<span class="home-tile-due">' + esc(due) + '</span>' : '')
+                        + '</div>';
+                }).join('') + (result.total > limit ? '<div class="custom-tile-preview-count">' + result.total + ' total</div>' : '');
+            } catch { el.innerHTML = '<div class="home-tile-empty" style="color:var(--red);">Preview failed</div>'; }
+        }, 100);
+    }
+}
+
+function closeCustomTileWizard() {
+    const overlay = document.getElementById('custom-tile-wizard-overlay');
+    if (overlay) overlay.remove();
+}
+
+async function generateCustomTileCriteria() {
+    const desc = document.getElementById('ctw-ai-desc')?.value?.trim();
+    if (!desc) { showToast('Enter a description first'); return; }
+
+    const btn = document.getElementById('ctw-ai-btn');
+    const status = document.getElementById('ctw-ai-status');
+    if (btn) btn.disabled = true;
+    if (status) status.textContent = 'Generating...';
+
+    try {
+        const result = await api('POST', API + '/my/custom-tile/ai-generate', { description: desc });
+        if (result.title) _customWizardTitle = result.title;
+        if (result.criteria) {
+            _customWizardConditions = result.criteria.conditions || [];
+            _customWizardSort = result.criteria.sort || 'updated_at';
+            _customWizardSortDir = result.criteria.sort_dir || 'desc';
+            _customWizardLimit = result.criteria.limit || 25;
+        }
+        if (status) status.textContent = 'Generated! Click Next to review.';
+        // Update title input
+        const titleInput = document.getElementById('ctw-title');
+        if (titleInput) titleInput.value = _customWizardTitle;
+    } catch (e) {
+        if (status) status.textContent = 'Failed: ' + (e.message || 'try again');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+function saveCustomTileFromWizard() {
+    const titleInput = document.getElementById('ctw-title');
+    if (titleInput) _customWizardTitle = titleInput.value || 'My Custom Tile';
+
+    const validConditions = _customWizardConditions.filter(c => c.field && c.op && c.value && (Array.isArray(c.value) ? c.value.length : true));
+
+    const tileData = {
+        id: _customWizardEditId || ('custom_' + Math.random().toString(36).substring(2, 8)),
+        title: _customWizardTitle,
+        visible: true,
+        size: _customWizardSize,
+        custom: true,
+        criteria: {
+            conditions: validConditions,
+            sort: _customWizardSort,
+            sort_dir: _customWizardSortDir,
+            limit: _customWizardLimit,
+        },
+    };
+
+    saveCustomTile(tileData);
+    closeCustomTileWizard();
+    showToast('Custom tile saved');
+    // Re-render home if we're on home view
+    _homeData = null;
+    renderMainContent();
+}
+
+function saveCustomTile(tileData) {
+    if (!_homeLayout) loadHomeLayout();
+    const existing = _homeLayout.tiles.findIndex(t => t.id === tileData.id);
+    if (existing >= 0) {
+        // Update in place, preserving order
+        const oldTile = _homeLayout.tiles[existing];
+        _homeLayout.tiles[existing] = { ...oldTile, ...tileData, order: tileData.order ?? oldTile.order };
+    } else {
+        // Add new tile at the end
+        tileData.order = _homeLayout.tiles.length;
+        _homeLayout.tiles.push(tileData);
+    }
+    saveHomeLayout();
+}
+
+function deleteCustomTile(tileId) {
+    if (!confirm('Delete this custom tile?')) return;
+    if (!_homeLayout) loadHomeLayout();
+    _homeLayout.tiles = _homeLayout.tiles.filter(t => t.id !== tileId);
+    // Reorder remaining tiles
+    _homeLayout.tiles.sort((a, b) => a.order - b.order).forEach((t, i) => t.order = i);
+    delete _customTileData[tileId];
+    saveHomeLayout();
+    // Re-render
+    _homeData = null;
+    renderMainContent();
+    // Also re-render settings if open
+    const settingsEl = document.getElementById('settings-tab-landing');
+    if (settingsEl && settingsEl.innerHTML) renderSettingsLanding();
+    showToast('Custom tile deleted');
+}
 
 // ── Members management ────────────────────────────────────
 let _settingsMembers = [];
+let _settingsDetailedMembers = [];
+let _settingsAllSpaces = [];
+let _expandedMemberCards = new Set();
+
+const AVAILABLE_APPS = [
+    { name: 'op-wordpress', label: 'OP WordPress', icon: 'W' },
+];
+
+const PERMISSION_KEYS = [
+    { key: 'can_manage_statuses', label: 'Manage Statuses' },
+    { key: 'can_manage_priorities', label: 'Manage Priorities' },
+    { key: 'can_manage_tags', label: 'Manage Tags' },
+    { key: 'can_manage_members', label: 'Manage Members' },
+    { key: 'can_manage_fields', label: 'Manage Fields' },
+    { key: 'can_manage_automations', label: 'Manage Automations' },
+];
 
 async function renderSettingsMembers() {
     const el = document.getElementById('settings-tab-members');
     if (!el) return;
-    if (!_currentSpaceId) {
-        el.innerHTML = '<div class="settings-info-box">Select a space first to manage its members.</div>';
-        return;
-    }
-    // Find current user's role in this space
-    const space = _spaces.find(s => s.id === _currentSpaceId);
-    const myRole = space?.my_role || 'member';
-    const isOwner = myRole === 'owner';
+
+    const hub = _myHub();
+    const isAdmin = hub ? _isHubAdmin() : false;
 
     el.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-muted);">Loading members...</div>';
-    try {
-        const data = await api('GET', API + '/workspaces/' + _currentSpaceId + '/members');
-        _settingsMembers = data.members || [];
-    } catch {
-        el.innerHTML = '<div class="settings-info-box" style="color:var(--error);">Failed to load members.</div>';
-        return;
+
+    if (hub) {
+        // Hub mode: load from hub members API
+        try {
+            const data = await api('GET', API + '/hubs/' + hub.id + '/members');
+            _settingsDetailedMembers = (data.members || []).map(m => ({
+                user_id: m.user_id,
+                display_name: m.display_name || m.email || m.user_id.substring(0, 8),
+                email: m.email || '',
+                role: m.role,
+                permissions: m.permissions || {},
+                spaces: [],
+                app_sharing: {}
+            }));
+            _settingsAllSpaces = [];
+        } catch {
+            el.innerHTML = '<div class="settings-info-box" style="color:var(--red);">Failed to load hub members.</div>';
+            return;
+        }
+    } else {
+        // Legacy workspace mode
+        const wsId = _myPersonalSpaceId();
+        if (!wsId) {
+            el.innerHTML = '<div class="settings-info-box">No workspace found.</div>';
+            return;
+        }
+        const space = _spaces.find(s => s.id === (_currentSpaceId || wsId));
+        const myRole = space?.my_role || 'member';
+
+        try {
+            const data = await api('GET', API + '/workspaces/' + wsId + '/members/detailed');
+            _settingsDetailedMembers = data.members || [];
+            _settingsAllSpaces = data.spaces || [];
+        } catch (e) {
+            try {
+                const data = await api('GET', API + '/workspaces/' + wsId + '/members');
+                _settingsDetailedMembers = (data.members || []).map(m => ({
+                    ...m, spaces: [], permissions: {}, app_sharing: {}
+                }));
+                _settingsAllSpaces = [];
+            } catch {
+                el.innerHTML = '<div class="settings-info-box" style="color:var(--red);">Failed to load members.</div>';
+                return;
+            }
+        }
     }
 
-    let html = '<div class="th-members-list">';
-    for (const m of _settingsMembers) {
-        const name = m.display_name || m.email || m.user_id;
+    let html = '';
+    if (hub) {
+        html += '<div class="settings-info-box">' + (isAdmin
+            ? 'Manage hub members. All members can see every space in the hub.'
+            : 'Hub members have access to all spaces. Only admins can manage membership.') + '</div>';
+    }
+
+    for (const m of _settingsDetailedMembers) {
+        const name = m.display_name || m.email || m.user_id.substring(0, 8);
         const isMe = m.user_id === _user?.id;
-        const isMemberOwner = m.role === 'owner';
+        const initial = (name[0] || '?').toUpperCase();
+        const isExpanded = _expandedMemberCards.has(m.user_id);
+        const canEdit = isAdmin && !isMe && m.role !== 'owner';
 
-        html += '<div class="th-member-row">'
-            + '<div class="th-member-info">'
-            + '<div class="th-member-name">' + esc(name) + (isMe ? ' <span style="color:var(--text-muted);font-size:11px;">(you)</span>' : '') + '</div>'
-            + '<div class="th-member-email" style="font-size:11px;color:var(--text-muted);">' + esc(m.email || '') + '</div>'
-            + '</div>'
-            + '<div class="th-member-controls">';
+        html += '<div class="th-member-card" data-user-id="' + esc(m.user_id) + '">';
 
-        if (isOwner && !isMe && !isMemberOwner) {
-            // Owner can change roles and remove non-owner members
-            html += '<select class="form-select th-member-role-select" onchange="changeMemberRole(\'' + esc(m.user_id) + '\', this.value)">'
-                + '<option value="admin"' + (m.role === 'admin' ? ' selected' : '') + '>Admin</option>'
-                + '<option value="member"' + (m.role === 'member' ? ' selected' : '') + '>Member</option>'
-                + '<option value="viewer"' + (m.role === 'viewer' ? ' selected' : '') + '>Viewer</option>'
-                + '</select>'
-                + '<button class="btn btn-small btn-ghost th-member-remove" onclick="removeMemberFromSpace(\'' + esc(m.user_id) + '\', \'' + esc(name) + '\')" title="Remove member">&times;</button>';
+        // Header row
+        html += '<div class="th-member-card-header" onclick="toggleMemberCard(\'' + esc(m.user_id) + '\')">';
+        html += '<div class="th-member-card-avatar">' + esc(initial) + '</div>';
+        html += '<div class="th-member-card-info">'
+            + '<div class="th-member-card-name">' + esc(name) + (isMe ? ' <span style="color:var(--text-muted);font-size:11px;">(you)</span>' : '') + '</div>'
+            + '<div class="th-member-card-email">' + esc(m.email || '') + '</div>'
+            + '</div>';
+
+        // Role badge or selector
+        if (canEdit) {
+            if (hub) {
+                html += '<select class="form-select" style="width:auto;font-size:11px;padding:2px 6px;" onchange="event.stopPropagation();changeHubMemberRole(\'' + esc(m.user_id) + '\', this.value)">'
+                    + '<option value="admin"' + (m.role === 'admin' ? ' selected' : '') + '>Admin</option>'
+                    + '<option value="member"' + (m.role === 'member' ? ' selected' : '') + '>Member</option>'
+                    + '</select>';
+            } else {
+                html += '<select class="form-select" style="width:auto;font-size:11px;padding:2px 6px;" onchange="event.stopPropagation();changeMemberRole(\'' + esc(m.user_id) + '\', this.value)">'
+                    + '<option value="admin"' + (m.role === 'admin' ? ' selected' : '') + '>Admin</option>'
+                    + '<option value="member"' + (m.role === 'member' ? ' selected' : '') + '>Member</option>'
+                    + '<option value="viewer"' + (m.role === 'viewer' ? ' selected' : '') + '>Viewer</option>'
+                    + '</select>';
+            }
         } else {
-            // Display role as badge
-            html += '<span class="th-member-role-badge th-role-' + esc(m.role) + '">' + esc(m.role) + '</span>';
+            html += '<span class="th-member-card-role ' + esc(m.role) + '">' + esc(m.role) + '</span>';
         }
 
-        html += '</div></div>';
-    }
-    html += '</div>';
+        html += '<button class="th-member-card-expand' + (isExpanded ? ' open' : '') + '">'
+            + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>'
+            + '</button>';
+        html += '</div>'; // end header
 
-    if (!isOwner) {
-        html += '<div class="settings-info-box" style="margin-top:12px;">Only workspace owners can manage member access.</div>';
+        // Expandable body
+        html += '<div class="th-member-card-body' + (isExpanded ? ' open' : '') + '">';
+
+        if (hub && canEdit) {
+            // Hub permissions section
+            const HUB_PERM_KEYS = [
+                { key: 'can_edit_titles', label: 'Edit task titles' },
+                { key: 'can_change_status', label: 'Change status' },
+                { key: 'can_change_priority', label: 'Change priority' },
+                { key: 'can_create_items', label: 'Create items' },
+                { key: 'can_comment', label: 'Comment' },
+                { key: 'can_assign', label: 'Assign tasks' },
+                { key: 'can_create_statuses', label: 'Create statuses' },
+                { key: 'can_delete_statuses', label: 'Delete statuses' },
+                { key: 'can_create_tags', label: 'Create tags' },
+                { key: 'can_delete_tags', label: 'Delete tags' },
+                { key: 'can_delete_items', label: 'Delete items' },
+                { key: 'can_manage_members', label: 'Manage members' },
+                { key: 'can_create_spaces', label: 'Create spaces' },
+                { key: 'can_delete_spaces', label: 'Delete spaces' },
+                { key: 'can_manage_automations', label: 'Manage automations' },
+                { key: 'can_manage_fields', label: 'Manage custom fields' },
+            ];
+            html += '<div class="th-member-section">';
+            html += '<div class="th-member-section-label">Hub Permissions</div>';
+            html += '<div class="th-member-perms-grid">';
+            for (const perm of HUB_PERM_KEYS) {
+                const checked = m.permissions && m.permissions[perm.key];
+                html += '<label class="th-member-perm-item">'
+                    + '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="updateHubMemberPermission(\'' + esc(m.user_id) + '\',\'' + esc(perm.key) + '\',this.checked)">'
+                    + '<span>' + esc(perm.label) + '</span>'
+                    + '</label>';
+            }
+            html += '</div></div>';
+
+            // Remove button
+            html += '<div class="th-member-card-footer">'
+                + '<button class="btn btn-small btn-ghost" style="color:var(--red);" onclick="removeHubMember(\'' + esc(m.user_id) + '\',\'' + esc(name) + '\')">Remove from Hub</button>'
+                + '</div>';
+        } else if (!hub) {
+            // Legacy workspace mode — spaces, apps, permissions
+            if (_settingsAllSpaces.length > 0) {
+                html += '<div class="th-member-section">';
+                html += '<div class="th-member-section-label">Spaces</div>';
+                html += '<div class="th-member-spaces-grid">';
+                for (const sp of (m.spaces || [])) {
+                    const active = sp.has_access;
+                    if (canEdit) {
+                        html += '<div class="th-member-space-chip' + (active ? ' active' : '') + '" '
+                            + 'onclick="toggleMemberSpaceAccess(\'' + esc(m.user_id) + '\',\'' + esc(sp.id) + '\',' + active + ')">'
+                            + (active ? '&#10003; ' : '') + esc(sp.name) + '</div>';
+                    } else {
+                        if (active) {
+                            html += '<div class="th-member-space-chip active">&#10003; ' + esc(sp.name) + '</div>';
+                        }
+                    }
+                }
+                html += '</div>';
+                if (canEdit) {
+                    html += '<div class="th-member-space-actions">'
+                        + '<button class="btn btn-small btn-ghost" onclick="shareAllSpaces(\'' + esc(m.user_id) + '\')">Share All</button>'
+                        + '<button class="btn btn-small btn-ghost" onclick="removeAllSpaces(\'' + esc(m.user_id) + '\')">Remove All</button>'
+                        + '</div>';
+                }
+                html += '</div>';
+            }
+
+            html += '<div class="th-member-section">';
+            html += '<div class="th-member-section-label">App Sharing</div>';
+            html += '<div class="th-member-apps-list">';
+            for (const app of AVAILABLE_APPS) {
+                const shared = m.app_sharing && m.app_sharing[app.name];
+                if (canEdit) {
+                    html += '<label class="th-member-app-row">'
+                        + '<input type="checkbox" ' + (shared ? 'checked' : '') + ' onchange="updateMemberAppSharing(\'' + esc(m.user_id) + '\',\'' + esc(app.name) + '\',this.checked)">'
+                        + '<span>' + esc(app.label) + '</span>'
+                        + (shared ? '<span class="th-member-app-level">' + esc(shared.access_level || 'full') + '</span>' : '')
+                        + '</label>';
+                } else {
+                    if (shared) {
+                        html += '<div class="th-member-app-row">'
+                            + '<span>&#10003;</span>'
+                            + '<span>' + esc(app.label) + '</span>'
+                            + '<span class="th-member-app-level">' + esc(shared.access_level || 'full') + '</span>'
+                            + '</div>';
+                    }
+                }
+            }
+            html += '</div></div>';
+
+            if (canEdit && (m.role === 'admin' || m.role === 'member')) {
+                html += '<div class="th-member-section">';
+                html += '<div class="th-member-section-label">Admin Permissions</div>';
+                html += '<div class="th-member-perms-grid">';
+                for (const perm of PERMISSION_KEYS) {
+                    const checked = m.permissions && m.permissions[perm.key];
+                    html += '<label class="th-member-perm-item">'
+                        + '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="updateMemberPermission(\'' + esc(m.user_id) + '\',\'' + esc(perm.key) + '\',this.checked)">'
+                        + '<span>' + esc(perm.label) + '</span>'
+                        + '</label>';
+                }
+                html += '</div></div>';
+            }
+
+            if (canEdit) {
+                html += '<div class="th-member-card-footer">'
+                    + '<button class="btn btn-small btn-ghost" style="color:var(--red);" onclick="removeMemberFromSpace(\'' + esc(m.user_id) + '\',\'' + esc(name) + '\')">Remove from Workspace</button>'
+                    + '</div>';
+            }
+        }
+
+        html += '</div>'; // end body
+        html += '</div>'; // end card
+    }
+
+    if (!isAdmin && !hub) {
+        html += '<div class="settings-info-box" style="margin-top:12px;">Only workspace owners and admins can manage members.</div>';
     }
 
     el.innerHTML = html;
 }
 
-async function changeMemberRole(userId, newRole) {
-    if (!_currentSpaceId) return;
+function toggleMemberCard(userId) {
+    if (_expandedMemberCards.has(userId)) {
+        _expandedMemberCards.delete(userId);
+    } else {
+        _expandedMemberCards.add(userId);
+    }
+    // Toggle DOM directly for smooth UX
+    const card = document.querySelector('.th-member-card[data-user-id="' + userId + '"]');
+    if (!card) return;
+    const body = card.querySelector('.th-member-card-body');
+    const expandBtn = card.querySelector('.th-member-card-expand');
+    if (body) body.classList.toggle('open');
+    if (expandBtn) expandBtn.classList.toggle('open');
+}
+
+async function toggleMemberSpaceAccess(userId, spaceId, hasAccess) {
+    const wsId = _myPersonalSpaceId();
+    if (!wsId) return;
     try {
-        await api('PATCH', API + '/workspaces/' + _currentSpaceId + '/members/' + userId, { role: newRole });
+        if (hasAccess) {
+            await api('DELETE', API + '/workspaces/' + wsId + '/members/' + userId + '/spaces/' + spaceId);
+        } else {
+            await api('PUT', API + '/workspaces/' + wsId + '/members/' + userId + '/spaces/' + spaceId);
+        }
+        showToast(hasAccess ? 'Removed from space' : 'Added to space');
+        renderSettingsMembers();
+    } catch (e) {
+        showToast(e.message || 'Failed to update space access');
+    }
+}
+
+async function shareAllSpaces(userId) {
+    const wsId = _myPersonalSpaceId();
+    if (!wsId) return;
+    try {
+        const result = await api('POST', API + '/workspaces/' + wsId + '/members/' + userId + '/share-all-spaces');
+        showToast('Added to ' + (result.added || 'all') + ' spaces');
+        renderSettingsMembers();
+    } catch (e) {
+        showToast(e.message || 'Failed to share all spaces');
+    }
+}
+
+async function removeAllSpaces(userId) {
+    const wsId = _myPersonalSpaceId();
+    if (!wsId) return;
+    if (!confirm('Remove this member from all spaces?')) return;
+    try {
+        const result = await api('POST', API + '/workspaces/' + wsId + '/members/' + userId + '/remove-all-spaces');
+        showToast('Removed from ' + (result.removed || 'all') + ' spaces');
+        renderSettingsMembers();
+    } catch (e) {
+        showToast(e.message || 'Failed to remove from spaces');
+    }
+}
+
+async function updateMemberPermission(userId, permKey, value) {
+    const wsId = _myPersonalSpaceId();
+    if (!wsId) return;
+    try {
+        const body = {};
+        body[permKey] = value;
+        await api('PUT', API + '/workspaces/' + wsId + '/members/' + userId + '/permissions', body);
+        showToast('Permission updated');
+        // Update local state without full re-render
+        const member = _settingsDetailedMembers.find(m => m.user_id === userId);
+        if (member && member.permissions) member.permissions[permKey] = value;
+    } catch (e) {
+        showToast(e.message || 'Failed to update permission');
+    }
+}
+
+async function updateMemberAppSharing(userId, appName, enabled) {
+    const wsId = _myPersonalSpaceId();
+    if (!wsId) return;
+    try {
+        await api('PUT', API + '/workspaces/' + wsId + '/members/' + userId + '/app-sharing', {
+            app_name: appName, enabled: enabled, access_level: 'full'
+        });
+        showToast(enabled ? appName + ' shared' : appName + ' access removed');
+        renderSettingsMembers();
+    } catch (e) {
+        showToast(e.message || 'Failed to update app sharing');
+    }
+}
+
+async function changeMemberRole(userId, newRole) {
+    const wsId = _currentSpaceId || _myPersonalSpaceId();
+    if (!wsId) return;
+    try {
+        await api('PATCH', API + '/workspaces/' + wsId + '/members/' + userId, { role: newRole });
         showToast('Role updated');
         renderSettingsMembers();
     } catch (e) {
@@ -4048,10 +5558,11 @@ async function changeMemberRole(userId, newRole) {
 }
 
 async function removeMemberFromSpace(userId, name) {
-    if (!_currentSpaceId) return;
-    if (!confirm('Remove ' + name + ' from this space? They will lose access to all tasks in this space.')) return;
+    const wsId = _currentSpaceId || _myPersonalSpaceId();
+    if (!wsId) return;
+    if (!confirm('Remove ' + name + ' from this workspace? They will lose access to all tasks.')) return;
     try {
-        await api('DELETE', API + '/workspaces/' + _currentSpaceId + '/members/' + userId);
+        await api('DELETE', API + '/workspaces/' + wsId + '/members/' + userId);
         showToast(name + ' removed');
         renderSettingsMembers();
     } catch (e) {
@@ -4059,252 +5570,104 @@ async function removeMemberFromSpace(userId, name) {
     }
 }
 
-// ── Discord AI ────────────────────────────────────────────
-let _discordAIWorkspaces = null;
-let _discordAIConnection = null; // {server_id, channel_id, bot_prompt} from first linked workspace
-let _discordAIDirty = false;
+// ── Hub Member Management ──────────────────────────────────
 
-async function renderSettingsDiscordAI() {
+async function changeHubMemberRole(userId, newRole) {
+    const hub = _myHub();
+    if (!hub) return;
+    try {
+        await api('PATCH', API + '/hubs/' + hub.id + '/members/' + userId, { role: newRole });
+        showToast('Role updated');
+        renderSettingsMembers();
+    } catch (e) {
+        showToast(e.message || 'Failed to update role');
+    }
+}
+
+async function updateHubMemberPermission(userId, permKey, value) {
+    const hub = _myHub();
+    if (!hub) return;
+    try {
+        const body = {};
+        body[permKey] = value;
+        await api('PATCH', API + '/hubs/' + hub.id + '/members/' + userId, body);
+        showToast('Permission updated');
+        const member = _settingsDetailedMembers.find(m => m.user_id === userId);
+        if (member && member.permissions) member.permissions[permKey] = value;
+    } catch (e) {
+        showToast(e.message || 'Failed to update permission');
+    }
+}
+
+async function removeHubMember(userId, name) {
+    const hub = _myHub();
+    if (!hub) return;
+    if (!confirm('Remove ' + name + ' from the hub? They will lose access to all hub spaces and tasks.')) return;
+    try {
+        await api('DELETE', API + '/hubs/' + hub.id + '/members/' + userId);
+        showToast(name + ' removed from hub');
+        renderSettingsMembers();
+    } catch (e) {
+        showToast(e.message || 'Failed to remove member');
+    }
+}
+
+// ── Telegram Connection Tab ───────────────────────────────
+
+function renderSettingsDiscordAI() {
     const el = document.getElementById('settings-tab-discord-ai');
     if (!el) return;
 
-    // Load all workspaces + their Discord settings on first render
-    if (!_discordAIWorkspaces) {
-        el.innerHTML = '<div class="settings-info-box">Loading workspaces...</div>';
-        try {
-            const wsData = await api('GET', API + '/workspaces');
-            const workspaces = wsData.workspaces || [];
-            _discordAIWorkspaces = await Promise.all(workspaces.map(async (ws) => {
-                let discord = {};
-                try {
-                    discord = await api('GET', API + '/workspaces/' + ws.id + '/discord');
-                } catch {}
-                return {
-                    id: ws.id,
-                    name: ws.name,
-                    icon: ws.icon || '',
-                    my_role: ws.my_role || 'member',
-                    discord_server_id: discord.discord_server_id || '',
-                    discord_channel_id: discord.discord_channel_id || '',
-                    bot_prompt: discord.bot_prompt || '',
-                };
-            }));
-        } catch {
-            _discordAIWorkspaces = [];
-        }
-        // Derive top-level connection from first workspace that has discord settings
-        const linked = _discordAIWorkspaces.find(w => w.discord_server_id && w.discord_channel_id);
-        _discordAIConnection = {
-            server_id: linked ? linked.discord_server_id : '',
-            channel_id: linked ? linked.discord_channel_id : '',
-            bot_prompt: linked ? linked.bot_prompt : '',
-        };
-        _discordAIDirty = false;
-    }
-
-    const conn = _discordAIConnection;
-    const isConnected = !!(conn.server_id && conn.channel_id);
-    const enabledCount = _discordAIWorkspaces.filter(w => !!w.bot_prompt).length;
-
     let html = '';
 
-    // ── Connection section ──
+    // ── Header ──
     html += '<div class="discord-ai-section">'
-        + '<div class="discord-ai-section-header">'
-        + '<div style="display:flex;align-items:center;gap:8px;">'
-        + '<span class="discord-ai-status-dot' + (isConnected && enabledCount > 0 ? ' connected' : '') + '"></span>'
-        + '<strong style="font-size:13px;">' + (isConnected && enabledCount > 0 ? 'Bot Connected' : isConnected ? 'Channel Linked' : 'Not Connected') + '</strong>'
-        + '</div></div>'
-        + '<div class="settings-info-box" style="margin-bottom:12px;">'
-        + 'Connect the OPAI Discord bot to a channel. Messages in that channel will be answered by the AI with access to your selected workspaces below.'
-        + '</div>';
-
-    // Server ID + invite link
-    html += '<div class="discord-ai-field">'
-        + '<label class="form-label">Discord Server ID</label>'
-        + '<input class="form-input" id="dai-server-id" value="' + esc(conn.server_id) + '" '
-        + 'placeholder="Right-click your server name > Copy Server ID" '
-        + 'oninput="_discordAIDirty=true; _updateBotInviteLink()">'
-        + '</div>';
-
-    // Bot invite banner — shown when server ID is entered
-    html += '<div id="dai-invite-banner" class="discord-ai-invite-banner" style="display:' + (conn.server_id ? 'block' : 'none') + ';">'
-        + '<div class="discord-ai-invite-header">Add the bot to your server</div>'
-        + '<p style="margin:4px 0 8px;font-size:12px;color:var(--text-muted);">'
-        + 'The OPAI bot must be a member of your Discord server to see and respond to messages. Click the link below to invite it:</p>'
-        + '<a id="dai-invite-link" href="https://discord.com/oauth2/authorize?client_id=1470540768547700920&scope=bot&permissions=274877975552&guild_id=' + esc(conn.server_id) + '" '
-        + 'target="_blank" rel="noopener" class="discord-ai-invite-link">'
-        + 'Invite OPAI Bot to Server</a>'
-        + '<ol class="discord-ai-invite-steps">'
-        + '<li>Click the invite link above &mdash; it opens Discord\'s authorization page.</li>'
-        + '<li>Select your server from the dropdown (it will be pre-selected if the Server ID is correct).</li>'
-        + '<li>Click <strong>Authorize</strong> &mdash; the bot will join your server.</li>'
-        + '<li>Come back here and enter the Channel ID below, then save.</li>'
-        + '</ol>'
-        + '</div>';
-
-    // Channel ID
-    html += '<div class="discord-ai-field">'
-        + '<label class="form-label">Discord Channel ID</label>'
-        + '<input class="form-input" id="dai-channel-id" value="' + esc(conn.channel_id) + '" '
-        + 'placeholder="Right-click the channel > Copy Channel ID" '
-        + 'oninput="_discordAIDirty=true">'
-        + '</div>';
-
-    // Bot prompt
-    html += '<div class="discord-ai-field">'
-        + '<label class="form-label">Bot System Prompt <span style="font-weight:400;color:var(--text-muted);">(optional override)</span></label>'
-        + '<textarea class="form-input discord-ai-prompt" id="dai-bot-prompt" rows="3" '
-        + 'placeholder="Custom personality or instructions for the bot..." '
-        + 'oninput="_discordAIDirty=true">'
-        + esc(conn.bot_prompt) + '</textarea>'
-        + '</div>';
-    html += '</div>'; // section
-
-    // ── Workspace scope section ──
-    html += '<div class="discord-ai-section" style="margin-top:16px;">'
-        + '<div class="discord-ai-section-header">'
-        + '<strong style="font-size:13px;">Workspace Scope</strong>'
-        + '<span style="font-size:11px;color:var(--text-muted);">' + enabledCount + ' of ' + _discordAIWorkspaces.length + ' enabled</span>'
+        + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">'
+        + '<svg width="24" height="24" viewBox="0 0 24 24" fill="var(--accent)"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.03-1.97 1.25-5.56 3.69-.53.36-1 .54-1.42.53-.47-.01-1.37-.26-2.03-.48-.82-.27-1.47-.42-1.41-.88.03-.24.37-.49 1.02-.74 3.99-1.74 6.65-2.89 7.99-3.44 3.81-1.58 4.6-1.86 5.12-1.87.11 0 .37.03.53.17.14.12.18.28.2.45-.01.06.01.24 0 .37z"/></svg>'
+        + '<strong style="font-size:14px;">Team Hub on Telegram</strong>'
         + '</div>'
-        + '<div class="settings-info-box" style="margin-bottom:8px;">'
-        + 'Check the workspaces the bot can see and interact with. Checked workspaces become part of the bot\'s knowledge — it can create tasks, search items, manage folders, and more within them.'
+        + '<div class="settings-info-box" style="margin-bottom:16px;">'
+        + 'Team Hub is connected to Telegram. You can manage tasks, get updates, and talk to the AI assistant directly from the OPAI Telegram group.'
         + '</div>';
 
-    html += '<div class="discord-ai-ws-list">';
-    for (const ws of _discordAIWorkspaces) {
-        const isScoped = !!ws.bot_prompt;
-        const isAdmin = ws.my_role === 'owner' || ws.my_role === 'admin';
-
-        html += '<label class="discord-ai-ws-item' + (isScoped ? ' enabled' : '') + '">'
-            + '<input type="checkbox" ' + (isScoped ? 'checked' : '') + (isAdmin ? '' : ' disabled title="Admin access required"')
-            + ' data-ws-id="' + esc(ws.id) + '" onchange="_discordAIDirty=true; this.closest(\'.discord-ai-ws-item\').classList.toggle(\'enabled\', this.checked)">'
-            + '<span class="discord-ai-ws-name">' + esc(ws.icon ? ws.icon + ' ' : '') + esc(ws.name) + '</span>'
-            + (!isAdmin ? '<span style="font-size:10px;color:var(--text-muted);margin-left:auto;">view only</span>' : '')
-            + '</label>';
-    }
-    html += '</div></div>'; // ws-list, section
-
-    // ── Save button ──
-    html += '<div style="margin-top:16px;display:flex;align-items:center;gap:12px;">'
-        + '<button class="btn btn-accent btn-small" onclick="saveDiscordAISettings()" id="discord-ai-save-btn">Save &amp; Apply</button>'
-        + '<span id="discord-ai-save-status" style="font-size:12px;color:var(--text-muted);"></span>'
-        + '</div>';
-
-    // ── How to use ──
-    html += '<div class="discord-ai-howto">'
-        + '<strong>How to connect your Team Discord Bot</strong>'
-        + '<ol>'
-        + '<li>In Discord, enable <strong>Developer Mode</strong> (Settings &gt; Advanced &gt; Developer Mode).</li>'
-        + '<li>Right-click your <strong>server name</strong> &rarr; <em>Copy Server ID</em> and paste it above.</li>'
-        + '<li>An <strong>invite link</strong> will appear &mdash; click it to add the bot to your server. Authorize it when prompted.</li>'
-        + '<li>Right-click the <strong>channel</strong> you want the bot in &rarr; <em>Copy Channel ID</em> and paste it above.</li>'
-        + '<li>Check the <strong>workspaces</strong> the bot should have access to.</li>'
-        + '<li>Click <strong>Save &amp; Apply</strong>.</li>'
+    // ── How to connect ──
+    html += '<div class="discord-ai-howto" style="margin-bottom:16px;">'
+        + '<strong>How to join</strong>'
+        + '<ol style="margin:8px 0 0;padding-left:20px;">'
+        + '<li>Open Telegram and search for the <strong>OPAI</strong> group, or ask Dallas for an invite link.</li>'
+        + '<li>Inside the group, find the <strong>Team Hub</strong> topic &mdash; this is where the bot listens for your commands.</li>'
+        + '<li>Send a message in the topic and the AI will respond with access to your workspaces.</li>'
         + '</ol>'
-        + '<strong>Talking to the bot</strong>'
-        + '<ul>'
-        + '<li>All messages must start with <code>!@</code> to trigger the bot.</li>'
-        + '<li><code>!@ What tasks are overdue?</code> &mdash; natural language AI query</li>'
-        + '<li><code>!@ Create a high-priority bug for the checkout crash</code></li>'
-        + '<li><code>!@ List all folders</code></li>'
-        + '<li><code>!@ hub task Fix the login bug</code> &mdash; quick-create a task</li>'
-        + '<li><code>!@ hub search deployment</code> &mdash; search across scoped workspaces</li>'
-        + '<li><code>!@ hub status</code> &mdash; see your open items</li>'
-        + '</ul>'
-        + '<strong>What the AI can do</strong>'
-        + '<ul>'
+        + '</div>';
+
+    // ── What you can do ──
+    html += '<div class="discord-ai-howto" style="margin-bottom:16px;">'
+        + '<strong>What the bot can do</strong>'
+        + '<ul style="margin:8px 0 0;padding-left:20px;">'
         + '<li>Create, search, and update tasks, notes, and ideas</li>'
         + '<li>List and create spaces, folders, and lists</li>'
         + '<li>Add comments to items</li>'
         + '<li>Get workspace summaries and detailed item views</li>'
+        + '<li>Natural language queries &mdash; just ask in plain English</li>'
         + '</ul>'
         + '</div>';
 
+    // ── Contact / Trouble ──
+    html += '<div class="discord-ai-section" style="margin-top:8px;padding:14px;border-radius:8px;background:var(--bg-hover);">'
+        + '<strong style="font-size:13px;">Need access or having trouble?</strong>'
+        + '<p style="margin:8px 0 12px;font-size:12px;color:var(--text-muted);">'
+        + 'If you can\'t find the group, need an invite, or are having issues connecting, reach out to Dallas directly on Telegram.'
+        + '</p>'
+        + '<a href="https://t.me/Dalwaut" target="_blank" rel="noopener" '
+        + 'style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:var(--accent);color:#fff;border-radius:6px;font-size:13px;font-weight:500;text-decoration:none;">'
+        + '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.12.03-1.97 1.25-5.56 3.69-.53.36-1 .54-1.42.53-.47-.01-1.37-.26-2.03-.48-.82-.27-1.47-.42-1.41-.88.03-.24.37-.49 1.02-.74 3.99-1.74 6.65-2.89 7.99-3.44 3.81-1.58 4.6-1.86 5.12-1.87.11 0 .37.03.53.17.14.12.18.28.2.45-.01.06.01.24 0 .37z"/></svg>'
+        + 'Contact Dallas on Telegram'
+        + '</a>'
+        + '</div>';
+
+    html += '</div>'; // section
+
     el.innerHTML = html;
-}
-
-function _updateBotInviteLink() {
-    const serverId = (document.getElementById('dai-server-id')?.value || '').trim();
-    const banner = document.getElementById('dai-invite-banner');
-    const link = document.getElementById('dai-invite-link');
-    if (!banner || !link) return;
-    if (serverId) {
-        banner.style.display = 'block';
-        link.href = 'https://discord.com/oauth2/authorize?client_id=1470540768547700920&scope=bot&permissions=274877975552&guild_id=' + encodeURIComponent(serverId);
-    } else {
-        banner.style.display = 'none';
-    }
-}
-
-async function saveDiscordAISettings() {
-    if (!_discordAIWorkspaces) return;
-    const btn = document.getElementById('discord-ai-save-btn');
-    const statusEl = document.getElementById('discord-ai-save-status');
-    if (btn) btn.disabled = true;
-    if (statusEl) statusEl.textContent = 'Saving...';
-
-    // Read top-level connection values
-    const serverId = (document.getElementById('dai-server-id')?.value || '').trim();
-    const channelId = (document.getElementById('dai-channel-id')?.value || '').trim();
-    const botPrompt = (document.getElementById('dai-bot-prompt')?.value || '').trim();
-    const defaultPrompt = 'You are a Team Hub AI assistant. Use the teamhub tools to manage workspace data. Be concise and helpful.';
-
-    // Read checkbox states
-    const checkboxes = document.querySelectorAll('#settings-tab-discord-ai input[type="checkbox"][data-ws-id]');
-    const scopedIds = new Set();
-    checkboxes.forEach(cb => { if (cb.checked) scopedIds.add(cb.dataset.wsId); });
-
-    let saved = 0;
-    let errors = 0;
-
-    for (const ws of _discordAIWorkspaces) {
-        if (ws.my_role !== 'owner' && ws.my_role !== 'admin') continue;
-
-        const isScoped = scopedIds.has(ws.id);
-        const body = {
-            discord_server_id: isScoped ? (serverId || null) : null,
-            discord_channel_id: isScoped ? (channelId || null) : null,
-            bot_prompt: isScoped ? (botPrompt || defaultPrompt) : null,
-        };
-
-        // Skip if nothing changed
-        const changed = body.discord_server_id !== (ws.discord_server_id || null)
-            || body.discord_channel_id !== (ws.discord_channel_id || null)
-            || body.bot_prompt !== (ws.bot_prompt || null);
-        if (!changed && !_discordAIDirty) continue;
-
-        try {
-            await api('PATCH', API + '/workspaces/' + ws.id + '/discord', body);
-            ws.discord_server_id = body.discord_server_id || '';
-            ws.discord_channel_id = body.discord_channel_id || '';
-            ws.bot_prompt = body.bot_prompt || '';
-            saved++;
-        } catch {
-            errors++;
-        }
-    }
-
-    // Update local connection state
-    _discordAIConnection = { server_id: serverId, channel_id: channelId, bot_prompt: botPrompt };
-    _discordAIDirty = false;
-    if (btn) btn.disabled = false;
-
-    if (errors > 0) {
-        if (statusEl) statusEl.textContent = saved + ' saved, ' + errors + ' failed';
-        showToast(errors + ' workspace(s) failed to save');
-    } else if (saved > 0) {
-        if (statusEl) statusEl.textContent = 'Saved (' + saved + ' workspace' + (saved > 1 ? 's' : '') + ' updated)';
-        showToast('Discord AI settings saved');
-    } else {
-        if (statusEl) statusEl.textContent = 'No changes to save';
-    }
-
-    // Re-render after brief delay to update status indicators
-    setTimeout(() => {
-        _discordAIWorkspaces = null;
-        renderSettingsDiscordAI();
-    }, 1500);
 }
 
 /* ── Commented out: Per-workspace multi-server Discord AI config ──
@@ -4317,73 +5680,19 @@ async function saveDiscordAISettings() {
  * // fields inside an expandable card with per-row save logic.
  */
 
-// ── Docs Viewer ──────────────────────────────────────────────
+// ── Docs Viewer & Editor ─────────────────────────────────────
 
 let _currentDocId = null;
-
-async function openDoc(docId, spaceId) {
-    _currentDocId = docId;
-    _currentSpaceId = spaceId;
-    _currentListId = null;
-    _currentView = 'doc';
-    renderSpaceTree();
-
-    const el = document.getElementById('main-content');
-    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:200px;"><div class="spinner"></div></div>';
-
-    try {
-        const doc = await api('GET', API + '/docs/' + docId);
-        renderDocView(el, doc);
-    } catch (e) {
-        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">Failed to load document</div></div>';
-    }
-}
-
-function renderDocView(el, doc) {
-    const pages = doc.pages || [];
-    const sourceTag = doc.source === 'clickup' ? ' <span class="th-doc-source-tag">ClickUp</span>' : '';
-    const updatedAt = doc.updated_at ? new Date(doc.updated_at).toLocaleDateString() : '';
-
-    let html = '<div class="th-doc-viewer">'
-        + '<div class="th-doc-header">'
-        + '<div class="th-doc-title-row">'
-        + '<span class="th-doc-icon">\uD83D\uDCC4</span>'
-        + '<h2 class="th-doc-title">' + esc(doc.title) + sourceTag + '</h2>'
-        + '</div>'
-        + '<div class="th-doc-meta">'
-        + (doc.author_name ? '<span>By ' + esc(doc.author_name) + '</span>' : '')
-        + (updatedAt ? '<span>Updated ' + esc(updatedAt) + '</span>' : '')
-        + '</div>'
-        + '</div>';
-
-    // Main doc content
-    if (doc.content) {
-        html += '<div class="th-doc-content">' + renderDocContent(doc.content) + '</div>';
-    }
-
-    // Pages
-    if (pages.length > 0) {
-        html += '<div class="th-doc-pages">';
-        for (const page of pages) {
-            html += '<div class="th-doc-page">'
-                + '<h3 class="th-doc-page-title">' + esc(page.title || 'Untitled Page') + '</h3>'
-                + '<div class="th-doc-page-content">' + renderDocContent(page.content || '') + '</div>'
-                + '</div>';
-        }
-        html += '</div>';
-    }
-
-    if (!doc.content && pages.length === 0) {
-        html += '<div class="empty-state" style="padding:40px;"><div class="empty-state-text">This document is empty</div></div>';
-    }
-
-    html += '</div>';
-    el.innerHTML = html;
-}
+let _currentDoc = null;
+let _docEditMode = false;
+let _docEditingPageId = null;
 
 function renderDocContent(text) {
     if (!text) return '';
-    // Basic markdown-like rendering: paragraphs, bold, links, code blocks
+    if (window.markdownit) {
+        return window.markdownit({ html: false, linkify: true, breaks: true }).render(text);
+    }
+    // Fallback: basic rendering
     return text
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/```([\s\S]*?)```/g, '<pre class="th-doc-code">$1</pre>')
@@ -4398,6 +5707,295 @@ function renderDocContent(text) {
         .replace(/\n\n/g, '</p><p>')
         .replace(/\n/g, '<br>')
         .replace(/^/, '<p>').replace(/$/, '</p>');
+}
+
+async function openDoc(docId, spaceId) {
+    _currentDocId = docId;
+    _currentSpaceId = spaceId;
+    _currentListId = null;
+    _currentView = 'doc';
+    _docEditMode = false;
+    _docEditingPageId = null;
+    renderSpaceTree();
+
+    const el = document.getElementById('main-content');
+    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:200px;"><div class="spinner"></div></div>';
+
+    try {
+        const doc = await apiFetch('/docs/' + docId);
+        _currentDoc = doc;
+        renderDocView(el, doc);
+    } catch (e) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-state-text">Failed to load document</div></div>';
+    }
+}
+
+async function createNewDoc(spaceId, folderId) {
+    const title = prompt('Document title:');
+    if (!title || !title.trim()) return;
+    try {
+        const body = { title: title.trim(), content: '' };
+        if (folderId) body.folder_id = folderId;
+        const doc = await apiFetch('/workspaces/' + spaceId + '/docs', { method: 'POST', body: JSON.stringify(body) });
+        // Refresh sidebar
+        delete _hierarchyCache[spaceId];
+        if (_expandedSpaces[spaceId]) {
+            const data = await api('GET', API + '/workspaces/' + spaceId + '/folders');
+            _hierarchyCache[spaceId] = data;
+        }
+        renderSpaceTree();
+        openDoc(doc.id, spaceId);
+        showToast('Document created');
+    } catch (e) {
+        showToast('Failed to create document');
+    }
+}
+
+function renderDocView(el, doc) {
+    const pages = doc.pages || [];
+    const sourceTag = doc.source === 'clickup' ? ' <span class="th-doc-source-tag">ClickUp</span>' : '';
+    const updatedAt = doc.updated_at ? new Date(doc.updated_at).toLocaleDateString() : '';
+
+    let html = '<div class="th-doc-viewer">';
+
+    // ── Header with actions ──
+    html += '<div class="th-doc-header">'
+        + '<div class="th-doc-title-row">'
+        + '<span class="th-doc-icon">\uD83D\uDCC4</span>';
+
+    if (_docEditMode) {
+        html += '<input type="text" class="th-doc-title-input" id="doc-title-input" value="' + esc(doc.title) + '">';
+    } else {
+        html += '<h2 class="th-doc-title">' + esc(doc.title) + sourceTag + '</h2>';
+    }
+    html += '<div class="th-doc-actions">';
+    if (_docEditMode) {
+        html += '<button class="th-doc-action-btn th-doc-save" onclick="saveDoc()">Save</button>'
+            + '<button class="th-doc-action-btn th-doc-cancel" onclick="cancelDocEdit()">Cancel</button>';
+    } else {
+        html += '<button class="th-doc-action-btn" onclick="enterDocEdit()" title="Edit">'
+            + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
+            + '</button>'
+            + '<button class="th-doc-action-btn th-doc-danger" onclick="deleteDoc()" title="Delete">'
+            + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>'
+            + '</button>';
+    }
+    html += '</div></div>';
+
+    html += '<div class="th-doc-meta">'
+        + (doc.author_name ? '<span>By ' + esc(doc.author_name) + '</span>' : '')
+        + (updatedAt ? '<span>Updated ' + esc(updatedAt) + '</span>' : '')
+        + '</div>'
+        + '</div>';
+
+    // ── Main doc content ──
+    if (_docEditMode) {
+        html += '<div class="th-doc-edit-section">'
+            + '<label class="th-doc-edit-label">Content</label>'
+            + '<textarea class="th-doc-textarea" id="doc-content-input" placeholder="Write your document content here... (Markdown supported)">' + esc(doc.content || '') + '</textarea>'
+            + '</div>';
+    } else if (doc.content) {
+        html += '<div class="th-doc-content">' + renderDocContent(doc.content) + '</div>';
+    }
+
+    // ── Pages ──
+    html += '<div class="th-doc-pages-section">'
+        + '<div class="th-doc-pages-header">'
+        + '<h3>Pages (' + pages.length + ')</h3>';
+    if (!_docEditMode) {
+        html += '<button class="th-doc-add-page-btn" onclick="addDocPage()">+ Add Page</button>';
+    }
+    html += '</div>';
+
+    if (pages.length > 0) {
+        html += '<div class="th-doc-pages">';
+        for (let i = 0; i < pages.length; i++) {
+            const page = pages[i];
+            const isEditing = _docEditingPageId === page.id;
+            html += '<div class="th-doc-page" data-page-id="' + esc(page.id) + '">';
+
+            if (isEditing) {
+                html += '<div class="th-doc-page-edit">'
+                    + '<input type="text" class="th-doc-page-title-input" id="page-title-input" value="' + esc(page.title || 'Untitled Page') + '">'
+                    + '<textarea class="th-doc-textarea th-doc-page-textarea" id="page-content-input">' + esc(page.content || '') + '</textarea>'
+                    + '<div class="th-doc-page-edit-actions">'
+                    + '<button class="th-doc-action-btn th-doc-save" onclick="saveDocPage(\'' + esc(page.id) + '\')">Save</button>'
+                    + '<button class="th-doc-action-btn th-doc-cancel" onclick="cancelPageEdit()">Cancel</button>'
+                    + '</div></div>';
+            } else {
+                html += '<div class="th-doc-page-header">'
+                    + '<h3 class="th-doc-page-title">' + esc(page.title || 'Untitled Page') + '</h3>'
+                    + '<div class="th-doc-page-actions">'
+                    + '<button class="th-doc-page-action" onclick="editDocPage(\'' + esc(page.id) + '\')" title="Edit">'
+                    + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
+                    + '</button>'
+                    + '<button class="th-doc-page-action th-doc-danger" onclick="deleteDocPage(\'' + esc(page.id) + '\')" title="Delete">'
+                    + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>'
+                    + '</button>'
+                    + '</div></div>'
+                    + '<div class="th-doc-page-content">' + renderDocContent(page.content || '') + '</div>';
+            }
+            html += '</div>';
+        }
+        html += '</div>';
+    }
+
+    if (!doc.content && pages.length === 0 && !_docEditMode) {
+        html += '<div class="empty-state" style="padding:40px;">'
+            + '<div class="empty-state-text">This document is empty</div>'
+            + '<button class="th-doc-action-btn th-doc-save" onclick="enterDocEdit()" style="margin-top:12px;">Start Writing</button>'
+            + '</div>';
+    }
+
+    html += '</div></div>';
+    el.innerHTML = html;
+}
+
+function enterDocEdit() {
+    _docEditMode = true;
+    _docEditingPageId = null;
+    const el = document.getElementById('main-content');
+    renderDocView(el, _currentDoc);
+}
+
+function cancelDocEdit() {
+    _docEditMode = false;
+    const el = document.getElementById('main-content');
+    renderDocView(el, _currentDoc);
+}
+
+async function saveDoc() {
+    const title = document.getElementById('doc-title-input')?.value?.trim();
+    const content = document.getElementById('doc-content-input')?.value || '';
+    if (!title) { showToast('Title is required'); return; }
+
+    try {
+        const updated = await apiFetch('/docs/' + _currentDocId, {
+            method: 'PUT',
+            body: JSON.stringify({ title, content }),
+        });
+        _currentDoc.title = updated.title || title;
+        _currentDoc.content = updated.content !== undefined ? updated.content : content;
+        _currentDoc.updated_at = updated.updated_at || new Date().toISOString();
+        _docEditMode = false;
+        const el = document.getElementById('main-content');
+        renderDocView(el, _currentDoc);
+        // Refresh sidebar to show updated title
+        if (_currentSpaceId) {
+            delete _hierarchyCache[_currentSpaceId];
+            if (_expandedSpaces[_currentSpaceId]) {
+                const data = await api('GET', API + '/workspaces/' + _currentSpaceId + '/folders');
+                _hierarchyCache[_currentSpaceId] = data;
+            }
+            renderSpaceTree();
+        }
+        showToast('Document saved');
+    } catch (e) {
+        showToast('Failed to save document');
+    }
+}
+
+async function deleteDoc() {
+    if (!confirm('Delete this document and all its pages? This cannot be undone.')) return;
+    try {
+        await apiFetch('/docs/' + _currentDocId, { method: 'DELETE' });
+        _currentDocId = null;
+        _currentDoc = null;
+        _docEditMode = false;
+        // Refresh sidebar
+        if (_currentSpaceId) {
+            delete _hierarchyCache[_currentSpaceId];
+            if (_expandedSpaces[_currentSpaceId]) {
+                const data = await api('GET', API + '/workspaces/' + _currentSpaceId + '/folders');
+                _hierarchyCache[_currentSpaceId] = data;
+            }
+            renderSpaceTree();
+        }
+        // Go back to space dashboard
+        openSpaceDashboard(_currentSpaceId, _currentSpaceName);
+        showToast('Document deleted');
+    } catch (e) {
+        showToast('Failed to delete document');
+    }
+}
+
+// ── Page management ──
+
+async function addDocPage() {
+    const title = prompt('Page title:', 'Untitled Page');
+    if (title === null) return;
+    try {
+        const page = await apiFetch('/docs/' + _currentDocId + '/pages', {
+            method: 'POST',
+            body: JSON.stringify({ title: title.trim() || 'Untitled Page', content: '' }),
+        });
+        if (!_currentDoc.pages) _currentDoc.pages = [];
+        _currentDoc.pages.push(page);
+        _docEditingPageId = page.id;
+        const el = document.getElementById('main-content');
+        renderDocView(el, _currentDoc);
+        showToast('Page added');
+        // Scroll to new page
+        setTimeout(() => {
+            const pageEl = document.querySelector('[data-page-id="' + page.id + '"]');
+            if (pageEl) pageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+    } catch (e) {
+        showToast('Failed to add page');
+    }
+}
+
+function editDocPage(pageId) {
+    _docEditingPageId = pageId;
+    _docEditMode = false;
+    const el = document.getElementById('main-content');
+    renderDocView(el, _currentDoc);
+    setTimeout(() => {
+        const input = document.getElementById('page-content-input');
+        if (input) input.focus();
+    }, 50);
+}
+
+function cancelPageEdit() {
+    _docEditingPageId = null;
+    const el = document.getElementById('main-content');
+    renderDocView(el, _currentDoc);
+}
+
+async function saveDocPage(pageId) {
+    const title = document.getElementById('page-title-input')?.value?.trim() || 'Untitled Page';
+    const content = document.getElementById('page-content-input')?.value || '';
+    try {
+        await apiFetch('/docs/' + _currentDocId + '/pages/' + pageId, {
+            method: 'PUT',
+            body: JSON.stringify({ title, content }),
+        });
+        const page = (_currentDoc.pages || []).find(p => p.id === pageId);
+        if (page) {
+            page.title = title;
+            page.content = content;
+        }
+        _docEditingPageId = null;
+        const el = document.getElementById('main-content');
+        renderDocView(el, _currentDoc);
+        showToast('Page saved');
+    } catch (e) {
+        showToast('Failed to save page');
+    }
+}
+
+async function deleteDocPage(pageId) {
+    if (!confirm('Delete this page?')) return;
+    try {
+        await apiFetch('/docs/' + _currentDocId + '/pages/' + pageId, { method: 'DELETE' });
+        _currentDoc.pages = (_currentDoc.pages || []).filter(p => p.id !== pageId);
+        if (_docEditingPageId === pageId) _docEditingPageId = null;
+        const el = document.getElementById('main-content');
+        renderDocView(el, _currentDoc);
+        showToast('Page deleted');
+    } catch (e) {
+        showToast('Failed to delete page');
+    }
 }
 
 // ── ClickUp Import Tab ───────────────────────────────────────
@@ -5233,7 +6831,7 @@ async function previewFile(filePath, fileName, mimeType) {
     // Create modal
     const backdrop = document.createElement('div');
     backdrop.className = 'th-file-preview-backdrop';
-    backdrop.onclick = (e) => { if (e.target === backdrop) backdrop.remove(); };
+    // Only close via the explicit close button, not backdrop click
 
     backdrop.innerHTML = '<div class="th-file-preview-modal" onclick="event.stopPropagation()">'
         + '<div class="th-file-preview-header">'
@@ -5319,15 +6917,67 @@ async function loadNotifDropdown() {
             list.innerHTML = '<div class="th-notif-empty">No notifications</div>';
             return;
         }
+        const typeIcons = {
+            assignment: '\u{1F464}',
+            mention: '@',
+            update: '\u270F',
+            reminder: '\u{1F514}',
+            automation: '\u26A1',
+        };
         list.innerHTML = notifs.map(n => {
             const unread = !n.read ? ' unread' : '';
-            return '<div class="th-notif-item' + unread + '">'
+            const icon = typeIcons[n.type] || '\u{1F514}';
+            const bodySnippet = n.body ? '<div class="th-notif-item-body">' + esc(n.body).slice(0, 80) + '</div>' : '';
+            return '<div class="th-notif-item' + unread + '" data-nid="' + n.id + '" onclick="clickNotification(' + JSON.stringify(n).replace(/"/g, '&quot;') + ')">'
+                + '<span class="th-notif-type-icon">' + icon + '</span>'
+                + '<div class="th-notif-item-content">'
                 + '<div class="th-notif-item-text">' + esc(n.title || 'Notification') + '</div>'
+                + bodySnippet
                 + '<div class="th-notif-item-time">' + timeAgo(n.created_at) + '</div>'
+                + '</div>'
+                + '<button class="th-notif-dismiss" onclick="dismissNotification(\'' + n.id + '\', event)" title="Dismiss">&times;</button>'
                 + '</div>';
         }).join('');
     } catch {
         list.innerHTML = '<div class="th-notif-empty">Failed to load</div>';
+    }
+}
+
+async function dismissNotification(id, event) {
+    event.stopPropagation();
+    try {
+        await api('DELETE', API + '/my/notifications/' + id);
+        const el = document.querySelector('[data-nid="' + id + '"]');
+        if (el) el.remove();
+        // Update badge count
+        const remaining = document.querySelectorAll('.th-notif-item.unread').length;
+        const badge = document.getElementById('notif-badge');
+        if (remaining > 0) {
+            badge.textContent = remaining;
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+        if (document.querySelectorAll('.th-notif-item').length === 0) {
+            document.getElementById('notif-list').innerHTML = '<div class="th-notif-empty">No notifications</div>';
+        }
+    } catch { showToast('Failed to dismiss'); }
+}
+
+async function clickNotification(n) {
+    try {
+        await api('POST', API + '/my/notifications/read', { notification_ids: [n.id] });
+        const el = document.querySelector('[data-nid="' + n.id + '"]');
+        if (el) el.classList.remove('unread');
+        // Update badge
+        const remaining = document.querySelectorAll('.th-notif-item.unread').length;
+        const badge = document.getElementById('notif-badge');
+        if (remaining > 0) { badge.textContent = remaining; badge.style.display = ''; }
+        else { badge.style.display = 'none'; }
+    } catch { /* silent */ }
+    if (n.item_id) {
+        openDetail(n.item_id);
+        document.getElementById('notification-dropdown').style.display = 'none';
     }
 }
 
@@ -5416,6 +7066,13 @@ function showCtxMenu(e, type, id, name, spaceId) {
     // Open / View (tasks open detail panel)
     if (type === 'task') {
         items.push({ icon: '\uD83D\uDC41\uFE0F', label: 'Open Task', action: () => openDetail(id) });
+    }
+
+    // New Doc (spaces + folders)
+    if (type === 'space') {
+        items.push({ icon: '\uD83D\uDCC4', label: 'New Doc', action: () => createNewDoc(id, null) });
+    } else if (type === 'folder') {
+        items.push({ icon: '\uD83D\uDCC4', label: 'New Doc', action: () => createNewDoc(spaceId, id) });
     }
 
     // Rename (all types)
@@ -5585,10 +7242,10 @@ async function duplicateCtxTask(taskId) {
             title: (task.title || task.name || '') + ' (copy)',
             type: task.type || 'task',
             description: task.description || '',
-            status: task.status || 'open',
+            status: task.status || 'Not Started',
             priority: task.priority || 'none',
         });
-        await selectList(_currentListId, _currentListName, _currentSpaceId);
+        // Postgres Changes INSERT listener will add the new task automatically
         broadcast('task_created', { listId: _currentListId });
         showToast('Task duplicated');
     } catch (err) {
@@ -5624,29 +7281,38 @@ async function moveListToFolder(listId, listName, spaceId) {
 
 // ── Batch Selection & Operations ─────────────────────────────
 
+function _batchRender() {
+    // In home list view, do a surgical table update (no API refetch)
+    if (_currentView === 'list' && !_currentListId && _homeListItems) {
+        renderHomeListTable(document.getElementById('main-content'));
+    } else {
+        renderMainContent();
+    }
+}
+
 function batchToggleItem(itemId, checked) {
     if (checked) _selectedItems.add(itemId);
     else _selectedItems.delete(itemId);
-    renderMainContent();
+    _batchRender();
 }
 
 function batchToggleAll(checked) {
     const visible = getVisibleTasks();
     if (checked) visible.forEach(t => _selectedItems.add(t.id));
     else _selectedItems.clear();
-    renderMainContent();
+    _batchRender();
 }
 
 function batchToggleAllHome(checked) {
     const visible = filterHomeListItems(_homeListItems || []);
     if (checked) visible.forEach(t => _selectedItems.add(t.id));
     else _selectedItems.clear();
-    renderMainContent();
+    _batchRender();
 }
 
 function batchClearSelection() {
     _selectedItems.clear();
-    renderMainContent();
+    _batchRender();
 }
 
 function renderBatchToolbar() {
@@ -5670,7 +7336,7 @@ async function batchChangeStatus() {
 
     const statusOptions = _currentStatuses.length
         ? _currentStatuses.map(s => s.name)
-        : ['open', 'in_progress', 'review', 'done', 'closed'];
+        : ['Not Started', 'Working on', 'Manager Review', 'Back to You', 'Stuck', 'Waiting on Client', 'Client Review', 'Approved', 'Postponed', 'Quality Review', 'Complete'];
     if (!statusOptions.length) { showToast('No statuses configured'); return; }
 
     // Build a quick picker
@@ -5982,6 +7648,7 @@ function bindSidebarDragAndDrop() {
     // Drop targets: spaces (accept folders and lists), folders (accept lists)
     tree.querySelectorAll('[data-drop-type]').forEach(el => {
         el.addEventListener('dragover', (e) => {
+            if (_spaceReorderDrag) return; // Space reorder in progress — handled separately
             if (!_sidebarDrag && !e.dataTransfer.types.includes('text/plain')) return;
             const dropType = el.dataset.dropType;
             const dropId = el.dataset.dropId;
@@ -6005,6 +7672,7 @@ function bindSidebarDragAndDrop() {
             }
         });
         el.addEventListener('drop', async (e) => {
+            if (_spaceReorderDrag) return; // Space reorder in progress — handled separately
             e.preventDefault();
             e.stopPropagation();
             el.classList.remove('th-sidebar-drop-target');
@@ -6155,6 +7823,98 @@ async function refreshSpaceHierarchy(spaceId) {
     } catch { /* ignore */ }
 }
 
+// ── Space Reorder Drag-and-Drop ──────────────────────────────
+
+let _spaceReorderDrag = null; // { id, el, startIndex }
+
+function bindSpaceReorder() {
+    const tree = document.getElementById('space-tree');
+    if (!tree) return;
+
+    tree.querySelectorAll('.th-tree-space[draggable="true"]').forEach((el, idx) => {
+        el.addEventListener('dragstart', (e) => {
+            // If a folder/list drag is already active, don't interfere
+            if (_sidebarDrag) return;
+            const target = e.target;
+            // If drag started from a child item (folder/list), let existing handler take over
+            if (target.closest('[data-drag-type]')) return;
+
+            _spaceReorderDrag = {
+                id: el.dataset.spaceId,
+                startIndex: idx
+            };
+            el.classList.add('th-space-reorder-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('application/x-space-reorder', el.dataset.spaceId);
+        });
+
+        el.addEventListener('dragend', () => {
+            el.classList.remove('th-space-reorder-dragging');
+            _spaceReorderDrag = null;
+            tree.querySelectorAll('.th-space-drop-above, .th-space-drop-below').forEach(
+                n => n.classList.remove('th-space-drop-above', 'th-space-drop-below')
+            );
+        });
+
+        el.addEventListener('dragover', (e) => {
+            if (!_spaceReorderDrag) return;
+            if (_spaceReorderDrag.id === el.dataset.spaceId) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+
+            // Determine if cursor is in top or bottom half
+            const rect = el.getBoundingClientRect();
+            const midY = rect.top + rect.height / 2;
+            el.classList.remove('th-space-drop-above', 'th-space-drop-below');
+            if (e.clientY < midY) {
+                el.classList.add('th-space-drop-above');
+            } else {
+                el.classList.add('th-space-drop-below');
+            }
+        });
+
+        el.addEventListener('dragleave', () => {
+            el.classList.remove('th-space-drop-above', 'th-space-drop-below');
+        });
+
+        el.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.classList.remove('th-space-drop-above', 'th-space-drop-below');
+            if (!_spaceReorderDrag || _spaceReorderDrag.id === el.dataset.spaceId) return;
+
+            const dragId = _spaceReorderDrag.id;
+            const rect = el.getBoundingClientRect();
+            const midY = rect.top + rect.height / 2;
+            const insertBefore = e.clientY < midY;
+
+            // Optimistic reorder
+            const oldIdx = _spaces.findIndex(s => s.id === dragId);
+            let targetIdx = _spaces.findIndex(s => s.id === el.dataset.spaceId);
+            if (oldIdx < 0 || targetIdx < 0) return;
+
+            const [moved] = _spaces.splice(oldIdx, 1);
+            // Recalc target after removal
+            targetIdx = _spaces.findIndex(s => s.id === el.dataset.spaceId);
+            const newIdx = insertBefore ? targetIdx : targetIdx + 1;
+            _spaces.splice(newIdx, 0, moved);
+
+            _spaceReorderDrag = null;
+            renderSpaceTree();
+
+            // Persist to backend
+            try {
+                await api('POST', API + '/workspaces/reorder', {
+                    workspace_ids: _spaces.map(s => s.id)
+                });
+            } catch (err) {
+                showToast('Reorder failed: ' + (err.message || err));
+                await loadSpaces(); // Revert on failure
+            }
+        });
+    });
+}
+
 // ── System Update Banner ────────────────────────────────────
 
 function showSystemUpdateBanner(message) {
@@ -6167,6 +7927,404 @@ function showSystemUpdateBanner(message) {
         + '<button class="th-update-btn" onclick="location.reload()">Refresh Now</button>'
         + '<button class="th-update-dismiss" onclick="this.parentElement.remove()">&times;</button>';
     document.body.prepend(banner);
+}
+
+// ── Favorites ────────────────────────────────────────────────
+
+async function loadFavorites() {
+    try {
+        const data = await api('GET', API + '/my/favorites');
+        _favorites = data.favorites || [];
+        renderFavoritesSection();
+    } catch { _favorites = []; }
+}
+
+function _resolveFavName(f) {
+    if (f.target_type === 'workspace') {
+        const sp = _spaces.find(s => s.id === f.target_id);
+        return sp ? sp.name : f.target_id.substring(0, 8);
+    }
+    return f.target_id.substring(0, 8);
+}
+
+function renderFavoritesSection() {
+    let section = document.getElementById('favorites-section');
+    if (!_favorites.length) {
+        if (section) section.remove();
+        return;
+    }
+    if (!section) {
+        section = document.createElement('div');
+        section.id = 'favorites-section';
+        section.className = 'th-favorites-section';
+        const tree = document.getElementById('space-tree');
+        if (tree) tree.parentElement.insertBefore(section, tree);
+        else return;
+    }
+    let html = '<div class="th-favorites-label">&#9733; Favorites</div><div class="th-favorites-list">';
+    for (const f of _favorites) {
+        const name = _resolveFavName(f);
+        const icon = f.target_type === 'workspace' ? '&#9679;' : f.target_type === 'list' ? '&#9776;' : '&#9744;';
+        html += '<div class="th-favorites-item" onclick="openFavorite(\'' + esc(f.target_type) + '\',\'' + esc(f.target_id) + '\',\'' + esc(name) + '\')">'
+            + '<span style="margin-right:6px;">' + icon + '</span>'
+            + '<span>' + esc(name) + '</span>'
+            + '<button class="th-star-btn active" onclick="event.stopPropagation();toggleFavorite(\'' + esc(f.target_type) + '\',\'' + esc(f.target_id) + '\')" style="margin-left:auto;font-size:12px;">&#9733;</button>'
+            + '</div>';
+    }
+    html += '</div>';
+    section.innerHTML = html;
+}
+
+function openFavorite(type, id, name) {
+    if (type === 'workspace') {
+        clickSpace(id, name);
+    } else if (type === 'list') {
+        selectList(id, name);
+    } else if (type === 'item') {
+        openDetail(id);
+    }
+}
+
+async function toggleFavorite(targetType, targetId) {
+    try {
+        await api('POST', API + '/my/favorites', { target_type: targetType, target_id: targetId });
+        await loadFavorites();
+        // Re-render detail panel if open to update star
+        if (_detailTask && targetType === 'item' && targetId === _detailTask.id) renderDetailPanel();
+    } catch (err) {
+        showToast('Failed to toggle favorite: ' + (err.message || ''));
+    }
+}
+
+// ── Reminders ────────────────────────────────────────────────
+
+function toggleReminderDropdown(btn, itemId) {
+    // Close if already open
+    let dd = btn.parentElement.querySelector('.th-reminder-dropdown');
+    if (dd) { dd.remove(); return; }
+
+    const now = new Date();
+    const in15m = new Date(now.getTime() + 15 * 60000).toISOString();
+    const in1h = new Date(now.getTime() + 60 * 60000).toISOString();
+    const tomorrow9 = new Date(now);
+    tomorrow9.setDate(tomorrow9.getDate() + 1);
+    tomorrow9.setHours(9, 0, 0, 0);
+    const nextMon = new Date(now);
+    nextMon.setDate(nextMon.getDate() + ((8 - nextMon.getDay()) % 7 || 7));
+    nextMon.setHours(9, 0, 0, 0);
+
+    dd = document.createElement('div');
+    dd.className = 'th-reminder-dropdown';
+    dd.innerHTML = ''
+        + '<div class="th-reminder-option" onclick="createReminder(\'' + esc(itemId) + '\',\'' + in15m + '\')">In 15 minutes</div>'
+        + '<div class="th-reminder-option" onclick="createReminder(\'' + esc(itemId) + '\',\'' + in1h + '\')">In 1 hour</div>'
+        + '<div class="th-reminder-option" onclick="createReminder(\'' + esc(itemId) + '\',\'' + tomorrow9.toISOString() + '\')">Tomorrow 9 AM</div>'
+        + '<div class="th-reminder-option" onclick="createReminder(\'' + esc(itemId) + '\',\'' + nextMon.toISOString() + '\')">Next Monday 9 AM</div>'
+        + '<div class="th-reminder-option" onclick="promptCustomReminder(\'' + esc(itemId) + '\')">Custom...</div>';
+    btn.parentElement.appendChild(dd);
+
+    // Close on outside click
+    setTimeout(() => {
+        const handler = (e) => { if (!dd.contains(e.target) && e.target !== btn) { dd.remove(); document.removeEventListener('click', handler); } };
+        document.addEventListener('click', handler);
+    }, 10);
+}
+
+async function createReminder(itemId, remindAt, note) {
+    try {
+        await api('POST', API + '/my/reminders', { item_id: itemId, remind_at: remindAt, note: note || '' });
+        showToast('Reminder set');
+        // Close any open dropdown
+        document.querySelectorAll('.th-reminder-dropdown').forEach(d => d.remove());
+    } catch (err) {
+        showToast('Failed: ' + (err.message || ''));
+    }
+}
+
+function promptCustomReminder(itemId) {
+    document.querySelectorAll('.th-reminder-dropdown').forEach(d => d.remove());
+    // Remove any existing picker overlay
+    const existing = document.getElementById('reminder-picker-overlay');
+    if (existing) existing.remove();
+
+    const now = new Date();
+    const dateVal = now.toISOString().split('T')[0];
+    const timeVal = now.toTimeString().slice(0, 5);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'reminder-picker-overlay';
+    overlay.className = 'th-reminder-picker-overlay';
+    overlay.innerHTML = ''
+        + '<div class="th-reminder-picker">'
+        + '<div class="th-reminder-picker-header">Set Reminder</div>'
+        + '<div class="form-group">'
+        + '<label class="form-label">Date</label>'
+        + '<input type="date" class="form-input" id="reminder-date-input" value="' + dateVal + '">'
+        + '</div>'
+        + '<div class="form-group">'
+        + '<label class="form-label">Time</label>'
+        + '<input type="time" class="form-input" id="reminder-time-input" value="' + timeVal + '">'
+        + '</div>'
+        + '<div class="th-reminder-picker-actions">'
+        + '<button class="btn btn-ghost btn-small" onclick="document.getElementById(\'reminder-picker-overlay\').remove()">Cancel</button>'
+        + '<button class="btn btn-accent btn-small" id="reminder-picker-confirm">Set Reminder</button>'
+        + '</div>'
+        + '</div>';
+    document.body.appendChild(overlay);
+
+    // Confirm button
+    document.getElementById('reminder-picker-confirm').addEventListener('click', () => {
+        const d = document.getElementById('reminder-date-input').value;
+        const t = document.getElementById('reminder-time-input').value;
+        if (!d || !t) { showToast('Please select date and time'); return; }
+        const parsed = new Date(d + 'T' + t);
+        if (isNaN(parsed.getTime())) { showToast('Invalid date/time'); return; }
+        overlay.remove();
+        createReminder(itemId, parsed.toISOString());
+    });
+}
+
+// ── Subtasks ─────────────────────────────────────────────────
+
+async function createSubtask(parentId, title) {
+    if (!title || !title.trim()) return;
+    try {
+        const t = _detailTask;
+        const listId = t.list_id || _currentListId;
+        if (!listId) { showToast('No list context'); return; }
+        await api('POST', API + '/lists/' + listId + '/items', {
+            title: title.trim(),
+            type: 'task',
+            status: 'Not Started',
+            priority: 'none',
+            parent_id: parentId,
+        });
+        showToast('Subtask created');
+        // Reload the detail to show the new subtask
+        const updated = await api('GET', API + '/items/' + parentId);
+        if (updated) { _detailTask = updated; renderDetailPanel(); }
+    } catch (err) {
+        showToast('Failed: ' + (err.message || ''));
+    }
+}
+
+async function toggleSubtaskStatus(subtaskId, currentStatus) {
+    const newStatus = (currentStatus === 'done' || currentStatus === 'closed' || currentStatus === 'Complete') ? 'Not Started' : 'Complete';
+    try {
+        await api('PATCH', API + '/items/' + subtaskId, { status: newStatus });
+        // Reload parent detail
+        if (_detailTask) {
+            const updated = await api('GET', API + '/items/' + _detailTask.id);
+            if (updated) { _detailTask = updated; renderDetailPanel(); }
+        }
+    } catch (err) {
+        showToast('Failed: ' + (err.message || ''));
+    }
+}
+
+// ── Checklists ───────────────────────────────────────────────
+
+async function loadDetailChecklists() {
+    const container = document.getElementById('checklists-container');
+    if (!container || !_detailTask) return;
+    try {
+        const data = await api('GET', API + '/items/' + _detailTask.id + '/checklists');
+        const checklists = data.checklists || [];
+        if (!checklists.length) {
+            container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">No checklists</div>';
+            return;
+        }
+        container.innerHTML = checklists.map(cl => {
+            const items = cl.items || [];
+            const done = items.filter(i => i.checked).length;
+            const total = items.length;
+            const pct = total ? Math.round(done / total * 100) : 0;
+            let html = '<div class="th-checklist-block" data-cl-id="' + esc(cl.id) + '">'
+                + '<div class="th-checklist-header">'
+                + '<span class="th-checklist-name">' + esc(cl.name) + '</span>'
+                + '<span class="th-checklist-progress">' + done + '/' + total + '</span>'
+                + '<button class="btn btn-small btn-ghost" onclick="deleteChecklist(\'' + esc(cl.id) + '\')" style="font-size:10px;margin-left:auto;" title="Delete checklist">&times;</button>'
+                + '</div>'
+                + '<div class="th-checklist-progress-bar"><div class="th-checklist-progress-fill" style="width:' + pct + '%;"></div></div>'
+                + '<div class="th-checklist-items">';
+            for (const ci of items) {
+                html += '<div class="th-checklist-item">'
+                    + '<input type="checkbox" class="th-checklist-checkbox"' + (ci.checked ? ' checked' : '') + ' onchange="toggleChecklistItem(\'' + esc(ci.id) + '\',this.checked)">'
+                    + '<span class="' + (ci.checked ? 'th-checklist-checked' : '') + '">' + esc(ci.text) + '</span>'
+                    + '<button class="btn btn-small btn-ghost" onclick="deleteChecklistItem(\'' + esc(ci.id) + '\')" style="font-size:9px;opacity:0.5;margin-left:auto;">&times;</button>'
+                    + '</div>';
+            }
+            html += '<div class="th-checklist-add">'
+                + '<input type="text" class="th-checklist-add-input" placeholder="Add item..." onkeydown="if(event.key===\'Enter\'){addChecklistItem(\'' + esc(cl.id) + '\',this.value);this.value=\'\';}">'
+                + '</div></div></div>';
+            return html;
+        }).join('');
+    } catch {
+        container.innerHTML = '<div style="color:var(--text-muted);">Failed to load checklists</div>';
+    }
+}
+
+async function createChecklist(itemId) {
+    const name = prompt('Checklist name:', 'Checklist');
+    if (!name) return;
+    try {
+        await api('POST', API + '/items/' + itemId + '/checklists', { name });
+        loadDetailChecklists();
+    } catch (err) {
+        showToast('Failed: ' + (err.message || ''));
+    }
+}
+
+async function deleteChecklist(clId) {
+    if (!confirm('Delete this checklist?')) return;
+    try {
+        await api('DELETE', API + '/checklists/' + clId);
+        loadDetailChecklists();
+    } catch (err) {
+        showToast('Failed: ' + (err.message || ''));
+    }
+}
+
+async function addChecklistItem(clId, text) {
+    if (!text || !text.trim()) return;
+    try {
+        await api('POST', API + '/checklists/' + clId + '/items', { text: text.trim() });
+        loadDetailChecklists();
+    } catch (err) {
+        showToast('Failed: ' + (err.message || ''));
+    }
+}
+
+async function toggleChecklistItem(ciId, checked) {
+    try {
+        await api('PATCH', API + '/checklist-items/' + ciId, { checked });
+        loadDetailChecklists();
+    } catch (err) {
+        showToast('Failed: ' + (err.message || ''));
+    }
+}
+
+async function deleteChecklistItem(ciId) {
+    try {
+        await api('DELETE', API + '/checklist-items/' + ciId);
+        loadDetailChecklists();
+    } catch (err) {
+        showToast('Failed: ' + (err.message || ''));
+    }
+}
+
+// ── Inline Editing (List View) ───────────────────────────────
+
+function inlineEditTitle(cell, itemId) {
+    const currentText = cell.textContent;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'th-inline-edit-input';
+    input.value = currentText;
+    cell.textContent = '';
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+
+    const save = async () => {
+        const newVal = input.value.trim();
+        if (newVal && newVal !== currentText) {
+            try {
+                await api('PATCH', API + '/items/' + itemId, { title: newVal });
+                cell.textContent = newVal;
+            } catch {
+                cell.textContent = currentText;
+                showToast('Failed to update title');
+            }
+        } else {
+            cell.textContent = currentText;
+        }
+    };
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.value = currentText; input.blur(); }
+    });
+}
+
+function inlineEditStatus(cell, itemId, currentStatus) {
+    const select = document.createElement('select');
+    select.className = 'th-inline-edit-select';
+    const statuses = _currentStatuses.length ? _currentStatuses.map(s => s.name) : ['Not Started', 'Working on', 'Manager Review', 'Back to You', 'Stuck', 'Waiting on Client', 'Client Review', 'Approved', 'Postponed', 'Quality Review', 'Complete'];
+    for (const s of statuses) {
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = s;
+        if (s === currentStatus) opt.selected = true;
+        select.appendChild(opt);
+    }
+    const origHtml = cell.innerHTML;
+    cell.textContent = '';
+    cell.appendChild(select);
+    select.focus();
+
+    const save = async () => {
+        const newVal = select.value;
+        if (newVal !== currentStatus) {
+            try {
+                await api('PATCH', API + '/items/' + itemId, { status: newVal });
+                _homeListItems = null;
+                if (!_currentListId) renderHome();
+                else renderMainContent();
+            } catch {
+                cell.innerHTML = origHtml;
+                showToast('Failed to update status');
+            }
+        } else {
+            cell.innerHTML = origHtml;
+        }
+    };
+
+    select.addEventListener('blur', save);
+    select.addEventListener('change', () => select.blur());
+    select.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { cell.innerHTML = origHtml; }
+    });
+}
+
+function inlineEditPriority(cell, itemId, currentPriority) {
+    const select = document.createElement('select');
+    select.className = 'th-inline-edit-select';
+    for (const p of PRIORITIES) {
+        const opt = document.createElement('option');
+        opt.value = p.value;
+        opt.textContent = p.label;
+        if (p.value === currentPriority) opt.selected = true;
+        select.appendChild(opt);
+    }
+    const origHtml = cell.innerHTML;
+    cell.textContent = '';
+    cell.appendChild(select);
+    select.focus();
+
+    const save = async () => {
+        const newVal = select.value;
+        if (newVal !== currentPriority) {
+            try {
+                await api('PATCH', API + '/items/' + itemId, { priority: newVal });
+                _homeListItems = null;
+                if (!_currentListId) renderHome();
+                else renderMainContent();
+            } catch {
+                cell.innerHTML = origHtml;
+                showToast('Failed to update priority');
+            }
+        } else {
+            cell.innerHTML = origHtml;
+        }
+    };
+
+    select.addEventListener('blur', save);
+    select.addEventListener('change', () => select.blur());
+    select.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { cell.innerHTML = origHtml; }
+    });
 }
 
 // ── AI Panel ─────────────────────────────────────────────────
@@ -6316,4 +8474,465 @@ const _origSelectSpace = typeof selectSpace === 'function' ? selectSpace : null;
 // Hook via openSpaceDashboard and selectList wrappers called after state updates:
 function _aiOnContextChange() {
     if (_aiPanelOpen) _aiSyncContext();
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// PHASE 2: Dependencies
+// ══════════════════════════════════════════════════════════════
+
+async function loadDetailDependencies() {
+    if (!_detailTask) return;
+    const el = document.getElementById('detail-dependencies');
+    if (!el) return;
+    try {
+        const r = await apiFetch(`/api/items/${_detailTask.id}/dependencies`);
+        let html = '';
+        const outgoing = r.outgoing || [];
+        const incoming = r.incoming || [];
+        for (const d of outgoing) {
+            const t = d.target_item || {};
+            const isDone = t.status === 'done' || t.status === 'closed' || t.status === 'Complete';
+            html += '<div class="th-dep-row">'
+                + '<span class="th-dep-type">' + esc(d.type === 'blocks' ? 'Blocks' : d.type === 'relates_to' ? 'Relates to' : d.type) + '</span>'
+                + '<span class="th-dep-title' + (isDone ? ' done' : '') + '" onclick="openDetail(\'' + esc(t.id || '') + '\')">'
+                + (t.custom_id ? '<span class="th-custom-id">' + esc(t.custom_id) + '</span> ' : '')
+                + esc(t.title || 'Unknown') + '</span>'
+                + '<button class="th-dep-remove" onclick="removeDependency(\'' + esc(d.id) + '\')">&times;</button>'
+                + '</div>';
+        }
+        for (const d of incoming) {
+            const t = d.source_item || {};
+            const isDone = t.status === 'done' || t.status === 'closed' || t.status === 'Complete';
+            html += '<div class="th-dep-row">'
+                + '<span class="th-dep-type">Blocked by</span>'
+                + '<span class="th-dep-title' + (isDone ? ' done' : '') + '" onclick="openDetail(\'' + esc(t.id || '') + '\')">'
+                + (t.custom_id ? '<span class="th-custom-id">' + esc(t.custom_id) + '</span> ' : '')
+                + esc(t.title || 'Unknown') + '</span>'
+                + '<button class="th-dep-remove" onclick="removeDependency(\'' + esc(d.id) + '\')">&times;</button>'
+                + '</div>';
+        }
+        if (!html) html = '<div class="th-dep-empty">No dependencies</div>';
+        el.innerHTML = html;
+    } catch (e) {
+        el.innerHTML = '<div class="th-dep-empty">Failed to load</div>';
+    }
+}
+
+async function addDependency(targetId, type) {
+    if (!_detailTask || !targetId) return;
+    try {
+        await apiFetch(`/api/items/${_detailTask.id}/dependencies`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_id: targetId, type: type || 'blocks' }),
+        });
+        loadDetailDependencies();
+        showToast('Dependency added');
+    } catch (e) { showToast('Failed to add dependency', 'error'); }
+}
+
+async function removeDependency(depId) {
+    try {
+        await apiFetch(`/api/dependencies/${depId}`, { method: 'DELETE' });
+        loadDetailDependencies();
+        showToast('Dependency removed');
+    } catch (e) { showToast('Failed to remove', 'error'); }
+}
+
+function openDepPicker() {
+    const el = document.getElementById('dep-picker');
+    if (!el) return;
+    el.style.display = el.style.display === 'none' ? '' : 'none';
+    if (el.style.display !== 'none') {
+        el.innerHTML = '<input class="form-input th-dep-search" placeholder="Search items..." oninput="searchDeps(this.value)">'
+            + '<select class="form-select th-dep-type-select" id="dep-type-select">'
+            + '<option value="blocks">Blocks</option><option value="blocked_by">Blocked by</option><option value="relates_to">Relates to</option></select>'
+            + '<div id="dep-search-results" class="th-dep-results"></div>';
+    }
+}
+
+async function searchDeps(q) {
+    if (!q || q.length < 2 || !_currentSpaceId) return;
+    const el = document.getElementById('dep-search-results');
+    if (!el) return;
+    try {
+        const r = await apiFetch(`/api/search?q=${encodeURIComponent(q)}`);
+        const items = (r || []).filter(i => i.id !== _detailTask?.id).slice(0, 8);
+        el.innerHTML = items.map(i =>
+            '<div class="th-dep-result" onclick="addDependency(\'' + esc(i.id) + '\', document.getElementById(\'dep-type-select\').value)">'
+            + (i.custom_id ? '<span class="th-custom-id">' + esc(i.custom_id) + '</span> ' : '')
+            + esc(i.title) + '</div>'
+        ).join('') || '<div class="th-dep-empty">No results</div>';
+    } catch (e) { el.innerHTML = ''; }
+}
+
+
+
+
+// ══════════════════════════════════════════════════════════════
+// PHASE 2: Time Tracking
+// ══════════════════════════════════════════════════════════════
+
+let _activeTimer = null; // { itemId, startedAt }
+
+function initTimer() {
+    const saved = localStorage.getItem('teamhub_timer');
+    if (saved) {
+        try { _activeTimer = JSON.parse(saved); } catch (e) {}
+    }
+}
+initTimer();
+
+function startTimer(itemId) {
+    _activeTimer = { itemId, startedAt: Date.now() };
+    localStorage.setItem('teamhub_timer', JSON.stringify(_activeTimer));
+    renderTimeTracking();
+    showToast('Timer started');
+}
+
+async function stopTimer() {
+    if (!_activeTimer) return;
+    const elapsed = Math.round((Date.now() - _activeTimer.startedAt) / 60000); // minutes
+    if (elapsed > 0) {
+        try {
+            await apiFetch(`/api/items/${_activeTimer.itemId}/time-entries`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ duration: elapsed, started_at: new Date(_activeTimer.startedAt).toISOString() }),
+            });
+            showToast(`Logged ${elapsed}m`);
+        } catch (e) { showToast('Failed to log time', 'error'); }
+    }
+    _activeTimer = null;
+    localStorage.removeItem('teamhub_timer');
+    renderTimeTracking();
+    loadDetailTimeEntries();
+}
+
+async function logManualTime() {
+    if (!_detailTask) return;
+    const input = document.getElementById('manual-time-input');
+    const mins = parseInt(input?.value);
+    if (!mins || mins <= 0) return;
+    try {
+        await apiFetch(`/api/items/${_detailTask.id}/time-entries`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ duration: mins }),
+        });
+        input.value = '';
+        showToast(`Logged ${mins}m`);
+        loadDetailTimeEntries();
+    } catch (e) { showToast('Failed to log time', 'error'); }
+}
+
+async function deleteTimeEntry(entryId) {
+    try {
+        await apiFetch(`/api/time-entries/${entryId}`, { method: 'DELETE' });
+        loadDetailTimeEntries();
+    } catch (e) { showToast('Failed to delete', 'error'); }
+}
+
+async function loadDetailTimeEntries() {
+    if (!_detailTask) return;
+    const el = document.getElementById('detail-time-entries');
+    if (!el) return;
+    try {
+        const entries = await apiFetch(`/api/items/${_detailTask.id}/time-entries`);
+        let html = '';
+        let total = 0;
+        for (const e of entries) {
+            total += e.duration || 0;
+            const date = e.created_at ? new Date(e.created_at).toLocaleDateString() : '';
+            html += '<div class="th-time-entry">'
+                + '<span class="th-time-dur">' + formatDuration(e.duration) + '</span>'
+                + (e.description ? '<span class="th-time-desc">' + esc(e.description) + '</span>' : '')
+                + '<span class="th-time-date">' + date + '</span>'
+                + '<button class="th-dep-remove" onclick="deleteTimeEntry(\'' + esc(e.id) + '\')">&times;</button>'
+                + '</div>';
+        }
+        if (!html) html = '<div class="th-dep-empty">No time logged</div>';
+        el.innerHTML = html;
+
+        // Update total display
+        const totalEl = document.getElementById('time-total');
+        if (totalEl) totalEl.textContent = formatDuration(total);
+    } catch (e) {}
+}
+
+function formatDuration(mins) {
+    if (!mins) return '0m';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? h + 'h ' + m + 'm' : m + 'm';
+}
+
+function renderTimeTracking() {
+    const el = document.getElementById('detail-time-tracking');
+    if (!el || !_detailTask) return;
+    const isTimerRunning = _activeTimer && _activeTimer.itemId === _detailTask.id;
+    const est = _detailTask.time_estimate || 0;
+    const logged = _detailTask.time_logged || 0;
+
+    let html = '<div class="th-time-header">'
+        + '<span>Est: <input type="number" class="th-time-est-input" value="' + est + '" min="0" onchange="updateTimeEstimate(this.value)" title="Minutes"> min</span>'
+        + '<span>Logged: <span id="time-total">' + formatDuration(logged) + '</span></span>';
+    if (est > 0) {
+        const pct = Math.min(100, Math.round(logged / est * 100));
+        html += '<div class="th-time-bar"><div class="th-time-bar-fill" style="width:' + pct + '%"></div></div>';
+    }
+    html += '</div>';
+
+    if (isTimerRunning) {
+        html += '<button class="btn btn-small btn-accent" onclick="stopTimer()">Stop Timer</button>';
+    } else {
+        html += '<button class="btn btn-small btn-ghost" onclick="startTimer(\'' + esc(_detailTask.id) + '\')">Start Timer</button>';
+    }
+    html += '<div style="display:flex;gap:6px;align-items:center;margin-top:6px;">'
+        + '<input type="number" class="form-input th-time-est-input" id="manual-time-input" placeholder="mins" min="1" style="width:70px;">'
+        + '<button class="btn btn-small btn-ghost" onclick="logManualTime()">+ Log</button></div>';
+    html += '<div id="detail-time-entries" style="margin-top:8px;">Loading...</div>';
+    el.innerHTML = html;
+    loadDetailTimeEntries();
+}
+
+async function updateTimeEstimate(val) {
+    if (!_detailTask) return;
+    try {
+        await apiFetch(`/api/items/${_detailTask.id}/time-estimate`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ time_estimate: parseInt(val) || 0 }),
+        });
+    } catch (e) {}
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// PHASE 2: Custom Fields
+// ══════════════════════════════════════════════════════════════
+
+let _customFields = [];
+
+async function loadCustomFields(wsId) {
+    if (!wsId) return;
+    try {
+        _customFields = await apiFetch(`/api/workspaces/${wsId}/custom-fields`);
+    } catch (e) { _customFields = []; }
+}
+
+async function loadDetailCustomFields() {
+    if (!_detailTask) return;
+    const el = document.getElementById('detail-custom-fields');
+    if (!el) return;
+    try {
+        const values = await apiFetch(`/api/items/${_detailTask.id}/field-values`);
+        const valueMap = {};
+        for (const v of values) valueMap[v.field_id] = v;
+
+        let html = '';
+        for (const f of _customFields) {
+            const val = valueMap[f.id];
+            const curVal = val ? val.value : '';
+            html += '<div class="th-cf-row">'
+                + '<span class="th-cf-label">' + esc(f.name) + '</span>';
+            if (f.type === 'checkbox') {
+                html += '<input type="checkbox"' + (curVal === 'true' ? ' checked' : '') + ' onchange="setFieldValue(\'' + esc(f.id) + '\', this.checked ? \'true\' : \'false\')">';
+            } else if (f.type === 'dropdown' && f.options && f.options.length) {
+                html += '<select class="form-select th-cf-input" onchange="setFieldValue(\'' + esc(f.id) + '\', this.value)">'
+                    + '<option value="">—</option>';
+                for (const opt of f.options) {
+                    html += '<option value="' + esc(opt) + '"' + (curVal === opt ? ' selected' : '') + '>' + esc(opt) + '</option>';
+                }
+                html += '</select>';
+            } else if (f.type === 'date') {
+                html += '<input type="date" class="form-input th-cf-input" value="' + esc(curVal) + '" onchange="setFieldValue(\'' + esc(f.id) + '\', this.value)">';
+            } else if (f.type === 'number') {
+                html += '<input type="number" class="form-input th-cf-input" value="' + esc(curVal) + '" onblur="setFieldValue(\'' + esc(f.id) + '\', this.value)">';
+            } else {
+                html += '<input type="' + (f.type === 'url' ? 'url' : f.type === 'email' ? 'email' : 'text') + '" class="form-input th-cf-input" value="' + esc(curVal) + '" onblur="setFieldValue(\'' + esc(f.id) + '\', this.value)">';
+            }
+            html += '</div>';
+        }
+        if (!html) html = '<div class="th-dep-empty">No custom fields defined</div>';
+        el.innerHTML = html;
+    } catch (e) {
+        el.innerHTML = '';
+    }
+}
+
+async function setFieldValue(fieldId, value) {
+    if (!_detailTask) return;
+    try {
+        await apiFetch(`/api/items/${_detailTask.id}/field-values/${fieldId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value }),
+        });
+    } catch (e) { showToast('Failed to save field', 'error'); }
+}
+
+function renderSettingsCustomFields() {
+    const el = document.getElementById('settings-tab-custom-fields');
+    if (!el) return;
+    const isOwner = _isSettingsOwner();
+    let html = '<div class="settings-info-box">Define custom fields for items in this workspace. Fields appear in the detail panel.</div>';
+    html += '<div class="settings-list">';
+    for (const f of _customFields) {
+        html += '<div class="settings-item">'
+            + '<span class="settings-item-name">' + esc(f.name) + '</span>'
+            + '<span class="th-cf-type-badge">' + esc(f.type) + '</span>';
+        if (isOwner) {
+            html += '<button class="settings-delete" onclick="deleteCustomField(\'' + esc(f.id) + '\')">&times;</button>';
+        }
+        html += '</div>';
+    }
+    html += '</div>';
+    if (isOwner) {
+        html += '<div style="display:flex;gap:6px;margin-top:12px;align-items:flex-end;">'
+            + '<input class="form-input" id="cf-new-name" placeholder="Field name" style="flex:1;">'
+            + '<select class="form-select" id="cf-new-type" style="width:120px;">'
+            + '<option value="text">Text</option><option value="number">Number</option><option value="dropdown">Dropdown</option>'
+            + '<option value="date">Date</option><option value="checkbox">Checkbox</option>'
+            + '<option value="url">URL</option><option value="email">Email</option></select>'
+            + '<button class="btn btn-accent btn-small" onclick="createCustomField()">Add</button></div>';
+        html += '<div id="cf-dropdown-options" style="display:none;margin-top:8px;">'
+            + '<label class="form-label" style="font-size:11px;">Options (comma-separated)</label>'
+            + '<input class="form-input" id="cf-new-options" placeholder="Option 1, Option 2, ...">'
+            + '</div>';
+    }
+    el.innerHTML = html;
+    // Show/hide dropdown options
+    const typeSelect = document.getElementById('cf-new-type');
+    if (typeSelect) {
+        typeSelect.addEventListener('change', () => {
+            const optDiv = document.getElementById('cf-dropdown-options');
+            if (optDiv) optDiv.style.display = typeSelect.value === 'dropdown' ? '' : 'none';
+        });
+    }
+}
+
+async function createCustomField() {
+    if (!_currentSpaceId) return;
+    const name = document.getElementById('cf-new-name')?.value?.trim();
+    const type = document.getElementById('cf-new-type')?.value || 'text';
+    if (!name) return;
+    const options = type === 'dropdown' ? (document.getElementById('cf-new-options')?.value || '').split(',').map(s => s.trim()).filter(Boolean) : [];
+    try {
+        await apiFetch(`/api/workspaces/${_currentSpaceId}/custom-fields`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, type, options }),
+        });
+        await loadCustomFields(_currentSpaceId);
+        renderSettingsCustomFields();
+        showToast('Field created');
+    } catch (e) { showToast('Failed to create field', 'error'); }
+}
+
+async function deleteCustomField(fieldId) {
+    try {
+        await apiFetch(`/api/custom-fields/${fieldId}`, { method: 'DELETE' });
+        await loadCustomFields(_currentSpaceId);
+        renderSettingsCustomFields();
+        showToast('Field deleted');
+    } catch (e) { showToast('Failed to delete', 'error'); }
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// PHASE 2: Automations
+// ══════════════════════════════════════════════════════════════
+
+let _automations = [];
+
+async function loadAutomations(wsId) {
+    if (!wsId) return;
+    try {
+        _automations = await apiFetch(`/api/workspaces/${wsId}/automations`);
+    } catch (e) { _automations = []; }
+}
+
+function renderSettingsAutomations() {
+    const el = document.getElementById('settings-tab-automations');
+    if (!el) return;
+    const isOwner = _isSettingsOwner();
+    let html = '<div class="settings-info-box">Automations run when items change. When a trigger fires, the action executes automatically.</div>';
+    html += '<div class="settings-list">';
+    for (const a of _automations) {
+        html += '<div class="settings-item th-auto-item">'
+            + '<div class="th-auto-info">'
+            + '<span class="th-auto-name">' + esc(a.name) + '</span>'
+            + '<span class="th-auto-rule">When <b>' + esc(a.trigger_type.replace(/_/g, ' ')) + '</b> → <b>' + esc(a.action_type.replace(/_/g, ' ')) + '</b></span>'
+            + '</div>'
+            + '<label class="th-auto-toggle"><input type="checkbox"' + (a.active ? ' checked' : '') + ' onchange="toggleAutomation(\'' + esc(a.id) + '\', this.checked)"></label>';
+        if (isOwner) html += '<button class="settings-delete" onclick="deleteAutomation(\'' + esc(a.id) + '\')">&times;</button>';
+        html += '</div>';
+    }
+    if (!_automations.length) html += '<div class="th-dep-empty" style="padding:12px;">No automations yet</div>';
+    html += '</div>';
+    if (isOwner) {
+        html += '<div class="th-auto-form" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;">'
+            + '<div class="form-group"><label class="form-label">Name</label><input class="form-input" id="auto-name" placeholder="e.g. Auto-close done items"></div>'
+            + '<div style="display:flex;gap:8px;">'
+            + '<div class="form-group" style="flex:1;"><label class="form-label">When (Trigger)</label>'
+            + '<select class="form-select" id="auto-trigger">'
+            + '<option value="status_changed">Status Changed</option>'
+            + '<option value="priority_changed">Priority Changed</option>'
+            + '<option value="item_created">Item Created</option>'
+            + '<option value="due_date_passed">Due Date Passed</option></select></div>'
+            + '<div class="form-group" style="flex:1;"><label class="form-label">Then (Action)</label>'
+            + '<select class="form-select" id="auto-action">'
+            + '<option value="change_status">Change Status</option>'
+            + '<option value="change_priority">Change Priority</option>'
+            + '<option value="add_assignee">Add Assignee</option>'
+            + '<option value="send_notification">Send Notification</option>'
+            + '<option value="move_to_list">Move to List</option>'
+            + '<option value="add_tag">Add Tag</option></select></div></div>'
+            + '<div class="form-group"><label class="form-label">Trigger Config (JSON)</label><input class="form-input" id="auto-trigger-cfg" placeholder=\'{"to_status":"done"}\'></div>'
+            + '<div class="form-group"><label class="form-label">Action Config (JSON)</label><input class="form-input" id="auto-action-cfg" placeholder=\'{"status":"closed"}\'></div>'
+            + '<button class="btn btn-accent btn-small" onclick="createAutomation()">Create Automation</button></div>';
+    }
+    el.innerHTML = html;
+}
+
+async function createAutomation() {
+    if (!_currentSpaceId) return;
+    const name = document.getElementById('auto-name')?.value?.trim();
+    const trigger_type = document.getElementById('auto-trigger')?.value;
+    const action_type = document.getElementById('auto-action')?.value;
+    if (!name) return;
+    let trigger_config = {}, action_config = {};
+    try { trigger_config = JSON.parse(document.getElementById('auto-trigger-cfg')?.value || '{}'); } catch (e) {}
+    try { action_config = JSON.parse(document.getElementById('auto-action-cfg')?.value || '{}'); } catch (e) {}
+    try {
+        await apiFetch(`/api/workspaces/${_currentSpaceId}/automations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, trigger_type, trigger_config, action_type, action_config }),
+        });
+        await loadAutomations(_currentSpaceId);
+        renderSettingsAutomations();
+        showToast('Automation created');
+    } catch (e) { showToast('Failed to create', 'error'); }
+}
+
+async function toggleAutomation(autoId, active) {
+    try {
+        await apiFetch(`/api/automations/${autoId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ active }),
+        });
+    } catch (e) { showToast('Failed to update', 'error'); }
+}
+
+async function deleteAutomation(autoId) {
+    try {
+        await apiFetch(`/api/automations/${autoId}`, { method: 'DELETE' });
+        await loadAutomations(_currentSpaceId);
+        renderSettingsAutomations();
+        showToast('Automation deleted');
+    } catch (e) { showToast('Failed to delete', 'error'); }
 }

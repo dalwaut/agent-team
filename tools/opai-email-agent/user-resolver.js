@@ -33,6 +33,15 @@ const USER_MAP = {
     defaultTeamHubWs: '80753c5a-beb5-498c-8d71-393a0342af27',
     telegramNotify: 1666403499,
   },
+  'dallas@wautersedge.com': {
+    userId: '1c93c5fe-d304-40f2-9169-765d0d2b7638',
+    name: 'Dallas',
+    role: 'admin',
+    systemAccess: true,
+    workspace: null,
+    defaultTeamHubWs: '80753c5a-beb5-498c-8d71-393a0342af27',
+    telegramNotify: 1666403499,
+  },
 };
 
 /**
@@ -62,6 +71,8 @@ function canPerform(user, action) {
     case 'research':
     case 'explain':
     case 'diagnose':
+    case 'process-transcript':
+    case 'approve-transcript':
       return true; // All recognized users can do these
 
     case 'system-change':

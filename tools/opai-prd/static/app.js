@@ -532,6 +532,348 @@ async function submitMoveToProject() {
     } catch (e) { toast(e.message, 'error'); }
 }
 
+// ── Submit PRD ────────────────────────────────────────────────────────────────
+let _prdStep = 'entry';     // 'entry' | 'questions' | 'preview'
+let _prdQuestions = [];
+let _prdGeneratedContent = '';
+let _prdInferred = {};
+
+function openPrdModal() {
+    _prdStep = 'entry';
+    _prdQuestions = [];
+    _prdGeneratedContent = '';
+    _prdInferred = {};
+    document.getElementById('prd-title').value = '';
+    document.getElementById('prd-content').value = '';
+    document.getElementById('prd-analysis-result').classList.add('hidden');
+    _showPrdStep('entry');
+    showModal('prd-modal');
+}
+
+function _showPrdStep(step) {
+    _prdStep = step;
+    document.getElementById('prd-step-entry').classList.toggle('hidden', step !== 'entry');
+    document.getElementById('prd-step-questions').classList.toggle('hidden', step !== 'questions');
+    document.getElementById('prd-step-preview').classList.toggle('hidden', step !== 'preview');
+    document.getElementById('prd-analyze-btn').classList.toggle('hidden', step !== 'entry');
+    document.getElementById('prd-generate-btn').classList.toggle('hidden', step !== 'questions');
+    document.getElementById('prd-submit-btn').classList.toggle('hidden', step !== 'preview' && step !== 'entry');
+
+    // In entry mode, show submit only if analysis says content is ready
+    if (step === 'entry') {
+        document.getElementById('prd-submit-btn').classList.add('hidden');
+    }
+
+    // Update modal title
+    const titles = { entry: 'Submit PRD / Spec', questions: 'PRD Builder', preview: 'Review Generated PRD' };
+    document.getElementById('prd-modal-title').textContent = titles[step] || 'Submit PRD';
+}
+
+async function analyzePrd() {
+    const title = document.getElementById('prd-title').value.trim();
+    const content = document.getElementById('prd-content').value.trim();
+    if (!title) { toast('Title is required', 'error'); return; }
+    if (!content) { toast('Content is required', 'error'); return; }
+
+    const btn = document.getElementById('prd-analyze-btn');
+    btn.disabled = true;
+    btn.textContent = 'Analyzing...';
+
+    try {
+        const result = await apiFetch('/api/assist-prd', {
+            method: 'POST',
+            body: JSON.stringify({ content, step: 'analyze' }),
+        });
+
+        const analysisEl = document.getElementById('prd-analysis-result');
+        analysisEl.classList.remove('hidden');
+
+        const pct = result.completeness || 0;
+        document.getElementById('prd-completeness-pct').textContent = pct;
+        const fill = document.getElementById('prd-completeness-fill');
+        fill.style.width = pct + '%';
+        fill.style.background = pct >= 75 ? 'var(--green)' : pct >= 40 ? 'var(--yellow)' : 'var(--red)';
+
+        _prdInferred = result.inferred || {};
+
+        // Show inferred fields
+        const inferredEl = document.getElementById('prd-inferred');
+        const inferredParts = [];
+        if (_prdInferred.problem) inferredParts.push(`<strong>Problem:</strong> ${esc(_prdInferred.problem)}`);
+        if (_prdInferred.solution) inferredParts.push(`<strong>Solution:</strong> ${esc(_prdInferred.solution)}`);
+        if (_prdInferred.target) inferredParts.push(`<strong>Target:</strong> ${esc(_prdInferred.target)}`);
+        if (inferredParts.length) {
+            inferredEl.innerHTML = '<div class="prd-inferred-title">We detected:</div>' + inferredParts.map(p => `<div class="prd-inferred-item">${p}</div>`).join('');
+            inferredEl.classList.remove('hidden');
+        } else {
+            inferredEl.classList.add('hidden');
+        }
+
+        if (result.status === 'ready' || pct >= 75) {
+            // Content is good enough — show submit button
+            document.getElementById('prd-submit-btn').classList.remove('hidden');
+            toast('Content looks complete — ready to submit!');
+        } else if (result.questions && result.questions.length > 0) {
+            // Need more info — show questions
+            _prdQuestions = result.questions;
+            _renderPrdQuestions(result.questions);
+            _showPrdStep('questions');
+        } else {
+            document.getElementById('prd-submit-btn').classList.remove('hidden');
+        }
+    } catch (e) {
+        toast('Analysis failed: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Analyze Content';
+    }
+}
+
+function _renderPrdQuestions(questions) {
+    const container = document.getElementById('prd-questions-list');
+    container.innerHTML = questions.map(q => `
+        <div class="prd-question-block">
+            <label class="field-label">${esc(q.label)}</label>
+            <textarea class="field-input field-textarea small" id="prd-q-${esc(q.id)}"
+                placeholder="${esc(q.placeholder || '')}"></textarea>
+        </div>
+    `).join('');
+}
+
+async function generatePrd() {
+    const btn = document.getElementById('prd-generate-btn');
+    btn.disabled = true;
+    btn.textContent = 'Generating PRD...';
+
+    // Collect answers
+    const answers = {};
+    for (const q of _prdQuestions) {
+        const el = document.getElementById('prd-q-' + q.id);
+        if (el && el.value.trim()) {
+            answers[q.label || q.id] = el.value.trim();
+        }
+    }
+
+    // Include inferred context
+    if (_prdInferred.problem && !answers.problem) answers['Problem (inferred)'] = _prdInferred.problem;
+    if (_prdInferred.solution && !answers.solution) answers['Solution (inferred)'] = _prdInferred.solution;
+    if (_prdInferred.target && !answers.target) answers['Target Market (inferred)'] = _prdInferred.target;
+
+    try {
+        const result = await apiFetch('/api/assist-prd', {
+            method: 'POST',
+            body: JSON.stringify({
+                content: document.getElementById('prd-content').value.trim(),
+                answers,
+                step: 'generate',
+            }),
+        });
+
+        if (result.status === 'generated') {
+            _prdGeneratedContent = result.content;
+            if (result.title && !document.getElementById('prd-title').value.trim()) {
+                document.getElementById('prd-title').value = result.title;
+            }
+            // Render preview
+            document.getElementById('prd-preview-content').innerHTML =
+                `<pre class="prd-preview-pre">${esc(_prdGeneratedContent)}</pre>`;
+            _showPrdStep('preview');
+            toast('PRD generated! Review and submit.');
+        }
+    } catch (e) {
+        toast('Generation failed: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generate PRD';
+    }
+}
+
+async function submitPrdDirect() {
+    const title = document.getElementById('prd-title').value.trim();
+    let content = '';
+
+    if (_prdStep === 'preview' && _prdGeneratedContent) {
+        content = _prdGeneratedContent;
+    } else {
+        content = document.getElementById('prd-content').value.trim();
+    }
+
+    if (!title || !content) { toast('Title and content are required', 'error'); return; }
+
+    const btn = document.getElementById('prd-submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    try {
+        const result = await apiFetch('/api/submit-prd', {
+            method: 'POST',
+            body: JSON.stringify({ title, content }),
+        });
+        closeModal('prd-modal');
+        await refreshAll();
+        toast(`${result.name} submitted to pipeline (${result.document_type})`);
+    } catch (e) {
+        toast('Submit failed: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Submit to Pipeline';
+    }
+}
+
+// ── File Picker ──────────────────────────────────────────────────────────
+let _fpOpen = false;
+let _fpSelectedFile = null;   // { path, name, content, ext }
+let _fpCurrentPath = '';
+
+function toggleFilePicker() {
+    const panel = document.getElementById('fp-panel');
+    _fpOpen = !_fpOpen;
+    panel.classList.toggle('hidden', !_fpOpen);
+    const btn = document.getElementById('fp-toggle-btn');
+    btn.textContent = _fpOpen ? 'Close Browser' : 'Browse Files';
+    if (_fpOpen) {
+        _fpSelectedFile = null;
+        document.getElementById('fp-preview').classList.add('hidden');
+        document.getElementById('fp-actions').style.display = 'none';
+        fpNavigate('');  // load default dir
+    }
+}
+
+async function fpNavigate(path) {
+    _fpCurrentPath = path;
+    const list = document.getElementById('fp-list');
+    list.innerHTML = '<div class="fp-loading">Loading...</div>';
+    // Clear selection on navigate
+    _fpSelectedFile = null;
+    document.getElementById('fp-preview').classList.add('hidden');
+    document.getElementById('fp-actions').style.display = 'none';
+
+    try {
+        const data = await apiFetch('/api/browse?path=' + encodeURIComponent(path || '') + '&mode=all');
+        _fpCurrentPath = data.path;
+        fpRenderBreadcrumb(data.path);
+
+        let html = '';
+
+        // Up button
+        if (data.parent !== null && data.parent !== undefined) {
+            html += '<div class="fp-item fp-item-up" data-path="' + esc(data.parent) + '">' +
+                '<span class="fp-icon">&#8617;</span><span class="fp-name">..</span></div>';
+        }
+
+        if (data.items.length === 0 && data.parent === null) {
+            html += '<div class="fp-empty">No files found</div>';
+        }
+
+        for (const item of data.items) {
+            const icon = item.is_dir ? '&#128193;' : '&#128196;';
+            const size = item.is_dir ? '' : fpFormatSize(item.size);
+            const extBadge = (!item.is_dir && item.ext) ? '<span class="fp-ext">' + esc(item.ext) + '</span>' : '';
+            html += '<div class="fp-item' + (item.is_dir ? ' fp-item-dir' : ' fp-item-file') + '" ' +
+                'data-path="' + esc(item.path) + '" data-name="' + esc(item.name) + '" data-isdir="' + item.is_dir + '">' +
+                '<span class="fp-icon">' + icon + '</span>' +
+                '<span class="fp-name">' + esc(item.name) + '</span>' +
+                extBadge +
+                (size ? '<span class="fp-size">' + size + '</span>' : '') +
+                '</div>';
+        }
+
+        list.innerHTML = html;
+
+        // Bind: up
+        list.querySelectorAll('.fp-item-up').forEach(el => {
+            el.onclick = () => fpNavigate(el.getAttribute('data-path'));
+        });
+        // Bind: dirs — double-click to enter, single-click to enter too (simpler UX)
+        list.querySelectorAll('.fp-item-dir').forEach(el => {
+            el.onclick = () => fpNavigate(el.getAttribute('data-path'));
+        });
+        // Bind: files — single-click to select/preview
+        list.querySelectorAll('.fp-item-file').forEach(el => {
+            el.onclick = () => {
+                list.querySelectorAll('.fp-item').forEach(x => x.classList.remove('fp-selected-item'));
+                el.classList.add('fp-selected-item');
+                fpSelectFile(el.getAttribute('data-path'), el.getAttribute('data-name'));
+            };
+        });
+    } catch (e) {
+        list.innerHTML = '<div class="fp-empty">Failed to load: ' + esc(e.message) + '</div>';
+    }
+}
+
+function fpRenderBreadcrumb(relPath) {
+    const bc = document.getElementById('fp-breadcrumb');
+    if (!bc) return;
+    const parts = relPath ? relPath.split('/') : [];
+    let html = '<span class="fp-crumb fp-crumb-link" data-path="">Root</span>';
+    let built = '';
+    for (let i = 0; i < parts.length; i++) {
+        built += (i > 0 ? '/' : '') + parts[i];
+        html += '<span class="fp-crumb-sep">/</span>';
+        if (i === parts.length - 1) {
+            html += '<span class="fp-crumb fp-crumb-current">' + esc(parts[i]) + '</span>';
+        } else {
+            html += '<span class="fp-crumb fp-crumb-link" data-path="' + esc(built) + '">' + esc(parts[i]) + '</span>';
+        }
+    }
+    bc.innerHTML = html;
+    bc.querySelectorAll('.fp-crumb-link').forEach(el => {
+        el.onclick = () => fpNavigate(el.getAttribute('data-path'));
+    });
+}
+
+async function fpSelectFile(path, name) {
+    const previewEl = document.getElementById('fp-preview');
+    const previewContent = document.getElementById('fp-preview-content');
+    const previewName = document.getElementById('fp-preview-name');
+    const previewSize = document.getElementById('fp-preview-size');
+    const actionsEl = document.getElementById('fp-actions');
+
+    previewEl.classList.remove('hidden');
+    previewContent.textContent = 'Loading...';
+    previewName.textContent = name;
+    previewSize.textContent = '';
+    actionsEl.style.display = 'none';
+
+    try {
+        const data = await apiFetch('/api/browse/read?path=' + encodeURIComponent(path));
+        _fpSelectedFile = data;
+        previewName.textContent = data.name;
+        previewSize.textContent = fpFormatSize(data.size);
+        // Truncate preview to first 3000 chars
+        const preview = data.content.length > 3000 ? data.content.substring(0, 3000) + '\n\n... (truncated)' : data.content;
+        previewContent.textContent = preview;
+        actionsEl.style.display = 'flex';
+    } catch (e) {
+        previewContent.textContent = 'Error: ' + e.message;
+        _fpSelectedFile = null;
+    }
+}
+
+function fpLoadFile() {
+    if (!_fpSelectedFile) return;
+    // Populate textarea
+    document.getElementById('prd-content').value = _fpSelectedFile.content;
+    // Auto-fill title from filename (strip extension)
+    const titleInput = document.getElementById('prd-title');
+    if (!titleInput.value.trim()) {
+        const titleFromFile = _fpSelectedFile.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+        titleInput.value = titleFromFile;
+    }
+    // Collapse picker
+    _fpOpen = false;
+    document.getElementById('fp-panel').classList.add('hidden');
+    document.getElementById('fp-toggle-btn').textContent = 'Browse Files';
+    toast('File loaded: ' + _fpSelectedFile.name);
+}
+
+function fpFormatSize(bytes) {
+    if (!bytes) return '';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function statusLabel(s) {
     return { pending: 'Pending', evaluated: 'Evaluated', reviewed: 'Reviewed',

@@ -1,0 +1,62 @@
+You are generating a DELIVERY.md — a delivery package document for a completed project build.
+
+## Input
+
+You will receive:
+1. Project metadata (name, slug, description, creation date)
+2. Build summary (what was built, files created, services started)
+3. Review results (findings, iterations, final status)
+4. Screenshot count (how many screenshots were captured)
+5. The project's PRD and SPEC summaries
+
+## Output
+
+Generate a DELIVERY.md markdown document with these sections:
+
+### Executive Summary
+- 2-3 sentences: what was built, why, and current status
+- Key metrics: files created, review iterations, time to build
+
+### Architecture Overview
+- Brief description of the system architecture
+- Key components and how they connect
+- Tech stack used
+
+### Features Delivered
+- Bulleted list of every feature implemented
+- For each: one-line description of what it does
+
+### How to Use
+- Step-by-step instructions to run/access the project
+- Any required environment variables or setup steps
+- URLs/ports if applicable
+- Example commands or API calls
+
+### Review Summary
+- Number of review iterations
+- P0/P1 findings found and resolved
+- Final review status (pass/fail)
+- Any known P2 issues deferred
+
+### Screenshots
+- Note how many screenshots are available
+- Where to find them (file paths)
+
+### Known Limitations
+- Honest assessment of what's not perfect
+- Features deferred to future phases
+- Edge cases not yet handled
+
+### Next Steps
+- Recommended follow-up actions
+- Phase 2 features from the spec
+- Maintenance considerations
+
+## Rules
+
+- Be honest and specific — this is an internal delivery document, not marketing copy.
+- Include actual file paths and commands, not placeholders.
+- Keep it concise — aim for 100-200 lines total.
+- Use checkboxes for actionable next steps.
+
+Output raw markdown directly — no code fences wrapping the document.

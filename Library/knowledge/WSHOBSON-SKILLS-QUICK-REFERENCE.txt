@@ -1,0 +1,325 @@
+================================================================================
+WSHOBSON PLUGINS — QUICK REFERENCE LOOKUP TABLE
+================================================================================
+
+SEARCH BY TECHNOLOGY
+================================================================================
+
+PYTHON
+  developer-essentials: error-handling-patterns, debugging-strategies
+  python-development: [16 skills total]
+    - async-python-patterns, python-testing-patterns
+    - python-type-safety, python-observability
+    - python-resilience, python-packaging
+  backend-development: temporal-python-testing
+
+JAVASCRIPT / TYPESCRIPT / NODE.JS
+  javascript-typescript: [4 skills]
+    - javascript-testing-patterns, nodejs-backend-patterns
+    - typescript-advanced-types, modern-javascript-patterns
+  frontend-mobile-development: [4 skills]
+    - nextjs-app-router-patterns, react-native-architecture
+    - react-state-management, tailwind-design-system
+
+KUBERNETES / CONTAINER ORCHESTRATION
+  kubernetes-operations: [4 skills]
+    - gitops-workflow, helm-chart-scaffolding
+    - k8s-manifest-generator, k8s-security-policies
+  cloud-infrastructure: istio-traffic-management, linkerd-patterns, mtls-configuration
+
+DATA & ANALYTICS
+  data-engineering: [4 skills]
+    - airflow-dag-patterns, dbt-transformation-patterns
+    - spark-optimization, data-quality-frameworks
+  business-analytics: [2 skills]
+    - data-storytelling, kpi-dashboard-design
+
+TESTING & QUALITY ASSURANCE
+  developer-essentials: [3+ testing skills]
+    - e2e-testing-patterns, code-review-excellence, debugging-strategies
+  python-development: python-testing-patterns
+  javascript-typescript: javascript-testing-patterns
+  accessibility-compliance: [2 skills]
+    - screen-reader-testing, wcag-audit-patterns
+
+SECURITY & COMPLIANCE
+  security-scanning: [5 skills]
+    - stride-analysis-patterns, attack-tree-construction
+    - sast-configuration, security-requirement-extraction
+    - threat-mitigation-mapping
+  blockchain-web3: solidity-security
+  payment-processing: pci-compliance
+  hr-legal-compliance: gdpr-data-handling
+
+CI/CD & DEPLOYMENT
+  cicd-automation: [4 skills]
+    - deployment-pipeline-design, github-actions-templates
+    - gitlab-ci-patterns, secrets-management
+  kubernetes-operations: gitops-workflow
+
+API DEVELOPMENT
+  backend-development: api-design-principles
+  api-scaffolding: fastapi-templates
+
+DATABASES
+  database-design: postgresql
+  backend-development: event-store-design, projection-patterns
+  framework-migration: database-migration
+
+MICROSERVICES & DISTRIBUTED SYSTEMS
+  backend-development: [5+ skills]
+    - microservices-patterns, cqrs-implementation
+    - saga-orchestration, workflow-orchestration-patterns
+    - event-store-design
+  cloud-infrastructure: service-mesh-observability
+
+MACHINE LEARNING / AI / LLM
+  llm-application-dev: [8 skills]
+    - rag-implementation, embedding-strategies
+    - langchain-architecture, prompt-engineering-patterns
+    - llm-evaluation, similarity-search-patterns
+    - hybrid-search-implementation, vector-index-tuning
+  machine-learning-ops: ml-pipeline-workflow
+
+INFRASTRUCTURE & CLOUD
+  cloud-infrastructure: [8 skills]
+    - terraform-module-library, cost-optimization
+    - multi-cloud-architecture, hybrid-cloud-networking
+  observability-monitoring: [4 skills]
+    - prometheus-configuration, grafana-dashboards
+    - distributed-tracing, slo-implementation
+
+UI/UX DESIGN
+  ui-design: [9 skills]
+    - design-system-patterns, responsive-design
+    - mobile-android-design, mobile-ios-design
+    - react-native-design, accessibility-compliance
+    - interaction-design, visual-design-foundations
+    - web-component-design
+
+BLOCKCHAIN / WEB3 / CRYPTO
+  blockchain-web3: [4 skills]
+    - solidity-security, web3-testing
+    - defi-protocol-templates, nft-standards
+
+TEAM COORDINATION & MANAGEMENT
+  agent-teams: [6 skills]
+    - multi-reviewer-patterns, parallel-debugging
+    - parallel-feature-development, task-coordination-strategies
+    - team-communication-protocols, team-composition-patterns
+
+================================================================================
+SEARCH BY SKILL NAME (ALL 146 SKILLS)
+================================================================================
+
+Sorted A-Z for easy lookup:
+
+accessibility-compliance (ui-design)
+airflow-dag-patterns (data-engineering)
+angular-migration (framework-migration)
+anti-reversing-techniques (reverse-engineering)
+api-design-principles (backend-development)
+architecture-decision-records (documentation-generation)
+architecture-patterns (backend-development)
+attack-tree-construction (security-scanning)
+auth-implementation-patterns (developer-essentials)
+async-python-patterns (python-development)
+backtesting-frameworks (quantitative-trading)
+bazel-build-optimization (developer-essentials)
+bash-defensive-patterns (shell-scripting)
+bats-testing-patterns (shell-scripting)
+binary-analysis-patterns (reverse-engineering)
+billing-automation (payment-processing)
+c-sharp-net-backend (dotnet-contribution)
+changelog-automation (documentation-generation)
+code-review-excellence (developer-essentials)
+competitive-landscape (startup-business-analyst)
+context-driven-development (conductor)
+cost-optimization (cloud-infrastructure)
+cqrs-implementation (backend-development)
+data-storytelling (business-analytics)
+data-quality-frameworks (data-engineering)
+database-migration (framework-migration)
+dbt-transformation-patterns (data-engineering)
+debugging-strategies (developer-essentials)
+defi-protocol-templates (blockchain-web3)
+dependency-upgrade (framework-migration)
+design-system-patterns (ui-design)
+distributed-tracing (observability-monitoring)
+dotnet-backend-patterns (dotnet-contribution)
+e2e-testing-patterns (developer-essentials)
+embedding-strategies (llm-application-dev)
+employment-contract-templates (hr-legal-compliance)
+error-handling-patterns (developer-essentials)
+event-store-design (backend-development)
+fastapi-templates (api-scaffolding)
+gdpr-data-handling (hr-legal-compliance)
+git-advanced-workflows (developer-essentials)
+gitops-workflow (kubernetes-operations)
+godot-gdscript-patterns (game-development)
+go-concurrency-patterns (systems-programming)
+grafana-dashboards (observability-monitoring)
+helm-chart-scaffolding (kubernetes-operations)
+hybrid-cloud-networking (cloud-infrastructure)
+hybrid-search-implementation (llm-application-dev)
+incident-runbook-templates (incident-response)
+interaction-design (ui-design)
+istio-traffic-management (cloud-infrastructure)
+javascript-testing-patterns (javascript-typescript)
+k8s-manifest-generator (kubernetes-operations)
+k8s-security-policies (kubernetes-operations)
+kpi-dashboard-design (business-analytics)
+langchain-architecture (llm-application-dev)
+linkerd-patterns (cloud-infrastructure)
+llm-evaluation (llm-application-dev)
+market-sizing-analysis (startup-business-analyst)
+memory-forensics (reverse-engineering)
+memory-safety-patterns (systems-programming)
+microservices-patterns (backend-development)
+ml-pipeline-workflow (machine-learning-ops)
+mobile-android-design (ui-design)
+mobile-ios-design (ui-design)
+modern-javascript-patterns (javascript-typescript)
+mtls-configuration (cloud-infrastructure)
+multi-cloud-architecture (cloud-infrastructure)
+multi-reviewer-patterns (agent-teams)
+nextjs-app-router-patterns (frontend-mobile-development)
+nft-standards (blockchain-web3)
+nodejs-backend-patterns (javascript-typescript)
+nx-workspace-patterns (developer-essentials)
+on-call-handoff-patterns (incident-response)
+openapi-spec-generation (documentation-generation)
+parallel-debugging (agent-teams)
+parallel-feature-development (agent-teams)
+paypal-integration (payment-processing)
+pci-compliance (payment-processing)
+postmortem-writing (incident-response)
+postgresql (database-design)
+prometheus-configuration (observability-monitoring)
+prompt-engineering-patterns (llm-application-dev)
+projection-patterns (backend-development)
+protocol-reverse-engineering (reverse-engineering)
+python-anti-patterns (python-development)
+python-background-jobs (python-development)
+python-code-style (python-development)
+python-configuration (python-development)
+python-design-patterns (python-development)
+python-error-handling (python-development)
+python-observability (python-development)
+python-packaging (python-development)
+python-performance-optimization (python-development)
+python-project-structure (python-development)
+python-resilience (python-development)
+python-resource-management (python-development)
+python-testing-patterns (python-development)
+python-type-safety (python-development)
+rag-implementation (llm-application-dev)
+react-modernization (framework-migration)
+react-native-architecture (frontend-mobile-development)
+react-native-design (ui-design)
+react-state-management (frontend-mobile-development)
+responsive-design (ui-design)
+risk-metrics-calculation (quantitative-trading)
+rust-async-patterns (systems-programming)
+saga-orchestration (backend-development)
+sast-configuration (security-scanning)
+screen-reader-testing (accessibility-compliance)
+secrets-management (cicd-automation)
+security-requirement-extraction (security-scanning)
+shellcheck-configuration (shell-scripting)
+similarity-search-patterns (llm-application-dev)
+slo-implementation (observability-monitoring)
+solidity-security (blockchain-web3)
+spark-optimization (data-engineering)
+startup-financial-modeling (startup-business-analyst)
+startup-metrics-framework (startup-business-analyst)
+stride-analysis-patterns (security-scanning)
+stripe-integration (payment-processing)
+tailwind-design-system (frontend-mobile-development)
+task-coordination-strategies (agent-teams)
+team-communication-protocols (agent-teams)
+team-composition-analysis (startup-business-analyst)
+team-composition-patterns (agent-teams)
+temporal-python-testing (backend-development)
+threat-mitigation-mapping (security-scanning)
+track-management (conductor)
+turborepo-caching (developer-essentials)
+typescript-advanced-types (javascript-typescript)
+unity-ecs-patterns (game-development)
+uv-package-manager (python-development)
+vector-index-tuning (llm-application-dev)
+visual-design-foundations (ui-design)
+wcag-audit-patterns (accessibility-compliance)
+web-component-design (ui-design)
+web3-testing (blockchain-web3)
+workflow-orchestration-patterns (backend-development)
+workflow-patterns (conductor)
+
+================================================================================
+PLUGINS RANKED BY SKILL COUNT
+================================================================================
+
+16 | python-development
+11 | developer-essentials
+ 9 | backend-development
+ 9 | ui-design
+ 8 | cloud-infrastructure
+ 8 | llm-application-dev
+ 6 | agent-teams
+ 5 | security-scanning
+ 5 | startup-business-analyst
+ 4 | cicd-automation
+ 4 | kubernetes-operations
+ 4 | javascript-typescript
+ 4 | blockchain-web3
+ 4 | data-engineering
+ 4 | observability-monitoring
+ 4 | payment-processing
+ 4 | reverse-engineering
+ 4 | framework-migration
+ 4 | frontend-mobile-development
+ 3 | conductor
+ 3 | documentation-generation
+ 3 | incident-response
+ 3 | shell-scripting
+ 3 | systems-programming
+ 2 | accessibility-compliance
+ 2 | business-analytics
+ 2 | game-development
+ 2 | hr-legal-compliance
+ 2 | quantitative-trading
+ 1 | api-scaffolding
+ 1 | database-design
+ 1 | dotnet-contribution
+ 1 | machine-learning-ops
+
+================================================================================
+USE THESE FILES FOR:
+================================================================================
+
+WSHOBSON-SKILLS-SUMMARY.md
+  → Quick reference by domain
+  → Executive summary with insights
+  → Top 10 plugins
+  → Recommendations by use case
+
+wshobson-skills-catalog.txt
+  → Full descriptions of all plugins and skills
+  → Organized by domain
+  → Complete text reference
+  → Copy/paste friendly
+
+wshobson-skills-catalog.csv
+  → Machine-readable format
+  → Import into spreadsheets
+  → Filter/sort by plugin or skill
+  → Integration with tools
+
+This quick reference (WSHOBSON-SKILLS-QUICK-REFERENCE.txt)
+  → Find plugin by technology
+  → Alphabetical skill index
+  → Ranking table
+
+================================================================================
+TOTAL SKILLS: 146 | ACTIVE PLUGINS: 46 | EMPTY STUBS: 26
+================================================================================

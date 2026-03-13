@@ -1,0 +1,175 @@
+{
+    "_meta": {
+        "format": "structured-image-prompt-v1",
+        "description": "Example filled prompts demonstrating the image-prompt-template.json format."
+    },
+    "examples": [
+        {
+            "name": "Developer at Standing Desk — Golden Hour",
+            "subject": {
+                "description": "Software developer working at a standing desk",
+                "details": "Mid-30s, dark hoodie, focused expression, hands on mechanical keyboard, dual monitors showing code editor",
+                "count": 1
+            },
+            "angle": {
+                "type": "over-the-shoulder",
+                "description": "Looking past the developer's shoulder toward the glowing monitors"
+            },
+            "focus": {
+                "type": "shallow-dof",
+                "focal_point": "The code on the primary monitor",
+                "blur_intensity": "moderate"
+            },
+            "background": {
+                "setting": "Modern home office with floor-to-ceiling windows",
+                "elements": [
+                    "city skyline at dusk",
+                    "designer desk lamp",
+                    "small potted succulent",
+                    "bookshelf"
+                ],
+                "depth": "deep",
+                "atmosphere": "warm ambient glow from sunset filtering through glass"
+            },
+            "lighting": {
+                "type": "golden-hour",
+                "direction": "side",
+                "intensity": "soft",
+                "color_temperature": "warm"
+            },
+            "style": {
+                "medium": "photograph",
+                "aesthetic": "cinematic",
+                "color_palette": "Deep navy blues contrasted with warm amber and gold tones"
+            },
+            "composition": {
+                "rule": "rule-of-thirds",
+                "aspect_ratio": "16:9",
+                "camera_lens": "portrait-85mm"
+            },
+            "text_overlay": {
+                "enabled": false
+            },
+            "mood": "Focused, productive, aspirational",
+            "quality_modifiers": [
+                "ultra-detailed",
+                "cinematic depth of field",
+                "8k"
+            ],
+            "negative_prompt": "cluttered desk, harsh fluorescent lighting, cartoon, low quality"
+        },
+        {
+            "name": "Futuristic Product Launch — Hero Shot",
+            "subject": {
+                "description": "A sleek, minimalist smart device floating in mid-air",
+                "details": "Matte black finish, curved edges, softly glowing edge display, subtle reflection on underside",
+                "count": 1
+            },
+            "angle": {
+                "type": "low-angle",
+                "description": "Slightly below center looking up at the device, creating a sense of power and scale"
+            },
+            "focus": {
+                "type": "tack-sharp",
+                "focal_point": "The device itself — every edge and surface detail",
+                "blur_intensity": "subtle"
+            },
+            "background": {
+                "setting": "Abstract infinite studio void",
+                "elements": [
+                    "faint light beams",
+                    "ultra-fine particle dust",
+                    "subtle hexagonal grid pattern"
+                ],
+                "depth": "infinite",
+                "atmosphere": "Dark, with controlled gradient from deep black to dark indigo"
+            },
+            "lighting": {
+                "type": "studio",
+                "direction": "three-point",
+                "intensity": "hard",
+                "color_temperature": "cool"
+            },
+            "style": {
+                "medium": "3d-render",
+                "aesthetic": "hyperrealistic",
+                "color_palette": "Obsidian black, electric indigo highlights, white accent lighting"
+            },
+            "composition": {
+                "rule": "centered",
+                "aspect_ratio": "1:1",
+                "camera_lens": "standard-50mm"
+            },
+            "text_overlay": {
+                "enabled": true,
+                "content": "Coming 2026",
+                "font_style": "bold-sans",
+                "position": "bottom-center",
+                "color": "#FFFFFF"
+            },
+            "mood": "Premium, mysterious, cutting-edge",
+            "quality_modifiers": [
+                "product photography",
+                "ultra-detailed",
+                "studio quality",
+                "8k"
+            ],
+            "negative_prompt": "busy background, warm tones, lens flare, noise, artifacts"
+        },
+        {
+            "name": "Street Photography — Rainy City Night",
+            "subject": {
+                "description": "A lone pedestrian walking under a neon-lit awning",
+                "details": "Gender-neutral silhouette, holding a translucent umbrella, carrying a bag, reflected by wet pavement",
+                "count": 1
+            },
+            "angle": {
+                "type": "eye-level",
+                "description": "Street-level framing, shot from across the intersection"
+            },
+            "focus": {
+                "type": "selective",
+                "focal_point": "The figure and their umbrella",
+                "blur_intensity": "moderate"
+            },
+            "background": {
+                "setting": "Urban city street at night",
+                "elements": [
+                    "neon signs in Japanese and English",
+                    "steam rising from a grate",
+                    "passing taxi",
+                    "puddles reflecting neon"
+                ],
+                "depth": "medium",
+                "atmosphere": "Heavy rain, mist, neon glow bleeding into the wet street"
+            },
+            "lighting": {
+                "type": "neon",
+                "direction": "ambient",
+                "intensity": "medium",
+                "color_temperature": "mixed"
+            },
+            "style": {
+                "medium": "photograph",
+                "aesthetic": "cinematic",
+                "color_palette": "Vivid magenta, teal, and amber neon against deep charcoal rain"
+            },
+            "composition": {
+                "rule": "leading-lines",
+                "aspect_ratio": "3:2",
+                "camera_lens": "wide-angle"
+            },
+            "text_overlay": {
+                "enabled": false
+            },
+            "mood": "Solitary, atmospheric, cinematic melancholy",
+            "quality_modifiers": [
+                "award-winning street photography",
+                "film grain",
+                "35mm",
+                "ultra-detailed"
+            ],
+            "negative_prompt": "daytime, sunny, crowded scene, flat lighting, over-saturated"
+        }
+    ]
+}

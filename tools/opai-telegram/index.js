@@ -28,7 +28,7 @@ const express = require('express');
 const { autoRetry } = require('@grammyjs/auto-retry');
 
 const { registerCommands } = require('./handlers/commands');
-const { registerMessageHandler } = require('./handlers/messages');
+const { registerMessageHandler, registerVoiceHandler } = require('./handlers/messages');
 const { registerCallbacks } = require('./handlers/callbacks');
 const { isWhitelisted } = require('./access-control');
 const { recoverJobs } = require('./job-manager');
@@ -85,6 +85,11 @@ bot.use(async (ctx, next) => {
     const chatType = ctx.chat?.type || 'unknown';
     const threadId = ctx.message.message_thread_id || '-';
     console.log(`[TG] [${chatType}:${threadId}] ${user}: "${ctx.message.text.substring(0, 80)}"`);
+  } else if (ctx.message?.voice) {
+    const user = ctx.from?.first_name || ctx.from?.username || 'unknown';
+    const chatType = ctx.chat?.type || 'unknown';
+    const threadId = ctx.message.message_thread_id || '-';
+    console.log(`[TG] [${chatType}:${threadId}] ${user}: [voice ${ctx.message.voice.duration}s]`);
   }
   return next();
 });
@@ -96,7 +101,10 @@ registerCommands(bot);
 // 2. Callback queries (inline keyboard buttons)
 registerCallbacks(bot);
 
-// 3. Free-text messages last (catch-all)
+// 3. Voice messages (transcribe → process as text)
+registerVoiceHandler(bot);
+
+// 4. Free-text messages last (catch-all)
 registerMessageHandler(bot);
 
 // --- Error Handler ---
@@ -182,8 +190,12 @@ async function start() {
       // Start proactive alerts if admin group is configured
       const adminGroupId = process.env.ADMIN_GROUP_ID;
       if (adminGroupId) {
-        const alertThreadId = process.env.ALERT_THREAD_ID ? Number(process.env.ALERT_THREAD_ID) : null;
-        startAlerts(bot, Number(adminGroupId), alertThreadId);
+        startAlerts(bot, Number(adminGroupId), {
+          alertThreadId: process.env.ALERT_THREAD_ID ? Number(process.env.ALERT_THREAD_ID) : null,
+          serverStatusThreadId: process.env.SERVER_STATUS_THREAD_ID ? Number(process.env.SERVER_STATUS_THREAD_ID) : null,
+          personalChatId: process.env.PERSONAL_CHAT_ID ? Number(process.env.PERSONAL_CHAT_ID) : null,
+          teamGroupId: process.env.WAUTERSEDGE_GROUP_ID ? Number(process.env.WAUTERSEDGE_GROUP_ID) : null,
+        });
       }
     });
   }

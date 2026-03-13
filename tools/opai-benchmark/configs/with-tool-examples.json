@@ -1,4 +1,0 @@
-{
-  "_description": "With tool use examples — adds input_examples to MCP tool definitions",
-  "_notes": "For MCP scenarios, this config points to the enhanced MCP server with input_examples. For non-MCP scenarios, no change from baseline."
-}

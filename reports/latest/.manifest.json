@@ -1,69 +1,44 @@
 {
   "files": {
-    "dep_scanner.md": {
-      "squad": "security_quick",
-      "date": "2026-02-20",
-      "updated": "2026-02-21T00:35:15Z"
+    "executor_safe.md": {
+      "squad": "evolve",
+      "date": "2026-03-04",
+      "updated": "2026-03-04T09:47:51Z"
     },
-    "report_dispatcher.md": {
-      "squad": "tools",
-      "date": "2026-02-21",
-      "updated": "2026-02-22T04:09:25Z"
+    "accuracy.md": {
+      "squad": "evolve",
+      "date": "2026-03-04",
+      "updated": "2026-03-04T09:47:51Z"
+    },
+    "reviewer.md": {
+      "squad": "evolve",
+      "date": "2026-03-04",
+      "updated": "2026-03-04T09:47:51Z"
+    },
+    "health.md": {
+      "squad": "evolve",
+      "date": "2026-03-04",
+      "updated": "2026-03-04T09:47:51Z"
     },
     "security.md": {
-      "squad": "auto_safe",
-      "date": "2026-02-23",
-      "updated": "2026-02-24T05:54:16Z"
-    },
-    "secrets_detector.md": {
-      "squad": "security_quick",
-      "date": "2026-02-20",
-      "updated": "2026-02-21T00:35:15Z"
+      "squad": "evolve",
+      "date": "2026-03-04",
+      "updated": "2026-03-04T09:47:51Z"
     },
     "_run_summary.md": {
       "squad": "evolve",
-      "date": "2026-02-22",
-      "updated": "2026-02-22T22:51:14Z"
+      "date": "2026-03-04",
+      "updated": "2026-03-04T09:47:51Z"
     },
-    "incident_responder.md": {
-      "squad": "tools",
-      "date": "2026-02-21",
-      "updated": "2026-02-22T04:09:25Z"
-    },
-    "tools_monitor.md": {
-      "squad": "tools",
-      "date": "2026-02-21",
-      "updated": "2026-02-22T04:09:25Z"
+    "executor_safe_result.md": {
+      "squad": "evolve",
+      "date": "2026-03-04",
+      "updated": "2026-03-04T09:47:51Z"
     },
     "self_assessment.md": {
       "squad": "evolve",
-      "date": "2026-02-22",
-      "updated": "2026-02-22T22:51:14Z"
-    },
-    "evolve_safe_plan.md": {
-      "squad": "evolve",
-      "date": "2026-02-22",
-      "updated": "2026-02-22T22:51:14Z"
-    },
-    "executor_safe.md": {
-      "squad": "auto_safe",
-      "date": "2026-02-23",
-      "updated": "2026-02-24T05:54:16Z"
-    },
-    "accuracy.md": {
-      "squad": "auto_safe",
-      "date": "2026-02-23",
-      "updated": "2026-02-24T05:54:16Z"
-    },
-    "reviewer.md": {
-      "squad": "auto_safe",
-      "date": "2026-02-23",
-      "updated": "2026-02-24T05:54:16Z"
-    },
-    "health.md": {
-      "squad": "auto_safe",
-      "date": "2026-02-23",
-      "updated": "2026-02-24T05:54:16Z"
+      "date": "2026-03-04",
+      "updated": "2026-03-04T09:47:51Z"
     }
   }
 }

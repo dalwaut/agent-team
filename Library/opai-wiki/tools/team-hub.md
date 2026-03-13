@@ -1,7 +1,7 @@
 # OPAI Team Hub
-> Last updated: 2026-03-02 (v3.5 Workers workspace, Engine HITL integration, live item sync, Telegram tab, space reorder) | Source: `tools/opai-team-hub/`
+> Last updated: 2026-03-12 (Hub Model: multi-tenant hubs with shared statuses/tags/members, hub-level permissions, All Tasks view) | Source: `tools/opai-team-hub/`, `tools/shared/teamhub_client.py`
 
-ClickUp-style task and project management system built into OPAI. Provides workspace-based project tracking with folders, lists, tags, assignments, comments, dashboards, Discord integration, and a cross-workspace AI assistant. Includes a per-user ClickUp import pipeline with live SSE progress streaming, a ClickUp API proxy for transition continuity, and a comprehensive internal MCP API for programmatic workspace management.
+ClickUp-style task and project management system built into OPAI. Provides **hub-based** project tracking where workspaces (spaces) are grouped under a hub with shared statuses, tags, and team membership. Includes folders, lists, assignments, comments, dashboards, Discord integration, a cross-workspace AI assistant, task dependencies with blocking detection, an SVG Gantt chart, workspace-scoped custom fields, per-item time tracking with live timer, and configurable automations. Also features a per-user ClickUp import pipeline with live SSE progress streaming, a ClickUp API proxy for transition continuity, and a comprehensive internal MCP API for programmatic workspace management.
 
 ## Overview
 
@@ -14,7 +14,7 @@ ClickUp-style task and project management system built into OPAI. Provides works
 | **Frontend** | Vanilla JS SPA (`static/index.html`, `app.js`, `style.css`) |
 | **Service** | `opai-team-hub` (systemd user unit) |
 | **Caddy route** | `/team-hub/` → `localhost:8089` |
-| **Version** | 2.6.0 |
+| **Version** | 3.0.0 |
 
 ## Architecture
 
@@ -30,23 +30,46 @@ Web UI  ──→ JWT Auth ───→ REST API ──→ Supabase
 MCP/Agents ──→ Internal Workspace API ──→ Supabase
 ```
 
-Six layers:
-1. **Web UI** — SPA with home dashboard, board/list/calendar views, detail panel, search, notifications, settings modal, member management, AI panel
+### Hub Model (v3.5)
+
+```
+Hub (e.g. "Water's Edge")
+├── Shared Statuses (hub-level, apply to all spaces)
+├── Shared Tags (hub-level, apply to all spaces)
+├── Members + Permissions (hub-level, 16 granular permissions)
+├── Space: OPAI Workers
+│   ├── Folder → Lists → Items
+│   └── ...
+├── Space: Client Projects
+│   └── ...
+└── Space: Marketing
+    └── ...
+```
+
+A **hub** is the top-level organizational entity. Workspaces (spaces) are bound to a hub via `hub_id`. Statuses and tags can be hub-scoped (`hub_id` set, `workspace_id` NULL) — these apply across all spaces in the hub. Members are managed at the hub level with role-based access (admin/member) plus 16 granular permission flags.
+
+Seven layers:
+1. **Web UI** — SPA with home dashboard, board/list/calendar/gantt views, detail panel, subtasks, checklists, dependencies, custom fields, time tracking, favorites, inline editing, search, notifications, settings modal, member management, AI panel
 2. **AI Panel** — Cross-workspace conversational assistant using Claude CLI, personalized by user identity
 3. **Discord Bridge** — Internal (unauthenticated) endpoints for the Discord bot to create items, search, and resolve users
 4. **MCP/Agent API** — Internal workspace-scoped endpoints for programmatic access (MCP tools, Discord AI, agents)
 5. **ClickUp Import** — Per-user API key-based import with SSE streaming progress (replaces old system-wide migration)
 6. **ClickUp Proxy** — Passthrough to ClickUp API for transition period
+7. **Automations Engine** — Server-side rule evaluation on item create/update with depth-limited cascading (max 3), cron-fired due date checks
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `tools/opai-team-hub/app.py` | FastAPI entrypoint, mounts 4 routers + static files |
+| `tools/opai-team-hub/app.py` | FastAPI entrypoint, mounts 8 routers + static files |
 | `tools/opai-team-hub/config.py` | Env config: server, Supabase, ClickUp, paths |
-| `tools/opai-team-hub/routes_api.py` | Core API: workspaces, items, tags, assignments, search, members, Discord settings, ClickUp import, internal endpoints |
-| `tools/opai-team-hub/routes_spaces.py` | Hierarchy API: folders, lists, statuses, files, dashboards, templates, profiles, assignees, calendar, invite |
-| `tools/opai-team-hub/routes_comments.py` | Item comments CRUD |
+| `tools/opai-team-hub/routes_api.py` | Core API: workspaces, items, tags, assignments, search, members, Discord settings, ClickUp import, dependencies, time tracking, notifications (`_notify()`, `_get_item_assignees()`), internal endpoints |
+| `tools/opai-team-hub/routes_spaces.py` | Hierarchy API: folders, lists, statuses, files, dashboards, templates, profiles, assignees, calendar, invite, Gantt |
+| `tools/opai-team-hub/routes_comments.py` | Item comments CRUD + @mention parsing → notifications |
+| `tools/opai-team-hub/routes_custom_fields.py` | Custom field definitions CRUD + per-item field values (7 endpoints) |
+| `tools/opai-team-hub/routes_automations.py` | Automation rules CRUD + evaluation engine with depth-limited recursion |
+| `tools/opai-team-hub/routes_members.py` | Hub/workspace member management (invite, role change, remove) |
+| `tools/opai-team-hub/routes_hubs.py` | Hub CRUD, hub member management, hub-level statuses/tags, hub space binding (20 endpoints) |
 | `tools/opai-team-hub/routes_clickup.py` | ClickUp API proxy (spaces, lists, tasks, comments, members) |
 | `tools/opai-team-hub/clickup_migrate.py` | CLI: full ClickUp-to-Supabase migration (legacy, replaced by web import) |
 | `tools/opai-team-hub/backfill_folders.py` | CLI: converts folder:/list: tags into proper hierarchy records |
@@ -55,6 +78,7 @@ Six layers:
 | `config/supabase-migrations/012_team_hub.sql` | Base schema (workspaces, items, assignments, comments, tags) |
 | `config/supabase-migrations/014_team_hub_hierarchy.sql` | Folders, lists, statuses, files, dashboards, RLS, triggers |
 | `config/supabase-migrations/040_team_hub_owner_only_status_tags.sql` | Owner-only RLS for statuses + tags (INSERT/UPDATE/DELETE) |
+| `config/supabase-migrations/049_team_hubs.sql` | Hub Model: `team_hubs`, `team_hub_membership`, `team_hub_permissions` tables, hub_id columns, RLS functions/policies, data migration |
 
 ## Database Schema
 
@@ -81,13 +105,65 @@ Six layers:
 | `team_dashboards` | Workspace dashboards | workspace_id, name, created_by |
 | `team_dashboard_widgets` | Dashboard widget configs | dashboard_id, widget_type, title, config, position |
 
+### Phase 1 Tables (v3.0.0)
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `team_checklists` | Checklists per item | item_id, name, orderindex |
+| `team_checklist_items` | Items within a checklist | checklist_id, text, checked, assignee_id, orderindex |
+| `team_favorites` | User favorites (items, workspaces, etc.) | user_id, target_type, target_id, orderindex, UNIQUE(user_id, target_type, target_id) |
+| `team_reminders` | Personal reminders tied to items | user_id, item_id, remind_at, note, fired |
+
+**Phase 1 columns added to `team_items`**: `parent_id` (subtasks), `follow_up_date` (follow-up tracking)
+
+**Phase 1 columns added to `team_lists`**: `id_prefix` (custom task ID prefix, e.g. "BUG"), `id_counter` (auto-increment counter)
+
+### Phase 2 Tables (v3.0.0)
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `team_item_dependencies` | Task dependency links | source_id, target_id, type (blocks/blocked_by/relates_to), created_by, UNIQUE(source_id, target_id, type), CHECK(source_id <> target_id) |
+| `team_custom_fields` | Workspace-scoped field definitions | workspace_id, name, type (text/number/dropdown/date/checkbox/url/email), options JSONB, orderindex, UNIQUE(workspace_id, name) |
+| `team_item_field_values` | Per-item custom field values | item_id, field_id, value, updated_at, UNIQUE(item_id, field_id) |
+| `team_time_entries` | Time log entries per item | item_id, user_id, duration (seconds), description, started_at |
+| `team_automations` | Workspace automation rules | workspace_id, name, trigger_type, trigger_config JSONB, action_type, action_config JSONB, active |
+
+**Phase 2 columns added to `team_items`**: `start_date` (DATE, for Gantt), `time_estimate` (INTEGER, seconds), `time_logged` (INTEGER, auto-updated by trigger)
+
+**Index**: `idx_team_items_date_range` on `(start_date, due_date)`
+
+### Hub Model Tables (v3.5, migration 049)
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `team_hubs` | Top-level hub entity | name, slug (UNIQUE), description, icon, color, created_by |
+| `team_hub_membership` | Hub member roster | hub_id, user_id, role (`admin`/`member`), UNIQUE(hub_id, user_id) |
+| `team_hub_permissions` | Per-member granular permissions | hub_id, user_id, 16 boolean permission flags (see below), UNIQUE(hub_id, user_id) |
+
+**Hub columns added to existing tables**:
+- `team_workspaces.hub_id` — binds a workspace to a hub
+- `team_statuses.hub_id` — hub-level statuses (`workspace_id` made nullable for hub-scoped statuses)
+- `team_tags.hub_id` — hub-level tags (`workspace_id` made nullable for hub-scoped tags)
+
+**Permission flags** (16 booleans on `team_hub_permissions`):
+`can_edit_titles`, `can_change_status`, `can_change_priority`, `can_create_items`, `can_comment`, `can_assign`, `can_create_statuses`, `can_delete_statuses`, `can_create_tags`, `can_delete_tags`, `can_delete_items`, `can_manage_members`, `can_create_spaces`, `can_delete_spaces`, `can_manage_automations`, `can_manage_fields`
+
+Admins bypass all permission checks. Members fall back to their `team_hub_permissions` row.
+
+**RLS helper functions** (defined in migration 049):
+- `is_hub_member(hub_id, user_id)` — boolean membership check
+- `hub_role(hub_id, user_id)` — returns role text
+- `hub_permission(hub_id, user_id, perm_name)` — checks specific permission flag (admins always true)
+
+**Indexes**: `idx_team_hub_membership_hub`, `idx_team_hub_membership_user`, `idx_team_hub_permissions_hub`, `idx_team_workspaces_hub`, `idx_team_statuses_hub`, `idx_team_tags_hub`
+
 ### Supporting Tables
 
 | Table | Purpose |
 |-------|---------|
 | `team_activity` | Audit log (workspace_id, action, actor_id, item_id, details) |
 | `team_user_prefs` | Per-user preferences (user_id PK, home_layout JSONB, updated_at) |
-| `team_notifications` | User notifications (user_id, type, title, body, read) |
+| `team_notifications` | User notifications (user_id, type, title, body, item_id, workspace_id, read). Types: `mention`, `assignment`, `update`, `reminder`, `automation` |
 | `team_invitations` | Workspace invites (inviter_id, invitee_email, role, status) |
 | `team_discord_members` | Discord-to-workspace member mappings |
 
@@ -96,6 +172,7 @@ Six layers:
 - **`create_default_statuses()`** — auto-creates 6 statuses (open, to do, in progress, review, done, closed) on workspace insert
 - **`create_default_dashboard()`** — auto-creates Overview dashboard with 4 widgets on workspace insert
 - **`create_personal_workspace()`** — auto-creates personal workspace on new user signup
+- **`update_time_logged()`** — auto-sums `team_time_entries.duration` into `team_items.time_logged` on INSERT/DELETE/UPDATE of time entries
 
 ### Hierarchy Model
 
@@ -112,6 +189,22 @@ Items reference both `list_id` and `folder_id` directly (denormalized for query 
 
 ## API Routes
 
+### Hubs (`routes_hubs.py`, prefix `/api`)
+
+20 endpoints for hub CRUD, member management, hub-level statuses/tags, and space binding.
+
+**Hub CRUD**: `GET /hubs` (list user's hubs with member counts), `POST /hubs`, `GET /hubs/{hub_id}` (with members, spaces, settings), `PATCH /hubs/{hub_id}` (admin), `DELETE /hubs/{hub_id}` (admin)
+
+**Members**: `GET /hubs/{hub_id}/members` (with profiles + permissions), `POST /hubs/{hub_id}/invite` (by email/user_id, admin-only), `PATCH /hubs/{hub_id}/members/{user_id}` (role + permissions, admin-only), `DELETE /hubs/{hub_id}/members/{user_id}` (admin-only, prevents last-admin removal)
+
+**Hub Statuses**: `GET/POST /hubs/{hub_id}/statuses`, `PATCH/DELETE /hubs/{hub_id}/statuses/{id}` — permission-gated (`can_create_statuses`, `can_delete_statuses`)
+
+**Hub Tags**: `GET/POST /hubs/{hub_id}/tags`, `PATCH/DELETE /hubs/{hub_id}/tags/{id}` — permission-gated (`can_create_tags`, `can_delete_tags`)
+
+**Hub Spaces**: `POST /hubs/{hub_id}/spaces` (create + bind new workspace, permission-gated `can_create_spaces`), `DELETE /hubs/{hub_id}/spaces/{ws_id}` (unbind, permission-gated `can_delete_spaces`)
+
+**Auth model**: All hub endpoints use `_require_hub_member()` or `_require_hub_admin()` guards. Permission-gated endpoints use `_check_hub_permission()` which grants automatic access to admins.
+
 ### Core (`routes_api.py`, prefix `/api`)
 
 **Workspaces**: `GET/POST /workspaces`, `POST /workspaces/reorder`, `GET/PATCH/DELETE /workspaces/{ws_id}`
@@ -119,7 +212,8 @@ Items reference both `list_id` and `folder_id` directly (denormalized for query 
 **Items**: `GET/POST /workspaces/{ws_id}/items`, `GET/PATCH/DELETE /items/{item_id}`
 - Filter by: type, status, priority, assignee, search query
 - Enriched with assignments + tags on detail view
-- PATCH supports: `title`, `description`, `status`, `priority`, `due_date`, `list_id`, `folder_id` (last two enable move-between-lists)
+- PATCH supports: `title`, `description`, `status`, `priority`, `due_date`, `start_date`, `follow_up_date`, `list_id`, `folder_id` (last two enable move-between-lists)
+- Nullable fields (can be explicitly cleared to `null`): `recurrence`, `links`, `due_date`, `start_date`, `follow_up_date`
 
 **Assignments**: `POST/DELETE /items/{item_id}/assign[/{assign_id}]`
 
@@ -129,11 +223,20 @@ Items reference both `list_id` and `folder_id` directly (denormalized for query 
 
 **Members**: `GET /workspaces/{ws_id}/members`, `POST /workspaces/{ws_id}/add-member` (direct add by user_id), `DELETE /workspaces/{ws_id}/members/{user_id}` (remove member — admin/owner only, prevents self-removal), `POST /workspaces/{ws_id}/invite` (email-based, legacy), `POST /invitations/{id}/accept|decline`
 
+**Subtasks**: `GET /items/{item_id}/subtasks`, `POST /items/{id}/subtasks/reorder`
+- Subtasks are regular items with `parent_id` set; top-level views filter `parent_id IS NULL`
+
+**Checklists**: `GET/POST /items/{id}/checklists`, `DELETE /checklists/{id}`, `POST /checklists/{id}/items`, `PATCH/DELETE /checklist-items/{id}`
+
+**Favorites**: `GET/POST /my/favorites`, `POST /my/favorites/reorder`, `DELETE /my/favorites/{id}`
+
+**Reminders**: `GET/POST /my/reminders`, `DELETE /my/reminders/{id}`, `POST /internal/fire-reminders` (background — converts due reminders to notifications)
+
 **Activity**: `GET /workspaces/{ws_id}/activity`, `GET /items/{item_id}/activity`
 
 **Search**: `GET /search?q=...` (cross-workspace full-text search)
 
-**My Work**: `GET /my/items`, `GET /my/home`, `GET/POST /my/notifications[/read]`
+**My Work**: `GET /my/items`, `GET /my/home`, `GET/POST /my/notifications[/read]`, `DELETE /my/notifications/{id}`
 
 **Discord Settings**: `GET/PATCH /workspaces/{ws_id}/discord`, `GET /workspaces/{ws_id}/discord/members`
 
@@ -174,7 +277,15 @@ Requires JWT auth. Fire-and-forget — called automatically after any status/tag
 
 **Files**: `GET/POST /workspaces/{ws_id}/files`, `DELETE /files/{id}`
 
-**Dashboards**: `GET /workspaces/{ws_id}/dashboard` (with computed widget data), `POST /workspaces/{ws_id}/dashboard/widgets`, `DELETE /dashboard/widgets/{id}`
+**Dashboards**: `GET /workspaces/{ws_id}/dashboard` (with computed widget data including `open_tasks` list and `open_count`), `POST /workspaces/{ws_id}/dashboard/widgets`, `DELETE /dashboard/widgets/{id}`
+
+**Space Dashboard Widgets** (render order):
+1. **Open Tasks** — full-width card showing all non-done/closed tasks (max 20 displayed). Status dot, title, status label, due date (overdue highlighted red). Count badge in header. "+N more" overflow navigates to list view. Backend: filters items where status not in `{done, closed, Complete, Approved}`, sorted by `updated_at` desc.
+2. **Tasks by Status** — horizontal bar chart per status with counts
+3. **Priority Breakdown** — horizontal bar chart per priority level
+4. **Due Soon** — items due within 7 days, sorted by due_date
+5. **Recent Activity** — last 10 activity entries
+6. **Files** — workspace files with upload button
 
 **Calendar**: `GET /workspaces/{ws_id}/calendar?month=YYYY-MM` (items with due dates for month, ±7 day spillover, includes statuses for coloring)
 
@@ -289,8 +400,78 @@ Unauthenticated internal endpoints for programmatic workspace management. Used b
 | `/internal/add-comment` | `POST` | Add a comment to an item (default author: `ai-assistant`) |
 | `/internal/assign-item` | `POST` | Assign a user to an item (replaces existing assignment for idempotency) |
 | `/internal/list-members` | `GET` | List all workspace members with profile info (display_name, email, discord_id) |
+| `/internal/search-workspaces` | `GET` | Search workspaces by name (ilike). Params: `q`, `limit` (default 5). Returns `{ workspaces: [{id, name, slug, icon}] }` |
+| `/internal/create-workspace` | `POST` | Create workspace with template structure. Params: `name`, `owner_id`, `template` (client/project). Creates folders + default statuses + membership |
 
-All write endpoints set `created_by` / `author_id` to `"ai-assistant"` by default. The `create-item` endpoint supports `assigned_by` (default `"discord-bot"`).
+All write endpoints set `created_by` / `author_id` to `"ai-assistant"` by default. The `create-item` endpoint supports `assigned_by` (default `"discord-bot"`), `start_date`, and `time_estimate`.
+
+`create-workspace` template folders: **client** (Meeting Action Items, Deliverables, Communications), **project** (Tasks, Documentation, Research). Default statuses: Open, In Progress, Done.
+
+### Dependencies (`routes_api.py`, prefix `/api`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/items/{id}/dependencies` | `GET` | List all dependencies for an item (both directions) |
+| `/items/{id}/dependencies` | `POST` | Create a dependency (type: blocks/blocked_by/relates_to) |
+| `/dependencies/{id}` | `DELETE` | Remove a dependency link |
+| `/items/{id}/blocking-check` | `GET` | Check if an item is blocked by unfinished items |
+
+### Time Tracking (`routes_api.py`, prefix `/api`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/items/{id}/time-entries` | `GET` | List time entries for an item |
+| `/items/{id}/time-entries` | `POST` | Log a time entry (duration in seconds, optional description + started_at) |
+| `/time-entries/{id}` | `DELETE` | Delete a time entry (auto-updates item's time_logged via trigger) |
+| `/items/{id}/time-estimate` | `PATCH` | Set/update time estimate (seconds) |
+
+### Custom Fields (`routes_custom_fields.py`, prefix `/api`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/workspaces/{id}/custom-fields` | `GET` | List all custom field definitions for a workspace |
+| `/workspaces/{id}/custom-fields` | `POST` | Create a custom field (name, type, options) |
+| `/custom-fields/{id}` | `PATCH` | Update field name, options, or orderindex |
+| `/custom-fields/{id}` | `DELETE` | Delete a custom field and all its values |
+| `/items/{id}/field-values` | `GET` | Get all field values for an item |
+| `/items/{id}/field-values/{field_id}` | `PUT` | Set/upsert a field value |
+| `/items/{id}/field-values/{field_id}` | `DELETE` | Clear a field value |
+
+### Automations (`routes_automations.py`, prefix `/api`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/workspaces/{id}/automations` | `GET` | List all automation rules for a workspace |
+| `/workspaces/{id}/automations` | `POST` | Create an automation rule (trigger + action config) |
+| `/automations/{id}` | `PATCH` | Update automation name, config, or active state |
+| `/automations/{id}` | `DELETE` | Delete an automation rule |
+| `/internal/check-due-automations` | `POST` | Fire due_date_passed automations (designed for cron/heartbeat) |
+
+**Trigger types**: `status_changed`, `priority_changed`, `assignee_added`, `due_date_passed`, `item_created`
+**Action types**: `change_status`, `change_priority`, `add_assignee`, `send_notification`, `move_to_list`, `add_tag`
+
+Automation evaluation: runs server-side in `create_item` and `update_item` after successful DB write. Depth-limited recursion (max 3) prevents infinite loops. All execution is non-fatal (try/except).
+
+### Gantt (`routes_spaces.py`, prefix `/api`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/workspaces/{id}/gantt` | `GET` | Returns items with start_date/due_date, dependencies, and statuses for Gantt rendering |
+
+### Docs (`routes_spaces.py`, prefix `/api`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/workspaces/{ws_id}/docs` | `GET` | List docs for a workspace (optional folder_id/list_id/item_id filter) |
+| `/workspaces/{ws_id}/docs` | `POST` | Create a doc (title, content, optional folder_id/list_id/item_id) |
+| `/docs/{doc_id}` | `GET` | Get doc with pages and author info |
+| `/docs/{doc_id}` | `PUT` | Update doc title/content/location |
+| `/docs/{doc_id}` | `DELETE` | Delete doc and all pages |
+| `/docs/{doc_id}/pages` | `POST` | Add a page to a doc |
+| `/docs/{doc_id}/pages/{page_id}` | `PUT` | Update page title/content/orderindex |
+| `/docs/{doc_id}/pages/{page_id}` | `DELETE` | Delete a page |
+
+Frontend: Full editor UI with markdown-it rendering, inline title editing, page management (add/edit/delete), "New Doc" via sidebar right-click on spaces/folders.
 
 ### ClickUp Proxy (`routes_clickup.py`, prefix `/api/clickup`)
 
@@ -344,10 +525,12 @@ Vanilla JS SPA (no framework) with Supabase auth integration and Supabase Realti
 ### Views
 
 - **Home dashboard**: Intelligent landing page shown when no space/list is selected. Displays cross-workspace data as drag-and-drop tiles in a responsive CSS grid. Accessed via house icon in header or by deselecting all spaces. The header **Grid** button shows the tile dashboard; **List** button shows the All Tasks table — no separate tab bar.
+- **All Tasks** (sidebar button): Opens the home list view showing all hub tasks. Clears space/list selection, sets `show_all=true` and `hide_completed=true`, switches to list view. Uses the same `GET /api/my/all-items` endpoint as the home list view. Checkbox toggling uses surgical DOM updates (no API refetch).
 - **Board view**: Kanban-style columns by status, drag-and-drop between columns, per-column quick-add, description previews on cards, collapsible columns, empty column drop zones
-- **List view**: Table with sortable columns, inline status/priority badges
+- **List view**: Table with all columns sortable (Title, Space, List, Status, Priority, Assignee, Tags, Updated), inline status/priority badges. Multi-select checkbox filters for Status/Priority/Tags, toggle switches for My Tasks and Hide Completed.
 - **Calendar view**: Month grid (7-column CSS grid) filling the full viewport height. Status-colored task pills, up to 3 per day visible; days with more show a "+N more" button that opens a slim floating popup listing all tasks for that day (click any task to open the detail panel, click outside or press Escape to dismiss). Month navigation (prev/next/today); works at space level or list level. Grid rows are set dynamically to match the exact week count of the displayed month (no empty gray row).
-- **Dashboard view**: Widget-based overview with status counts, priority breakdown, due-soon items, recent activity
+- **Gantt view**: SVG-based timeline chart. Day-level columns, color-coded bars by status, bezier-curve dependency arrows, today line, zoom +/- controls. Items without start/due dates excluded. Endpoint: `GET /api/workspaces/{id}/gantt`
+- **Dashboard view**: Widget-based overview. Position #1: **Open Tasks** (full-width card showing all non-closed/done tasks with status dots, count badge, and overflow link). Followed by status counts, priority breakdown, due-soon items, recent activity, and files
 
 ### Home Dashboard
 
@@ -360,7 +543,8 @@ The home dashboard replaces the old empty "Select a list" state with a curateabl
 | Tile ID | Title | Data | Default |
 |---------|-------|------|---------|
 | `top3` | Top 3 Priorities | Highest-priority assigned items (sorted by priority then due_date) | visible |
-| `overdue` | Overdue | Items with due_date < today, not done | visible |
+| `priorities` | Priorities | Composite urgency score (overdue weight + due proximity + priority level + recency) | visible |
+| `overdue` | Overdue | Items with due_date < today, not done — sorted **most recently overdue first** | visible |
 | `due_week` | Due This Week | Items due within next 7 days | visible |
 | `todos` | Recent Todos | Last assigned items by updated_at | visible |
 | `workspaces` | My Workspaces | Per-workspace summary with progress bars | visible |
@@ -396,6 +580,75 @@ Grid rows are fixed at **280px** — tiles fill their grid cell via flex layout 
 | activity | 6 | 10 | 14 | 15 | 25 | 40 |
 
 Each size scales both the number of items shown and the metadata displayed per item. Wider tiles show more columns (priority, status, timestamps side by side). Taller tiles show more rows. Combined sizes show descriptions, grouped headers, and full stat breakdowns.
+
+**Tile overflow links**: When a tile has more items than its size limit allows, a clickable "+N more" link appears at the bottom (styled with accent color). Clicking it navigates to the **home list view** with sorting appropriate for the tile type:
+- **Overdue** → list sorted by `due_date` ascending (most overdue first)
+- **Due This Week** → list sorted by `due_date` ascending
+- **Follow-ups** → list sorted by `follow_up_date` ascending
+- **Other** → list sorted by `updated_at` descending (default)
+
+Function: `showAllFromTile(tileType)` — clears filters, sets sort, switches to list view.
+
+#### Home List View (All Tasks Table)
+
+The home list view shows all tasks across all user's workspaces in a unified table. Accessed by clicking the **List** button in the header, or via tile overflow links.
+
+**Endpoint**: `GET /api/my/all-items` — returns items, workspace metadata, and available tags.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `sort` | string | Sort column: `updated_at`, `created_at`, `title`, `status`, `priority`, `due_date` (server-side); `workspace_name`, `list_name`, `assignee`, `tags` (client-side) |
+| `direction` | string | `asc` or `desc` |
+| `status` | string | Comma-separated status names for multi-filter (e.g. `Working on,Stuck`) |
+| `priority` | string | Comma-separated priority values for multi-filter (e.g. `high,critical`) |
+| `workspace_id` | UUID | Filter to a single workspace |
+| `tag` | string | Comma-separated tag names for multi-filter |
+| `show_all` | bool | `true` = all workspace tasks; `false` (default) = only user's assigned tasks |
+| `hide_completed` | bool | `true` (default from UI) = exclude Complete/done/closed statuses at DB level |
+| `limit` | int | Max items (default 200, max 500) |
+
+**Toggle switches** (subheader bar):
+
+| Toggle | Default | Behavior |
+|--------|---------|----------|
+| **My Tasks** | ON | When ON, shows only tasks assigned to the current user. When OFF, shows all tasks across the user's workspaces. Clear toggle-switch UI with slider indicator. |
+| **Hide Completed** | ON | When ON, excludes items with `Complete`, `done`, `closed` statuses at the database query level via PostgREST `not.in.()` filter. |
+
+**Multi-select filter dropdowns** (Status, Priority, Tags):
+
+All three filters use checkbox-based multi-select dropdowns (not single `<select>`). Each option shows:
+- A color dot matching the status/priority/tag color
+- A checkbox (accent-colored when checked)
+- The option label
+
+Features:
+- Active dropdown shows selection count in the button label: `Status (2)`
+- Button highlighted with accent border + background when any options selected
+- "Clear all" link at the top of dropdown when selections exist
+- Multiple values sent as comma-separated to the API (e.g. `status=Working on,Stuck`)
+- Backend uses PostgREST `in.()` for multi-value queries, `eq.` for single values
+- Close on click outside
+
+**Sortable column headers** — all 8 data columns are sortable by clicking the header:
+
+| Column | Sort Type | Default Direction |
+|--------|-----------|-------------------|
+| Title | Server (API re-fetch) | A→Z |
+| Space | Client (in-memory sort) | A→Z |
+| List | Client (in-memory sort) | A→Z |
+| Status | Server (API re-fetch) | Z→A |
+| Priority | Server (API re-fetch) | Z→A |
+| Assignee | Client (in-memory sort) | A→Z |
+| Tags | Client (in-memory sort) | A→Z |
+| Updated | Server (API re-fetch) | Newest first |
+
+Sort indicator: triangle arrow (▲/▼) shown next to the active sort column. Click again to reverse direction.
+
+**My Tasks filter logic** (backend `routes_api.py`):
+1. Fetch all items across user's workspaces (respecting status/priority/workspace/hide_completed filters)
+2. Fetch all assignments for those items
+3. When `show_all=false` (My Tasks ON): filter to items where the user is an assignee. If no matches, show empty (no fallback to all items).
+4. Post-filter by tag if specified (requires joined data)
 
 #### Layout Persistence
 
@@ -435,6 +688,20 @@ Tiles use HTML5 Drag API. Drag a tile to reorder — colored border indicators s
 
 **Mentions tile rendering**: Shows `AuthorName in TaskTitle: preview...` with `@Name` patterns highlighted via `<span class="mention-hl">`. Looks up author from `_profiles` and item title from home data arrays.
 
+#### Live Home Tile Updates
+
+When a task's `due_date` or `status` is changed from the detail panel while on the home page, tiles update instantly without a server refetch:
+
+1. `updateField()` detects it's on the home page (`!_currentListId` + board view)
+2. Calls `_syncHomeDataForItem(task)` which updates `_homeData` arrays in-place:
+   - **Overdue**: removes if no longer overdue (date cleared, moved to future, or status closed); adds if now overdue
+   - **Due This Week**: removes/adds based on new date vs today..+7 days
+   - **Recent Todos / Top Items / Priorities**: updates in-place if the item exists in those arrays
+3. Calls `renderHomeTiles()` to re-render all tiles from the updated cache — no `renderHome()` / server refetch
+4. If the PATCH fails, the optimistic sync is reverted (task field restored → `_syncHomeDataForItem` re-run → tiles re-rendered)
+
+This avoids the race condition where `renderHome()` would refetch stale data before the PATCH completes.
+
 #### Board View Enhancements
 
 The board view (`renderBoard()`) includes:
@@ -445,7 +712,35 @@ The board view (`renderBoard()`) includes:
 - **Empty column placeholder**: When a column has 0 cards, shows "Drag tasks here or click + below" with a dashed border so the drop target is visible
 - **Collapse/expand columns**: Chevron button on column header. Collapsed = 42px narrow bar with vertical status name + count, still accepts drag-and-drop. State tracked in `_collapsedColumns` Set (in-memory). Function: `toggleBoardColumn(status)`
 
-Backend queries: user's workspace memberships → assigned item IDs → all items in workspaces (limit 200) → workspace metadata → activity log (limit 40). Mentions query searches `team_comments` directly with PostgREST `ilike` for `@DisplayName`/`@emailPrefix` patterns, excludes user's own comments, returns up to 30 results post-filtered to user's workspaces. All in a single endpoint call.
+#### Home Dashboard Data Pipeline
+
+`GET /api/my/home` aggregation flow:
+
+1. **Memberships** — `team_membership` → list of workspace IDs the user belongs to
+2. **Assignments** — `team_assignments` → set of item IDs explicitly assigned to the user
+3. **All items** — `team_items` in user's workspaces, ordered by `updated_at.desc`, limit 200
+4. **Effective items** — filter to items where `id ∈ assigned_set OR created_by = user.id` (creator always sees own items). Falls back to all workspace items if no matches.
+5. **Active items** — exclude closed statuses (`done`, `closed`, `archived`, `Complete`)
+6. **Per-tile queries**:
+   - **Priorities**: scored by composite urgency (overdue weight capped at 30d + due proximity + priority level + recency boost)
+   - **Overdue**: separate query (limit 500, `due_date.desc`) to avoid the 200-item window. Filters to assigned OR created-by user.
+   - **Due This Week / Follow-ups**: filtered from active items
+   - **Mentions**: separate `team_comments` `ilike` query for `@DisplayName`/`@emailPrefix`, excludes own, limit 30
+
+**Important: Overdue sort order is `desc` (most recently overdue first).** This prevents old imported tasks (e.g. from ClickUp) from permanently burying new overdue items in the default 5-item tile view.
+
+#### Auto-Assignment on Creation
+
+Both item creation endpoints (`POST /workspaces/{ws_id}/items` and `POST /lists/{list_id}/items`) automatically assign the creator as an assignee via `team_assignments`. This ensures:
+- New items immediately appear in the creator's dashboard tiles (overdue, priorities, due this week, etc.)
+- No "invisible task" bug where items exist in list view but are absent from the home dashboard
+- Assignment is visible in the detail panel's assignee section
+
+The auto-assignment is non-blocking — if it fails, the item is still created successfully.
+
+#### Known Gotcha: Large Import Backlogs
+
+Users with many imported tasks (e.g. from ClickUp) may have hundreds of overdue items spanning years. The overdue tile's `desc` sort ensures recent overdue items appear first. The priorities tile's scoring caps overdue weight at 30 days, so all 30+-day-overdue items score equally and differentiate by priority level and recency instead.
 
 ### UI Components
 
@@ -455,7 +750,7 @@ Backend queries: user's workspace memberships → assigned item IDs → all item
   - **List move**: Drag a list onto a folder (to nest it) or onto a space (to make it folderless). Works across spaces.
   - **Task move**: Drag a task card from the main content area onto a sidebar list to move it.
 - **Detail panel**: Slide-out (60vw, max 900px) with colored pill-dropdown pickers for status and priority; header action buttons (Move, Duplicate, Delete); assignees (OPAI users only), tags, markdown description with Pretty/Raw toggle, files with preview popup, comments with @mention autocomplete. Navbar-aware positioning (`top: 44px`, `height: calc(100vh - 44px)`).
-- **Header**: Home (house icon), Search (global, `/` shortcut), Create New (5 types: Space, Folder, List, Task, Structure), Templates, Invite (Add Team Member), Settings (gear icon), **AI panel toggle** (brain icon), notifications bell
+- **Header**: Hub logo (shows `{icon} {hub_name}` when in a hub, "TeamHub" otherwise), All Tasks (list icon), Search (global, `/` shortcut), Create New (5 types: Space, Folder, List, Task, Structure), Templates, Invite (Add Team Member), Settings (gear icon), **AI panel toggle** (brain icon), notifications bell
 - **AI Panel**: Slide-in panel from the right (340px wide, z-index 200, below detail panel z-index 300). Cross-workspace knowledge, optional workspace focus hint. See [AI Panel](#ai-panel) section.
 
 ### Add Team Member Modal
@@ -479,6 +774,21 @@ Description field renders markdown via `markdown-it` (CDN) with a dual-mode togg
 
 Functions: `renderDescription(desc)`, `toggleDescMode(mode)`, `handleCheckboxToggle(index)`
 
+#### Comment Input
+
+The comment input is an **auto-resizing `<textarea>`** (not a single-line input) that wraps text and grows up to 160px tall:
+
+- **Enter** sends the comment, **Shift+Enter** inserts a new line
+- Supports image attachment via button or clipboard paste (images uploaded to Supabase Storage, embedded as markdown)
+- A formatting hint below the input shows available markdown syntax
+
+**Markdown rendering in comments**: Posted comments render basic markdown formatting via `renderMentions()`:
+- `**bold**` → **bold**, `*italic*` → *italic*, `` `code` `` → inline code
+- Newlines preserved as `<br>`, `- item` rendered as bullet points
+- `![alt](url)` for images (from image attachments)
+
+Functions: `commentKeyHandler(e)`, `autoResizeComment(el)`, `postComment()`, `renderMentions(text)`
+
 #### @Mention Autocomplete
 
 Comment input supports `@` mention autocomplete:
@@ -487,7 +797,7 @@ Comment input supports `@` mention autocomplete:
 2. Dropdown positioned above input, max 5 results, shows avatar initials + display name
 3. Arrow Up/Down navigate, Enter/click selects, Escape dismisses
 4. On select: replaces `@partial` with `@DisplayName ` (trailing space)
-5. Mentions render as `<span class="mention">` in comment display (purple, bold, hover underline)
+5. Mentions render as `<span class="th-mention-pill">` in comment display (blue pill)
 
 Functions: `bindMentionAutocomplete()`, `renderMentionDropdown()`, `selectMention()`, `hideMentionDropdown()`
 
@@ -534,20 +844,51 @@ All fixed/absolute positioning accounts for the shared OPAI navbar (44px):
 
 ### Settings Modal (Gear Icon)
 
-Title: **"TeamHub Settings"**. Opens from any context — home, within a space, list, or folder. Settings are **global** (not per-workspace). Six tabs:
+Title: **"{hub_icon} {hub_name} Settings"** when in a hub (e.g. "🏢 Water's Edge Settings"), or **"TeamHub Settings"** when no hub. Opens from any context — home, within a space, list, or folder. Nine tabs:
 
 1. **Landing** — Home dashboard tile configuration: toggle switches for tile visibility, clickable size badge to cycle through 6 sizes (1x1 → 2x1 → 3x1 → 1x2 → 2x2 → 3x2), drag handles to reorder tiles, "Reset to Defaults" button.
-2. **Statuses** — Owner: full CRUD (inline color picker, rename, delete with confirmation, add row). Non-owner: read-only list with info text.
-3. **Priorities** — Owner: info text explaining these are built-in system-wide levels. Non-owner: info text noting these are set by the workspace owner. Both see read-only color badges (critical, high, medium, low, none).
-4. **Tags** — Owner: full CRUD (inline color picker, rename, delete). Non-owner: read-only list with info text.
-5. **Import** — ClickUp import flow (see [ClickUp Migration > Web Import](#web-import-primary--settings-modal))
-6. **Telegram** — Info page with instructions to join the OPAI Telegram group's Team Hub topic, and a direct contact link to Dallas (`t.me/Dalwaut`) for access requests or troubleshooting
+2. **Statuses** — Hub admins: full CRUD (inline color picker, rename, delete with confirmation, add row). Hub members: read-only list. Info text adapts: hub mode says "hub-wide workflow statuses", non-hub says "workspace statuses".
+3. **Priorities** — Info text explaining these are built-in system-wide levels. Both see read-only color badges (critical, high, medium, low, none).
+4. **Tags** — Hub admins: full CRUD (inline color picker, rename, delete). Hub members: read-only list. Info text adapts like statuses.
+5. **Fields** — Custom field definitions for the current workspace. Create fields with name + type (text/number/dropdown/date/checkbox/url/email). Delete fields. Dropdown type supports comma-separated options.
+6. **Automations** — Automation rule builder for the current workspace. Create rules with trigger type + config → action type + config. Toggle active/inactive per rule. Delete rules.
+7. **Members** — Hub-aware member management (see below).
+8. **Import** — ClickUp import flow (see [ClickUp Migration > Web Import](#web-import-primary--settings-modal))
+9. **Telegram** — Info page with instructions to join the OPAI Telegram group's Team Hub topic, and a direct contact link to Dallas (`t.me/Dalwaut`) for access requests or troubleshooting
+
+#### Members Tab (Hub Mode)
+
+When user belongs to a hub, the Members tab loads from `GET /api/hubs/{hub_id}/members` instead of workspace-level members. Displays:
+
+- **Member cards** — avatar, name, email, role badge (admin/member)
+- **Role dropdown** — admin-only: switch between admin/member
+- **Permissions grid** — 16 toggle checkboxes for granular permissions (only shown for non-admin members, since admins bypass all checks). Each toggle calls `PATCH /api/hubs/{hub_id}/members/{user_id}` with the permission field.
+- **Remove button** — admin-only: removes member from hub (with confirmation)
+
+Key frontend functions: `changeHubMemberRole()`, `updateHubMemberPermission()`, `removeHubMember()`
 
 See [Global Settings Ownership Model](#global-settings-ownership-model) for the full architecture.
 
 ### Global Settings Ownership Model
 
-Statuses, tags, and priorities are **global** — the workspace owner defines one canonical set that applies across their entire TeamHub. Non-owners (invited members) see read-only views but can still assign existing statuses/tags to tasks.
+#### Hub Mode (v3.5)
+
+When a hub exists, statuses and tags are **hub-scoped** — stored with `hub_id` set and `workspace_id` NULL. They apply to all spaces in the hub. The settings modal routes to hub-level API endpoints.
+
+**Architecture**:
+- Hub-level statuses/tags are the canonical source (stored in `team_statuses`/`team_tags` with `hub_id`, `workspace_id = NULL`)
+- Settings modal loads/writes via `GET/POST/PATCH/DELETE /api/hubs/{hub_id}/statuses` and `/api/hubs/{hub_id}/tags`
+- Hub admins have full CRUD; members are permission-gated (`can_create_statuses`, `can_delete_statuses`, `can_create_tags`, `can_delete_tags`)
+- `team_items.status` and `team_items.priority` remain **TEXT fields** — tasks reference statuses by name
+- Member management is hub-level via `routes_hubs.py` endpoints
+
+**Key frontend functions** (`app.js`):
+- `_myHub()` — returns the user's hub object (from `GET /api/hubs` on init)
+- `showAllHubTasks()` — navigates to All Tasks list view for the hub
+
+#### Legacy Mode (no hub)
+
+Statuses, tags, and priorities are **global per owner** — the workspace owner defines one canonical set that applies across their entire TeamHub. Non-owners (invited members) see read-only views but can still assign existing statuses/tags to tasks.
 
 **Architecture**:
 - The owner's **personal workspace** (`is_personal = true`) is the canonical store for statuses and tags
@@ -676,7 +1017,7 @@ When a list is selected, Team Hub subscribes to `postgres_changes` on `team_item
 - `task_updated` / `task_created` — kept as no-op placeholders (Postgres Changes handles data sync)
 
 **Postgres Changes — Notifications** (`team-hub-notifs` channel):
-- `team_notifications` INSERT listener for instant notification badges
+- `team_notifications` INSERT listener — filters by `user_id === _user.id`, triggers `pollNotifications()` for badge update and shows toast with notification title
 
 ### State Management
 
@@ -687,7 +1028,7 @@ Key state variables in `app.js`:
 | `_user` | Current authenticated user |
 | `_spaces` | All workspace records |
 | `_profiles` | All OPAI user profiles (for dropdowns/search) |
-| `_homeData` | Cached response from `/api/my/home` for home dashboard tiles |
+| `_homeData` | Cached response from `/api/my/home` for home dashboard tiles. Live-synced by `_syncHomeDataForItem()` on detail panel due_date/status changes |
 | `_homeLayout` | Tile layout/visibility/size prefs (synced to localStorage) |
 | `_collapsedColumns` | Set of status names with collapsed board columns (in-memory) |
 | `_currentSpaceId` / `_currentListId` | Active navigation context |
@@ -718,6 +1059,144 @@ Key state variables in `app.js`:
 - `@supabase/supabase-js@2`
 - `markdown-it@14` — markdown rendering for description Pretty mode
 - Shared OPAI auth (`/auth/static/js/auth-v3.js`) and navbar (`/auth/static/js/navbar.js`)
+
+## Phase 1 — ClickUp Clone Features (v3.0.0)
+
+### Custom Task IDs
+
+- Per-list configurable prefix (e.g., "BUG", "FEAT") via `id_prefix` on `team_lists`
+- Auto-increment counter: BUG-001, BUG-002... generated on item creation
+- Shown in board cards, list rows, detail panel header, search results
+- Searchable in all search endpoints (user and internal)
+
+### Subtasks
+
+- `parent_id` column on `team_items` — subtasks are regular items with a parent
+- Top-level list views filter `parent_id IS NULL` by default (`include_subtasks` query param to override)
+- Detail panel shows "Subtasks" section with inline add, status toggle, click-to-open
+- Board/list cards show subtask count badge (done/total)
+- Internal API accepts `parent_id` for agent-created subtasks
+- Reorder endpoint: `POST /api/items/{id}/subtasks/reorder`
+
+### Checklists
+
+- Multiple checklists per item, each with name + ordered items
+- Checklist items: text, checked (bool), optional assignee
+- Progress indicator per checklist (done/total + progress bar)
+- 6 API endpoints: `GET/POST /api/items/{id}/checklists`, `DELETE /api/checklists/{id}`, `POST /api/checklists/{id}/items`, `PATCH /api/checklist-items/{id}`, `DELETE /api/checklist-items/{id}`
+- Tables: `team_checklists`, `team_checklist_items`
+
+### @Mentions
+
+- Structured format: `@[Display Name](user_id)` stored in comment content
+- Autocomplete dropdown on `@` in comment input, inserts structured format
+- Rendered as blue `.th-mention-pill` spans in comment display
+- Backend `_parse_mentions()` extracts user IDs → creates `team_notifications` entries
+- Backward-compatible with legacy plain `@Name` mentions
+
+### Favorites
+
+- Toggle star on items (extensible to workspaces, folders, lists)
+- `POST /api/my/favorites` toggles (add or remove)
+- `GET /api/my/favorites` loaded on init, rendered in sidebar section
+- `POST /api/my/favorites/reorder`, `DELETE /api/my/favorites/{id}`
+- Table: `team_favorites` (user_id, target_type, target_id, orderindex, UNIQUE constraint)
+
+### Reminders
+
+- Personal reminders tied to items
+- Quick options: 15min, 1hr, tomorrow 9AM, next Monday 9AM, custom datetime
+- `POST /api/internal/fire-reminders` — background endpoint converts due reminders to notifications
+- Designed to be fired by OPAI Engine heartbeat (every 60s)
+- `GET/POST /api/my/reminders`, `DELETE /api/my/reminders/{id}`
+- Table: `team_reminders` (user_id, item_id, remind_at, note, fired)
+
+### Notifications
+
+Notification system creates alerts for assignment, task updates, mentions, reminders, and automations. Uses `team_notifications` table with Supabase Realtime for instant delivery.
+
+**Backend helpers** (`routes_api.py`):
+- `_notify(client, user_id, type, title, body, item_id, workspace_id, skip_user_id)` — generic notification creator; skips if `user_id == skip_user_id` (no self-notifications)
+- `_get_item_assignees(client, item_id)` — fetches all `assignee_id` from `team_assignments`
+
+**Notification triggers**:
+
+| Trigger | Type | Fired From | Title Format |
+|---------|------|------------|--------------|
+| Task assigned | `assignment` | `assign_item()` | "Assigned to: {title}" |
+| Task updated (status, priority, due_date, title) | `update` | `update_item()` | "Updated: {title}" with change summary body |
+| @mention in comment | `mention` | `_parse_mentions()` | "Mentioned in: {title}" |
+| Reminder fires | `reminder` | `fire_reminders()` | "Reminder: {title}" |
+| Automation sends notification | `automation` | `_execute_action()` | "Automation: {name}" |
+
+**API**: `GET /my/notifications`, `POST /my/notifications/read` (mark read — specific IDs or all), `DELETE /my/notifications/{id}` (dismiss single)
+
+**Frontend dropdown** (`app.js`):
+- Bell icon in header with unread badge (polled every 30s + Realtime INSERT listener)
+- Dropdown shows type icon, title, body snippet (truncated 80 chars), timestamp
+- Type icons: assignment (person), mention (@), update (pencil), reminder (bell), automation (bolt)
+- **Click** a notification → marks read, opens task detail panel (if `item_id`), closes dropdown
+- **Dismiss** (× button) → `DELETE /my/notifications/{id}`, removes DOM element, updates badge
+- **Mark all read** → `POST /my/notifications/read` with empty `notification_ids`
+
+### Inline Editing (List View)
+
+- Double-click title, status, or priority cells in home list view to edit in-place
+- Title: text input, Status: dropdown, Priority: dropdown
+- On blur/Enter → PATCH item via existing endpoint
+- On Escape → cancel edit, no backend changes needed
+
+## Phase 2 — ClickUp Clone Features (v3.0.0)
+
+### Dependencies
+
+- `team_item_dependencies` table with type: blocks, blocked_by, relates_to
+- Constraint: `source_id <> target_id`, UNIQUE(source_id, target_id, type)
+- Detail panel "Dependencies" section with searchable item picker
+- Dep type badges color-coded: red (blocks), amber (blocked_by), indigo (relates_to)
+- `GET /api/items/{id}/blocking-check` — returns whether item is blocked by unfinished items
+- 4 API endpoints: list, create, delete deps + blocking check
+
+### Gantt View
+
+- SVG-based timeline chart rendered client-side (no external library)
+- Day-level columns, bars color-coded by status, dependency arrows as bezier curves
+- Today line (dashed accent), zoom +/- controls (day width 30-120px)
+- Items without start_date or due_date excluded from Gantt
+- Row labels clickable → opens detail panel
+- Endpoint: `GET /api/workspaces/{id}/gantt` returns items + deps + statuses
+
+### Custom Fields
+
+- Workspace-scoped field definitions: text, number, dropdown, date, checkbox, url, email
+- Per-item values stored in `team_item_field_values` (upsert pattern)
+- Detail panel "Custom Fields" section with type-appropriate inputs
+- Settings → Fields tab for definition management (create/delete)
+- Dropdown fields support comma-separated options
+- 7 API endpoints via `routes_custom_fields.py`
+
+### Time Tracking
+
+- Per-item time entries in `team_time_entries`
+- Live timer: Start/Stop button with localStorage persistence (`_activeTimer`)
+- Manual time log: minutes input + description
+- Time estimate: editable field on item, progress bar (logged/estimate)
+- `time_logged` auto-updated on `team_items` via database trigger
+- Progress bar turns red when logged > estimate
+- 4 API endpoints: list entries, log entry, delete entry, set estimate
+
+### Automations
+
+- Workspace-scoped rules: trigger condition → action
+- **Triggers**: status_changed, priority_changed, assignee_added, due_date_passed, item_created
+- **Actions**: change_status, change_priority, add_assignee, send_notification, move_to_list, add_tag
+- Evaluated server-side after item create/update (non-fatal, try/except)
+- Depth-limited recursion (max 3) prevents infinite automation loops
+- `POST /api/internal/check-due-automations` for cron-fired due date checks
+- Settings → Automations tab for rule builder (create, toggle, delete)
+- 5 API endpoints via `routes_automations.py`
+
+---
 
 ## Service Management
 
@@ -810,6 +1289,7 @@ Team Hub supports programmatic ClickUp workspace binding via the internal API an
 - **AI CLI env stripping** — The shared `call_claude` wrapper strips `ANTHROPIC_API_KEY` from subprocess env to prevent stale vault keys from being passed to `claude -p`. Without this, the CLI attempts API auth with the stale key and returns 401. See `_CLI_STRIP_VARS` in `tools/shared/claude_api.py`.
 - **Tag data inconsistency across workspaces** — After the global settings migration (040), the personal workspace may have fewer tags than other workspaces (e.g., 2 vs 10+). Running settings sync before setting up canonical tags in the personal workspace would delete the extras. The owner should configure their full tag set in settings first, then sync will propagate.
 - **Owner-only settings migration (040)** — RLS policies on `team_statuses` and `team_tags` were tightened from `IN ('owner','admin')` to `= 'owner'`. Admins can no longer create/edit/delete statuses or tags. Previously there was no UPDATE policy on `team_tags` — migration adds one.
+- **My Tasks filter fallback removed** — Previously, `GET /my/all-items` with `show_all=false` fell back to showing ALL items if the user had zero matching assignments. This caused non-assigned tasks to leak through. Fixed 2026-03-06: now strictly filters to assigned items only — shows empty if no assignments match.
 
 ## OPAI Workers Workspace (v3.5)
 
@@ -848,6 +1328,8 @@ OPAI Workers (workspace: d27944f3-8079-4e40-9e5d-c323d6cf7b0f)
 | `done` | done | Completed successfully |
 | `dismissed` | closed | Rejected/not needed |
 | `failed` | closed | Execution failed |
+
+> **Note (OPAI Workers only):** The above statuses are specific to the Workers workspace. User-facing workspaces use a normalized set of status values — see [Data Quality](#data-quality--status-normalization) below.
 
 ### Item Types
 
@@ -888,7 +1370,61 @@ The Engine communicates with Team Hub via the unauthenticated internal API at `h
 
 **Priority values**: `low`, `medium`, `high`, `urgent` (NOT `normal` — violates check constraint).
 
+**@mention parsing**: The `/internal/add-comment` endpoint now calls `_parse_mentions()` from `routes_comments.py`, enabling agents to trigger real notifications when using `@[Name](uuid)` syntax in comments. This was previously only available on the authenticated route.
+
+### Shared TeamHubClient (`tools/shared/teamhub_client.py`)
+
+Synchronous Python client wrapping the internal API for agent use. Replaces ad-hoc `requests.post()` calls across agent scripts.
+
+```python
+from shared.teamhub_client import TeamHubClient, DALLAS_UUID
+
+th = TeamHubClient()
+task = th.create_task(title="...", priority="high", assignee_id=DALLAS_UUID)
+th.add_comment(task["id"], "Progress update", is_agent_report=True)
+th.mention_dallas(task["id"], "Need HITL input on pricing")
+th.complete(task["id"])
+```
+
+Methods: `create_task()`, `add_comment()`, `assign()`, `update_status()`, `update_task()`, `mention_dallas()`, `create_subtask()`, `complete()`.
+
+### Post-Squad Hook Bridge
+
+`scripts/post_squad_hook.py` now mirrors squad findings to Team Hub alongside the existing `tasks/registry.json` entries:
+
+1. Creates parent task: `[SQUAD_NAME] Agent findings — YYYY-MM-DD`
+2. Adds per-agent comments with P0/P1/P2 action items
+3. P0 items trigger `@[Dallas]` mention → notification
+4. Backward-compatible — registry entries still created
+
 See [Fleet Coordinator & Action Items](../infra/fleet-action-items.md) and [NFS Dispatcher](../infra/nfs-dispatcher.md) for full integration details.
+
+The **Email Agent's Transcript Agent** also uses the internal API to search/create workspaces and create items from meeting transcript action items. See [Email Agent — Transcript Agent](../integrations/email-agent.md#transcript-to-actionable-items-agent).
+
+---
+
+## Data Quality & Status Normalization
+
+> Added 2026-03-05 after Token Burn Sprint Phase 2 cleanup. Full report: `notes/Improvements/teamhub-cleanup-report.md`.
+
+### Status Values (User-Facing Workspaces)
+
+A data cleanup sprint normalized inconsistent status values across all user-facing workspaces. The canonical status values are:
+
+| Status | Replaces |
+|--------|----------|
+| `Not Started` | `open` |
+| `Working on` | `in-progress`, `assigned` |
+| `Complete` | `done` |
+| `dismissed` | (unchanged) |
+| `Manager Review` | (unchanged) |
+| `Waiting on Client` | (unchanged) |
+
+The OPAI Workers workspace retains its own status set (see [Custom Statuses](#custom-statuses) above) because agents depend on machine-readable values like `awaiting-human` and `in-progress`.
+
+### Workspace Descriptions
+
+All 21 of 22 workspaces now have populated descriptions (up from 4.5% coverage). This improves agent context when the Engine queries workspace summaries and when the AI chat assistant provides workspace overviews.
 
 ---
 
@@ -896,6 +1432,7 @@ See [Fleet Coordinator & Action Items](../infra/fleet-action-items.md) and [NFS 
 
 - [Auth & Network](../core/auth-network.md) — JWT validation, Caddy proxy
 - [Discord Bridge](../integrations/discord-bridge.md) — Discord bot uses internal endpoints
+- [Email Agent](../integrations/email-agent.md) — Transcript agent uses workspace search/create + item creation
 - [Portal](../core/portal.md) — Navigation includes Team Hub link
 - [Services & systemd](../core/services-systemd.md) — Service unit management
 - [Shared Navbar](../core/navbar.md) — Injected navigation bar
@@ -905,3 +1442,4 @@ See [Fleet Coordinator & Action Items](../infra/fleet-action-items.md) and [NFS 
 - [Fleet Coordinator & Action Items](../infra/fleet-action-items.md) — Uses Workers workspace for dispatch tracking + HITL
 - [NFS Dispatcher](../infra/nfs-dispatcher.md) — Syncs HITL items to admin directory for GravityClaw
 - [Heartbeat](../infra/heartbeat.md) — Proactive intelligence creates "idea" items in Workers workspace
+- [n8n-Forge Pipeline](n8n-forge.md) — Uses TeamHubClient for forge pipeline task tracking + HITL

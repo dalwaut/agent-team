@@ -1,5 +1,5 @@
 # User Controls
-> Last updated: 2026-02-20 | Source: `tools/opai-users/`, `tools/opai-monitor/routes_users.py`, `tools/opai-portal/static/js/auth-v3.js`
+> Last updated: 2026-03-05 | Source: `tools/opai-users/`, `tools/opai-portal/static/js/auth-v3.js`
 
 ## Overview
 
@@ -24,30 +24,31 @@ Browser → Caddy (:443 HTTPS) → User Controls (:8084)
 - **Backend**: FastAPI (Python) with Uvicorn on port 8084
 - **Frontend**: Vanilla JS, dark terminal theme, no framework
 - **Auth**: Admin-only (Supabase JWT, requires `role = admin`)
-- **Shared code**: Imports `routes_users.py` from `tools/opai-monitor/` via sys.path
+- **Shared code**: Imports `routes_users.py` (local), `auth.py` and `config.py` from `tools/shared/` via sys.path
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `tools/opai-users/app.py` | FastAPI entrypoint — imports routes from monitor, adds auth/team/apps endpoints |
+| `tools/opai-users/app.py` | FastAPI entrypoint — mounts routes_users router, auth/team/apps endpoints, dynamic app registry |
+| `tools/opai-users/config.py` | Config: OPAI_ROOT, Supabase credentials, LOCKDOWN_PIN |
+| `tools/opai-users/routes_users.py` | API router — user CRUD, invite, sandbox provisioning, network lockdown, system settings |
 | `tools/opai-users/static/index.html` | Dashboard — user table, invite/edit/PIN modals |
 | `tools/opai-users/static/app.js` | User management JS — CRUD, invite, network lockdown |
 | `tools/opai-users/static/style.css` | Dark terminal theme (standalone copy) |
-| `tools/opai-monitor/routes_users.py` | Shared API router — user + network endpoints |
 | `config/supabase-email-templates/invite.html` | Branded invite email template for Supabase |
 
 ## Configuration
 
 | Env Var | Purpose | Default |
 |---------|---------|---------|
-| `OPAI_MONITOR_HOST` | Bind address | `127.0.0.1` |
+| `OPAI_USERS_HOST` | Bind address | `127.0.0.1` |
 | `SUPABASE_URL` | Supabase project URL | (required) |
 | `SUPABASE_ANON_KEY` | Public key (frontend auth) | (required) |
 | `SUPABASE_SERVICE_KEY` | Service role key (admin API) | (required) |
 | `LOCKDOWN_PIN` | PIN for network lockdown/restore | (required) |
 
-Uses symlinked `.env` from `tools/opai-monitor/.env`.
+Credentials are injected via the vault-env pattern (see [Services & systemd](../core/services-systemd.md)).
 
 ## Features
 
@@ -233,10 +234,10 @@ Header → "Sync n8n"
 ## Dependencies
 
 - **Supabase**: Cloud auth + profiles table + system_settings table
-- **Imports from**: [Monitor](monitor.md) (`routes_users.py` shared router)
-- **Auth enforced by**: [Auth & Network](auth-network.md) (profile enrichment, is_active check)
-- **Preface used by**: [Chat](chat.md) (prepends to non-admin messages)
-- **Sandbox provisioning**: [Sandbox System](sandbox-system.md) (triggered during onboarding via provision-sandbox.sh) — see [Invite & Onboarding Flow](invite-onboarding-flow.md)
-- **Managed by**: [Services & systemd](services-systemd.md) (`opai-users` service)
-- **Proxied by**: Caddy at `/users/*` (see [Auth & Network](auth-network.md))
-- **Portal tile**: [Portal](portal.md) (User Controls card with health dot)
+- **Shared auth**: `tools/shared/auth.py` (`require_admin`, `get_current_user`)
+- **Auth enforced by**: [Auth & Network](../core/auth-network.md) (profile enrichment, is_active check)
+- **Preface used by**: Chat services (prepends to non-admin messages)
+- **Sandbox provisioning**: [Sandbox System](sandbox-system.md) (triggered during onboarding via provision-sandbox.sh) — see [Invite & Onboarding Flow](../plans/invite-onboarding-flow.md)
+- **Managed by**: [Services & systemd](../core/services-systemd.md) (`opai-users` service)
+- **Proxied by**: Caddy at `/users/*` (see [Auth & Network](../core/auth-network.md))
+- **Portal tile**: [Portal](../core/portal.md) (User Controls card with health dot)

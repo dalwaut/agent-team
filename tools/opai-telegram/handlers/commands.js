@@ -20,11 +20,15 @@
  *   /file         — File manager (reports, logs, notes, wiki)
  *   /apps         — Launch Mini Apps (WordPress, Team Hub)
  *   /approve      — Worker approvals & HITL management
+ *   /activity     — Live activity snapshot from engine heartbeat
  *   /usage        — Claude plan utilization
  *   /brain        — 2nd Brain (search, save, inbox, suggestions)
  *   /tasks        — Task registry (summary, list, complete, cancel)
  *   /review       — AI-powered log analysis
+ *   /notify       — Personal notification watches (watch task, list, clear)
+ *   /newsletter   — Newsletter management (send, preview, list)
  *   /topicid      — Show current forum topic thread ID (for config)
+ *   /demo         — Vercel demo platform (deploy, list, teardown, sweep)
  */
 
 const { execSync } = require('child_process');
@@ -39,11 +43,11 @@ const {
 } = require('../access-control');
 const { OPAI_ROOT } = require('../claude-handler');
 const { handleWpCommand } = require('../wordpress-fast');
-const { generateBriefing } = require('../alerts');
+const { generateBriefing, generatePersonalBriefing, generateTeamBriefing } = require('../alerts');
 const { handleFileCommand } = require('../file-sender');
 const { startTaskCreation, pendingDangerRuns } = require('./callbacks');
 const { InlineKeyboard } = require('grammy');
-const { engineGet, enginePost, brainGet, brainPost } = require('../engine-api');
+const { engineGet, enginePost, engineDelete, brainGet, brainPost } = require('../engine-api');
 const { askClaude } = require('../claude-handler');
 const { createJob, completeJob, failJob } = require('../job-manager');
 
@@ -179,6 +183,7 @@ function registerCommands(bot) {
         '`/approve <id>` — View + approve/deny',
         '\n*Intelligence (admin):*',
         '`/usage` — Claude plan utilization',
+        '`/rag <question>` — Query RAG knowledge base (free)',
         '`/brain search <q>` — Search 2nd Brain',
         '`/brain save <text>` — Quick-capture to inbox',
         '`/brain inbox` — Pending inbox items',
@@ -189,6 +194,7 @@ function registerCommands(bot) {
         '`/tasks complete <id>` — Mark complete',
         '`/tasks cancel <id>` — Cancel task',
         '\n*Tools (admin):*',
+        '`/activity` — Live activity snapshot (workers, tasks, resources)',
         '`/briefing` — Morning briefing (services, sites, tasks)',
         '`/file reports` — Latest agent reports',
         '`/file logs <service>` — Download service log',
@@ -204,6 +210,14 @@ function registerCommands(bot) {
         '`/topicid` — Show this topic\'s thread ID',
         '`/persona list` — Show personalities',
         '`/persona set <name>` — Change personality',
+        '\n*Newsletter (admin):*',
+        '`/newsletter send` — Send pending announcements now',
+        '`/newsletter preview` — Preview what would be sent',
+        '`/newsletter list` — All announcements + status',
+        '\n*Notifications (admin):*',
+        '`/notify <task-id>` — Watch task for completion',
+        '`/notify list` — Active watches',
+        '`/notify clear` — Clear fired watches',
         '\n*Autonomous:*',
         '`/danger <instruction>` — Execute autonomously (owner)',
         '`/danger` — Execute last plan autonomously (owner)',
@@ -814,23 +828,144 @@ function registerCommands(bot) {
   });
 
   // /briefing — On-demand morning briefing
+  // /briefing [system|personal|team] — On-demand morning briefing
   bot.command('briefing', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.reply('Admin only.');
 
-    const ack = await ctx.reply('*Generating briefing...*', {
+    const arg = (ctx.match || '').trim().toLowerCase();
+    const generators = {
+      system: { fn: generateBriefing, label: 'System' },
+      personal: { fn: generatePersonalBriefing, label: 'Personal' },
+      team: { fn: generateTeamBriefing, label: 'Team' },
+    };
+
+    // If a specific type is requested, show just that one
+    const types = arg && generators[arg] ? [arg] : ['system', 'personal', 'team'];
+
+    const ack = await ctx.reply(`*Generating ${types.length > 1 ? 'all briefings' : generators[types[0]].label + ' briefing'}...*`, {
       parse_mode: 'Markdown',
       message_thread_id: ctx.message?.message_thread_id,
     });
 
     try {
-      const text = await generateBriefing();
-      try {
-        await ctx.api.editMessageText(ctx.chat.id, ack.message_id, text, { parse_mode: 'Markdown' });
-      } catch {
-        await ctx.api.editMessageText(ctx.chat.id, ack.message_id, text);
+      for (const type of types) {
+        const { fn, label } = generators[type];
+        const text = await fn();
+        try {
+          await ctx.reply(text, {
+            parse_mode: 'Markdown',
+            message_thread_id: ctx.message?.message_thread_id,
+          });
+        } catch {
+          await ctx.reply(text, {
+            message_thread_id: ctx.message?.message_thread_id,
+          });
+        }
       }
+      await ctx.api.deleteMessage(ctx.chat.id, ack.message_id).catch(() => {});
     } catch (err) {
       await ctx.api.editMessageText(ctx.chat.id, ack.message_id, `Briefing error: ${err.message}`);
+    }
+  });
+
+  // /activity — Live activity snapshot (same style as periodic digest)
+  bot.command('activity', async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return ctx.reply('Admin only.');
+
+    function bar(pct) {
+      const filled = Math.round(Math.min(pct, 100) / 10);
+      return '\u25B0'.repeat(filled) + '\u25B1'.repeat(10 - filled);
+    }
+    function lvl(pct) {
+      if (pct < 60) return '\uD83D\uDFE2';
+      if (pct < 85) return '\uD83D\uDFE1';
+      return '\uD83D\uDD34';
+    }
+    function fmtUp(sec) {
+      if (sec > 86400) return `${Math.floor(sec / 86400)}d`;
+      if (sec > 3600) return `${Math.floor(sec / 3600)}h`;
+      return `${Math.floor(sec / 60)}m`;
+    }
+    function trunc(s, n) { return s && s.length > n ? s.substring(0, n - 1) + '\u2026' : (s || '?'); }
+
+    try {
+      const data = await engineGet('/heartbeat/latest');
+      const s = data.summary || {};
+      const items = data.work_items || {};
+      const cpu = Math.round(s.cpu || 0);
+      const mem = Math.round(s.memory || 0);
+      const healthy = s.healthy || 0;
+      const wTotal = s.worker_total || 0;
+
+      // Disk usage
+      let diskPct = 0, diskUsed = '?', diskTotal = '?';
+      try {
+        const { execSync } = require('child_process');
+        const df = execSync("df -h / | tail -1", { encoding: 'utf8', timeout: 3000 }).trim().split(/\s+/);
+        diskUsed = df[2] || '?';
+        diskTotal = df[1] || '?';
+        diskPct = parseInt((df[4] || '0').replace('%', '')) || 0;
+      } catch {}
+
+      // Uptime
+      let uptimeStr = '';
+      try {
+        const { execSync } = require('child_process');
+        uptimeStr = execSync('uptime -p', { encoding: 'utf8', timeout: 3000 }).trim().replace('up ', '');
+      } catch {}
+
+      const svcIcon = healthy === wTotal ? '\uD83D\uDFE2' : '\uD83D\uDD34';
+      const lines = [
+        '\u2699\uFE0F *OPAI Status*',
+        '',
+        `${svcIcon} Services  ${healthy}/${wTotal} healthy`,
+        `${lvl(cpu)} CPU   \`${String(cpu).padStart(3)}%\`  ${bar(cpu)}`,
+        `${lvl(mem)} Mem   \`${String(mem).padStart(3)}%\`  ${bar(mem)}`,
+        `${lvl(diskPct)} Disk  \`${String(diskPct).padStart(3)}%\`  ${bar(diskPct)}`,
+        `       ${diskUsed} / ${diskTotal}`,
+      ];
+
+      if (uptimeStr) lines.push(`\u23F1 Up ${uptimeStr}`);
+      lines.push(`\uD83D\uDCBB Sessions: ${s.active_sessions || 0}  |  Tasks: ${s.running_tasks || 0}`);
+
+      // Active workers only
+      const workers = Object.entries(items)
+        .filter(([, v]) => v.source === 'worker' && v.status === 'healthy')
+        .map(([k, v]) => `\`${k.replace('worker:', '')}\` (${fmtUp(v.uptime_sec || 0)})`);
+      if (workers.length) {
+        lines.push('', `\uD83E\uDD16 ${workers.join(', ')}`);
+      }
+
+      // Running tasks
+      const running = Object.entries(items)
+        .filter(([, v]) => v.source === 'task_registry' && v.status === 'running');
+      if (running.length) {
+        lines.push('');
+        running.slice(0, 3).forEach(([, v]) => {
+          lines.push(`  \u25B6\uFE0F ${trunc(v.title, 28)}`);
+        });
+      }
+
+      // Usage
+      try {
+        const usage = await engineGet('/claude/plan-usage', 15000);
+        const sPct = usage.session?.utilization ?? 0;
+        const wPct = usage.weekAll?.utilization ?? 0;
+        if (sPct || wPct) {
+          lines.push('');
+          lines.push(`${lvl(sPct)} Session \`${String(Math.round(sPct)).padStart(3)}%\`  ${bar(sPct)}`);
+          lines.push(`${lvl(wPct)} Week    \`${String(Math.round(wPct)).padStart(3)}%\`  ${bar(wPct)}`);
+        }
+      } catch {}
+
+      await ctx.reply(lines.join('\n'), {
+        parse_mode: 'Markdown',
+        message_thread_id: ctx.message?.message_thread_id,
+      });
+    } catch (err) {
+      await ctx.reply(`Activity check failed: ${err.message}`, {
+        message_thread_id: ctx.message?.message_thread_id,
+      });
     }
   });
 
@@ -1015,21 +1150,20 @@ function registerCommands(bot) {
         const lines = ['*HITL Awaiting Response:*\n'];
         for (const item of items.slice(0, 10)) {
           const name = typeof item === 'string' ? item : (item.filename || item.name || '?');
-          const kb = new InlineKeyboard()
-            .text('Run', `hitl:run:${name}`)
-            .text('Dismiss', `hitl:dismiss:${name}`);
           lines.push(`- \`${name}\``);
         }
 
-        // Send list with inline keyboards per item
+        // Send list header
         await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
 
-        // Send action buttons for each item
+        // Send action buttons for each item (4 buttons: Run, Approve, Dismiss, Reject)
         for (const item of items.slice(0, 5)) {
           const name = typeof item === 'string' ? item : (item.filename || item.name || '?');
           const kb = new InlineKeyboard()
             .text('Run', `hitl:run:${name}`)
-            .text('Dismiss', `hitl:dismiss:${name}`);
+            .text('Approve', `hitl:approve:${name}`)
+            .text('Dismiss', `hitl:dismiss:${name}`)
+            .text('Reject', `hitl:reject:${name}`);
           await ctx.reply(`\`${name}\``, { parse_mode: 'Markdown', reply_markup: kb });
         }
       } catch (err) {
@@ -1086,7 +1220,7 @@ function registerCommands(bot) {
     if (!isAdmin(ctx.from.id)) return ctx.reply('Admin only.');
 
     try {
-      const data = await engineGet('/claude/plan-usage');
+      const data = await engineGet('/claude/plan-usage', 15000);
 
       function bar(pct) {
         const filled = Math.round(Math.min(pct, 100) / 10);
@@ -1101,24 +1235,45 @@ function registerCommands(bot) {
 
       const lines = ['*Claude Usage*\n'];
 
-      // Adapt to whatever shape the API returns
-      const session = data.session_percent || data.session || 0;
-      const week = data.week_percent || data.weekly || 0;
-      const opus = data.opus_percent || data.opus || 0;
-      const sonnet = data.sonnet_percent || data.sonnet || 0;
+      // Extract utilization % from nested objects
+      const session = data.session?.utilization ?? 0;
+      const week = data.weekAll?.utilization ?? 0;
+      const opus = data.weekOpus?.utilization ?? null;
+      const sonnet = data.weekSonnet?.utilization ?? null;
 
       lines.push(`${lvl(session)} Session    ${session}%  ${bar(session)}`);
       lines.push(`${lvl(week)} Week       ${week}%  ${bar(week)}`);
-      if (opus) lines.push(`   Opus       ${opus}%  ${bar(opus)}`);
-      if (sonnet) lines.push(`   Sonnet     ${sonnet}%  ${bar(sonnet)}`);
+      if (opus != null) lines.push(`   Opus       ${opus}%  ${bar(opus)}`);
+      if (sonnet != null) lines.push(`   Sonnet     ${sonnet}%  ${bar(sonnet)}`);
 
-      if (data.resets_at || data.reset_date) {
-        lines.push(`\nResets: ${data.resets_at || data.reset_date}`);
+      // Extra usage (overages)
+      const extra = data.extraUsage;
+      if (extra?.isEnabled && extra.usedCredits != null) {
+        const limit = extra.monthlyLimit ? `/$${extra.monthlyLimit}` : '';
+        lines.push(`\n💳 Extra: $${extra.usedCredits.toFixed(2)}${limit}`);
       }
 
-      return ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+      // Reset times
+      const resetAt = data.session?.resetsAt || data.weekAll?.resetsAt;
+      if (resetAt) {
+        const resetDate = new Date(resetAt);
+        const now = new Date();
+        const diffMs = resetDate - now;
+        if (diffMs > 0) {
+          const hours = Math.floor(diffMs / 3600000);
+          const mins = Math.floor((diffMs % 3600000) / 60000);
+          lines.push(`\n⏳ Session resets in ${hours}h ${mins}m`);
+        }
+      }
+
+      return ctx.reply(lines.join('\n'), {
+        parse_mode: 'Markdown',
+        message_thread_id: ctx.message?.message_thread_id,
+      });
     } catch (err) {
-      return ctx.reply(`Usage check failed: ${err.message}`);
+      return ctx.reply(`Usage check failed: ${err.message}`, {
+        message_thread_id: ctx.message?.message_thread_id,
+      });
     }
   });
 
@@ -1215,6 +1370,57 @@ function registerCommands(bot) {
     return ctx.reply('Unknown brain subcommand. Try `/brain` for help.', { parse_mode: 'Markdown' });
   });
 
+  // /rag — Query organized RAG notebooks (NotebookLM)
+  bot.command('rag', async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return ctx.reply('Admin only.');
+
+    const args = (ctx.match || '').trim();
+    if (!args) {
+      return ctx.reply(
+        '*RAG Knowledge Base (NotebookLM):*\n\n' +
+        '`/rag <question>` — Auto-route to best notebook\n' +
+        '`/rag tech <question>` — Technical reference\n' +
+        '`/rag business <question>` — Business & HELM\n' +
+        '`/rag client <question>` — Client portfolio\n' +
+        '`/rag agent <question>` — Agent ops & prompts\n\n' +
+        '_Free queries via Google NotebookLM — saves Claude tokens._',
+        { parse_mode: 'Markdown' }
+      );
+    }
+
+    // Check if first word is a topic hint
+    const parts = args.split(/\s+/);
+    const topicHints = ['tech', 'technical', 'business', 'helm', 'client', 'agent', 'drive', 'api', 'pricing', 'squad'];
+    let topicHint = '';
+    let question = args;
+    if (topicHints.includes(parts[0]?.toLowerCase()) && parts.length > 1) {
+      topicHint = parts[0];
+      question = parts.slice(1).join(' ');
+    }
+
+    try {
+      await ctx.reply('Querying RAG knowledge base...');
+      const data = await enginePost('/notebooklm/rag/ask', {
+        question,
+        topic_hint: topicHint || null,
+      }, 30000);
+
+      const answer = data.answer || data.raw || 'No answer returned.';
+      // Truncate for Telegram (4096 char limit)
+      const truncated = answer.length > 3800
+        ? answer.substring(0, 3800) + '\n\n_(truncated)_'
+        : answer;
+
+      return ctx.reply(truncated, { parse_mode: 'Markdown' });
+    } catch (err) {
+      const msg = err.message || String(err);
+      if (msg.includes('404')) {
+        return ctx.reply('No matching RAG notebook for this topic. Try adding a topic hint: tech, business, client, or agent.');
+      }
+      return ctx.reply(`RAG query failed: ${msg}`);
+    }
+  });
+
   // /tasks — Task registry management
   bot.command('tasks', async (ctx) => {
     if (!isAdmin(ctx.from.id)) return ctx.reply('Admin only.');
@@ -1264,12 +1470,12 @@ function registerCommands(bot) {
     // /tasks or /tasks summary — counts by status
     try {
       const data = await engineGet('/tasks/summary');
-      const s = data.summary || data.counts || data;
+      const counts = data.by_status || data.summary || data.counts || data;
 
       const lines = ['*Task Registry Summary:*\n'];
       const statuses = ['pending', 'scheduled', 'running', 'completed', 'failed', 'cancelled'];
       for (const status of statuses) {
-        const count = s[status] || 0;
+        const count = counts[status] || 0;
         if (count > 0 || ['pending', 'running', 'completed'].includes(status)) {
           const icon = {
             pending: '\u23F3', scheduled: '\uD83D\uDCC5', running: '\u25B6\uFE0F',
@@ -1278,8 +1484,9 @@ function registerCommands(bot) {
           lines.push(`${icon} ${status}: *${count}*`);
         }
       }
-      const total = s.total || Object.values(s).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+      const total = data.total || Object.values(counts).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
       if (total) lines.push(`\nTotal: ${total}`);
+      if (data.overdue) lines.push(`\u26A0\uFE0F Overdue: *${data.overdue}*`);
       lines.push('\n`/tasks list` — View pending');
       return ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
     } catch (err) {
@@ -1377,6 +1584,382 @@ function registerCommands(bot) {
 
     setScopeTopic(scopeKey, label);
     return ctx.reply(`Conversation labeled: *${label}*`, { parse_mode: 'Markdown' });
+  });
+
+  // /notify — Register a personal notification watch on a task
+  bot.command('notify', async (ctx) => {
+    if (!isAdmin(ctx.from.id)) return ctx.reply('Admin only.');
+
+    const args = (ctx.match || '').trim();
+    if (!args) {
+      return ctx.reply(
+        '*Personal Notifications*\n\n' +
+        '`/notify <task-id> [message]` — Watch a task\n' +
+        '`/notify list` — Show active watches\n' +
+        '`/notify clear` — Clear fired watches\n\n' +
+        'You\'ll get a formatted notification when the task completes.',
+        { parse_mode: 'Markdown' }
+      );
+    }
+
+    // Subcommands
+    if (args === 'list') {
+      try {
+        const resp = await engineGet('/notifications/watches?status=watching');
+        const watches = resp?.watches || [];
+        if (!watches.length) return ctx.reply('No active watches.');
+        const lines = watches.map(w =>
+          `• \`${w.task_id || w.teamhub_item_id || '?'}\` — ${w.title || 'Untitled'}`
+        );
+        return ctx.reply(`*Active Watches (${watches.length})*\n\n${lines.join('\n')}`, { parse_mode: 'Markdown' });
+      } catch (e) {
+        return ctx.reply(`Failed to fetch watches: ${e.message}`);
+      }
+    }
+
+    if (args === 'clear') {
+      try {
+        const resp = await engineDelete('/notifications/watches/fired');
+        return ctx.reply(`Cleared ${resp?.removed_count || 0} fired watches.`);
+      } catch (e) {
+        return ctx.reply(`Failed: ${e.message}`);
+      }
+    }
+
+    // Register a watch: /notify TASK-123 optional message
+    const parts = args.split(/\s+/);
+    const taskId = parts[0];
+    const message = parts.slice(1).join(' ') || '';
+
+    try {
+      const resp = await enginePost('/notifications/watch', {
+        task_id: taskId,
+        title: '',
+        message: message || null,
+        source: 'telegram',
+      });
+      const w = resp?.watch;
+      return ctx.reply(
+        `👁 *Watch registered*\n\nTask: \`${taskId}\`${message ? `\nMessage: ${message}` : ''}\n\nYou'll be notified when it completes.`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (e) {
+      return ctx.reply(`Failed to register watch: ${e.message}`);
+    }
+  });
+
+  // ── /newsletter — Send, preview, create newsletters ─────
+  bot.command('newsletter', async (ctx) => {
+    const role = getUserRole(ctx);
+    if (!hasPermission(role, 'admin')) return ctx.reply('Admin only.');
+
+    const args = (ctx.message.text.split(/\s+/).slice(1).join(' ') || '').trim();
+    const sub = args.split(/\s+/)[0]?.toLowerCase();
+
+    if (!sub || sub === 'help') {
+      return ctx.reply(
+        `📨 *Newsletter*\n\n` +
+        `/newsletter send — Send pending announcements now\n` +
+        `/newsletter preview — Show what would be sent\n` +
+        `/newsletter list — Show all announcements\n` +
+        `/newsletter status — Pending count`,
+        { parse_mode: 'Markdown' }
+      );
+    }
+
+    if (sub === 'send') {
+      try {
+        await ctx.reply('📨 Sending newsletter...');
+        const resp = await enginePost('/newsletter/send', {}, 30000);
+        if (resp?.status === 'sent') {
+          const headlines = (resp.headlines || []).join(', ');
+          return ctx.reply(
+            `✅ *Newsletter sent*\n\n` +
+            `Announcements: ${resp.announcement_count}\n` +
+            `Headlines: ${headlines}`,
+            { parse_mode: 'Markdown' }
+          );
+        }
+        return ctx.reply(`⚠️ ${resp?.detail || 'Unknown error'}`);
+      } catch (e) {
+        return ctx.reply(`❌ Send failed: ${e.message}`);
+      }
+    }
+
+    if (sub === 'preview') {
+      try {
+        const resp = await engineGet('/newsletter/preview');
+        if (resp?.status === 'empty') {
+          return ctx.reply('No pending announcements.');
+        }
+        const headlines = (resp.headlines || []).map((h, i) => `${i + 1}. ${h}`).join('\n');
+        const recipients = (resp.recipients || []).join(', ');
+        return ctx.reply(
+          `📋 *Newsletter Preview*\n\n` +
+          `*Headlines:*\n${headlines}\n\n` +
+          `*Recipients:* ${recipients}\n` +
+          `*Announcements:* ${resp.announcement_count}`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (e) {
+        return ctx.reply(`❌ Preview failed: ${e.message}`);
+      }
+    }
+
+    if (sub === 'list' || sub === 'status') {
+      try {
+        const resp = await engineGet('/newsletter/list');
+        if (!resp?.announcements?.length) {
+          return ctx.reply('No announcements found.');
+        }
+        const lines = resp.announcements.map(a => {
+          const status = a.announced ? '✅' : '⏳';
+          const date = a.date || '?';
+          return `${status} ${date} — ${a.headline || 'Untitled'}`;
+        });
+        return ctx.reply(
+          `📨 *Announcements* (${resp.pending} pending)\n\n${lines.join('\n')}`,
+          { parse_mode: 'Markdown' }
+        );
+      } catch (e) {
+        return ctx.reply(`❌ ${e.message}`);
+      }
+    }
+
+    return ctx.reply('Unknown subcommand. Try: /newsletter help');
+  });
+
+  // Assembly Line pipeline
+  registerAssemblyCommand(bot);
+
+  // Vercel Demo Platform
+  registerDemoCommand(bot);
+}
+
+// ── /assembly — Assembly Line pipeline ──────────────────
+function registerAssemblyCommand(bot) {
+  bot.command('assembly', async (ctx) => {
+    if (!hasPermission(ctx, 'admin')) {
+      return ctx.reply('Admin access required.');
+    }
+
+    const text = (ctx.message.text || '').replace(/^\/assembly\s*/, '').trim();
+
+    // /assembly status
+    if (text === 'status' || text === '') {
+      try {
+        const resp = await engineGet('/assembly/stats');
+        if (resp?.error) return ctx.reply(`⚠️ ${resp.error}`);
+        const lines = [
+          '🏭 *Assembly Line*',
+          '',
+          `Running: ${resp.running || 0}`,
+          `Paused: ${resp.paused || 0}`,
+          `Completed: ${resp.completed || 0}`,
+          `Failed: ${resp.failed || 0}`,
+          `Total: ${resp.total_runs || 0}`,
+        ];
+        return ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+      } catch (e) {
+        return ctx.reply(`❌ ${e.message}`);
+      }
+    }
+
+    // /assembly list
+    if (text === 'list') {
+      try {
+        const resp = await engineGet('/assembly/runs?limit=20');
+        const runs = resp?.runs || [];
+        if (!runs.length) return ctx.reply('No assembly runs found.');
+        const lines = ['🏭 *Assembly Runs*', ''];
+        for (const r of runs.slice(0, 20)) {
+          const phase = r.current_phase ?? '?';
+          const status = r.phase_status || r.status;
+          lines.push(`\`${r.id}\` — Phase ${phase} (${status})`);
+        }
+        return ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+      } catch (e) {
+        return ctx.reply(`❌ ${e.message}`);
+      }
+    }
+
+    // /assembly resume <id>
+    if (text.startsWith('resume ')) {
+      const runId = text.replace('resume ', '').trim();
+      try {
+        const resp = await enginePost(`/assembly/resume/${runId}`);
+        if (resp?.success) return ctx.reply(`▶️ Resumed assembly run \`${runId}\``, { parse_mode: 'Markdown' });
+        return ctx.reply(`⚠️ ${resp?.error || 'Resume failed'}`);
+      } catch (e) {
+        return ctx.reply(`❌ ${e.message}`);
+      }
+    }
+
+    // /assembly abort <id>
+    if (text.startsWith('abort ')) {
+      const runId = text.replace('abort ', '').trim();
+      try {
+        const resp = await enginePost(`/assembly/abort/${runId}`);
+        if (resp?.success) return ctx.reply(`🛑 Aborted assembly run \`${runId}\``, { parse_mode: 'Markdown' });
+        return ctx.reply(`⚠️ ${resp?.error || 'Abort failed'}`);
+      } catch (e) {
+        return ctx.reply(`❌ ${e.message}`);
+      }
+    }
+
+    // /assembly prd (reply to a message containing a PRD)
+    if (text === 'prd') {
+      const replied = ctx.message.reply_to_message;
+      if (!replied?.text) return ctx.reply('Reply to a message containing a PRD.');
+      try {
+        const resp = await enginePost('/assembly/start', {
+          input_type: 'prd',
+          input_text: replied.text,
+        });
+        if (resp?.success) {
+          return ctx.reply(
+            `🏭 Assembly run \`${resp.run_id}\` started from PRD\nPhase 0 (Intake) in progress...`,
+            { parse_mode: 'Markdown' }
+          );
+        }
+        return ctx.reply(`⚠️ ${resp?.error || 'Start failed'}`);
+      } catch (e) {
+        return ctx.reply(`❌ ${e.message}`);
+      }
+    }
+
+    // /assembly <idea text> — start from idea
+    if (text.length > 3) {
+      try {
+        const resp = await enginePost('/assembly/start', {
+          input_type: 'idea',
+          input_text: text,
+        });
+        if (resp?.success) {
+          return ctx.reply(
+            `🏭 Assembly run \`${resp.run_id}\` started\nIdea: "${text.substring(0, 80)}${text.length > 80 ? '...' : ''}"\nPhase 0 (Intake) in progress...`,
+            { parse_mode: 'Markdown' }
+          );
+        }
+        return ctx.reply(`⚠️ ${resp?.error || 'Start failed'}`);
+      } catch (e) {
+        return ctx.reply(`❌ ${e.message}`);
+      }
+    }
+
+    return ctx.reply(
+      '🏭 *Assembly Line*\n\n' +
+      '`/assembly <idea>` — Start from idea\n' +
+      '`/assembly prd` — Start from PRD (reply)\n' +
+      '`/assembly status` — Pipeline stats\n' +
+      '`/assembly list` — Recent runs\n' +
+      '`/assembly resume <id>` — Resume paused\n' +
+      '`/assembly abort <id>` — Abort run',
+      { parse_mode: 'Markdown' }
+    );
+  });
+}
+
+// ── /demo — Vercel Demo Platform ────────────────────────
+function registerDemoCommand(bot) {
+  bot.command('demo', async (ctx) => {
+    if (!hasPermission(ctx, 'admin')) {
+      return ctx.reply('Admin access required.');
+    }
+
+    const text = (ctx.message.text || '').replace(/^\/demo\s*/, '').trim();
+
+    // /demo list (default)
+    if (text === 'list' || text === '') {
+      try {
+        const resp = await engineGet('/demos');
+        const demos = resp?.demos || [];
+        if (!demos.length) return ctx.reply('No active demos.');
+        const lines = ['🚀 *Active Demos*', ''];
+        for (const d of demos) {
+          const stale = d.age_hours > d.max_age_hours ? ' ⚠️ STALE' : '';
+          lines.push(`*${d.slug}*${stale}`);
+          lines.push(`  ${d.url}`);
+          lines.push(`  Age: ${d.age_hours}h / ${d.max_age_hours}h`);
+          if (d.notes) lines.push(`  Note: ${d.notes}`);
+          lines.push('');
+        }
+        lines.push(`${demos.length}/3 slots used`);
+        return ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+      } catch (e) {
+        return ctx.reply(`❌ ${e.message}`);
+      }
+    }
+
+    // /demo deploy <path> <slug> [notes]
+    if (text.startsWith('deploy ')) {
+      const parts = text.replace('deploy ', '').trim().split(/\s+/);
+      if (parts.length < 2) {
+        return ctx.reply('Usage: `/demo deploy <path> <slug> [notes]`', { parse_mode: 'Markdown' });
+      }
+      const dir = parts[0];
+      const slug = parts[1];
+      const notes = parts.slice(2).join(' ');
+      await ctx.reply(`⏳ Deploying \`${slug}\` from ${dir}...`, { parse_mode: 'Markdown' });
+      try {
+        const resp = await enginePost('/demos/deploy', { directory: dir, slug, notes }, 120000);
+        if (resp?.success) {
+          return ctx.reply(
+            `✅ *Demo deployed*\n\n` +
+            `*Slug:* \`${resp.slug}\`\n` +
+            `*URL:* ${resp.url}\n` +
+            `*Project:* ${resp.project}`,
+            { parse_mode: 'Markdown' }
+          );
+        }
+        return ctx.reply(`⚠️ ${resp?.error || 'Deploy failed'}`);
+      } catch (e) {
+        return ctx.reply(`❌ ${e.message}`);
+      }
+    }
+
+    // /demo teardown <slug>
+    if (text.startsWith('teardown-all')) {
+      try {
+        const resp = await enginePost('/demos/teardown-all');
+        if (resp?.success) return ctx.reply('🗑️ All demos removed.');
+        return ctx.reply(`⚠️ ${resp?.error || 'Teardown failed'}`);
+      } catch (e) {
+        return ctx.reply(`❌ ${e.message}`);
+      }
+    }
+
+    if (text.startsWith('teardown ')) {
+      const slug = text.replace('teardown ', '').trim();
+      try {
+        const resp = await enginePost(`/demos/${slug}/teardown`);
+        if (resp?.success) return ctx.reply(`🗑️ Demo \`${slug}\` removed.`, { parse_mode: 'Markdown' });
+        return ctx.reply(`⚠️ ${resp?.error || 'Teardown failed'}`);
+      } catch (e) {
+        return ctx.reply(`❌ ${e.message}`);
+      }
+    }
+
+    // /demo sweep
+    if (text === 'sweep') {
+      try {
+        const resp = await enginePost('/demos/sweep');
+        return ctx.reply(resp?.output || 'Sweep complete.');
+      } catch (e) {
+        return ctx.reply(`❌ ${e.message}`);
+      }
+    }
+
+    // Help
+    return ctx.reply(
+      '🚀 *Vercel Demo Platform*\n\n' +
+      '`/demo list` — Active demos\n' +
+      '`/demo deploy <path> <slug>` — Deploy\n' +
+      '`/demo teardown <slug>` — Remove one\n' +
+      '`/demo teardown-all` — Remove all\n' +
+      '`/demo sweep` — Clean stale (>48h)',
+      { parse_mode: 'Markdown' }
+    );
   });
 }
 

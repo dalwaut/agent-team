@@ -1,15 +1,15 @@
 {
-  "activeAccountId": "acc-dalwaut",
+  "activeAccountId": "arl-dalwaut-gmail",
   "accounts": [
     {
-      "id": "acc-paradise",
+      "id": "arl-agent-pw",
       "name": "Paradise Web Agent",
       "email": "agent@paradisewebfl.com",
       "envPrefix": "AGENT",
-      "mode": "suggestion",
+      "mode": "internal",
       "permissions": {
         "classify": true,
-        "tag": true,
+        "label": true,
         "organize": true,
         "draft": true,
         "send": true,
@@ -39,14 +39,14 @@
       "notifications": {
         "telegramUserId": 1666403499
       },
-      "checkIntervalMinutes": 30,
+      "checkIntervalMinutes": 5,
       "rateLimitPerHour": 5,
       "lookbackMinutes": 60,
       "needsSetup": false,
       "enabled": true
     },
     {
-      "id": "acc-dalwaut",
+      "id": "arl-dalwaut-gmail",
       "name": "Dallas Personal",
       "email": "dalwaut@gmail.com",
       "imap": {
@@ -64,7 +64,7 @@
       "mode": "suggestion",
       "permissions": {
         "classify": true,
-        "tag": true,
+        "label": true,
         "organize": false,
         "draft": false,
         "send": false,
@@ -91,7 +91,7 @@
       "enabled": true
     },
     {
-      "id": "acc-artist",
+      "id": "arl-artist-gmail",
       "name": "Artist Personal",
       "email": "artistatlg@gmail.com",
       "imap": {
@@ -109,7 +109,7 @@
       "mode": "suggestion",
       "permissions": {
         "classify": false,
-        "tag": false,
+        "label": false,
         "organize": false,
         "draft": false,
         "send": false,
@@ -131,14 +131,14 @@
       "enabled": false
     },
     {
-      "id": "acc-dallas-pw",
+      "id": "arl-dallas-pw",
       "name": "Dallas (ParadiseWeb)",
       "email": "dallas@paradisewebfl.com",
       "envPrefix": "DALLAS_PW",
-      "mode": "internal",
+      "mode": "suggestion",
       "permissions": {
         "classify": true,
-        "tag": true,
+        "label": true,
         "organize": true,
         "draft": true,
         "send": false,
@@ -149,12 +149,12 @@
           "paradisewebfl.com",
           "boutabyte.com",
           "boutacare.com",
-          "wautersedge.com",
-          "mindzoo.com"
+          "wautersedge.com"
         ],
         "addresses": [
           "dalwaut@gmail.com",
-          "artistatlg@gmail.com"
+          "artistatlg@gmail.com",
+          "e.westberg@hotmail.com"
         ]
       },
       "voiceProfile": "dallas-personal",

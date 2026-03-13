@@ -1,0 +1,39 @@
+# Template: Meeting Request
+# Voice: boutabyte-professional
+# Trigger: When scheduling a meeting with a client, prospect, or collaborator
+
+## Subject Line Options
+- Meeting Request: {{meeting_purpose}}
+- Can we set up a quick call? — {{topic}}
+- Let's connect — {{topic}}
+
+## Body — Standard Meeting Request
+
+Hi {{client_name}},
+
+I'd like to set up a {{meeting_duration}} call to {{meeting_purpose_brief}}. {{one_sentence_context_why}}.
+
+Here are a few times that work on my end — {{option_1_day_time}}, {{option_2_day_time}}, or {{option_3_day_time}}. If none of those work, let me know what does and I'll adjust.
+
+Here's what I'm thinking we'd cover — {{agenda_item_1}}, {{agenda_item_2}}, and {{agenda_item_3}}. Should be a focused conversation, nothing too heavy.
+
+Just reply with your preferred time and I'll send over a calendar invite with the meeting link.
+
+## Body — Urgent Meeting Request
+
+Hi {{client_name}},
+
+Something came up with {{project_name}} that I'd like to walk through with you before we move forward. Nothing alarming, but I want to make sure we're aligned on {{topic}}.
+
+Could we hop on a quick {{meeting_duration}} call in the next day or two? I'm flexible — {{option_1_day_time}} or {{option_2_day_time}} would work best, but I can shift things around if needed.
+
+We'd cover {{agenda_item_1}} and {{agenda_item_2}}. Should be a quick one.
+
+## Notes
+- Always offer at least 2-3 time options to reduce back-and-forth
+- Include timezone if the client is in a different region — e.g., "2pm EST / 11am PST"
+- Keep agenda previews brief — 2-3 items max, enough to set expectations
+- For urgent requests, lead with context but avoid creating unnecessary alarm
+- Default meeting duration: 30 minutes for status calls, 60 minutes for strategy/planning
+- If using a scheduling tool, replace time options with: "Pick a time that works: {{scheduling_link}}"
+- Calendar invite should go out immediately after they confirm — do not wait

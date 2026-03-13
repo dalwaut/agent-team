@@ -28,6 +28,14 @@ const opaiAuth = (() => {
      * @returns {Object|null} user object or null
      */
     async function init(opts = {}) {
+        // Check if auth is disabled (local access bypass)
+        if (window.OPAI_AUTH_DISABLED) {
+            console.log('[OPAI Auth] Auth disabled — local access mode');
+            currentUser = { id: 'local', email: 'admin@localhost', app_metadata: { role: 'admin' }, user_metadata: { display_name: 'Admin (local)' } };
+            currentSession = { access_token: null, user: currentUser };
+            return currentUser;
+        }
+
         // Read config at call time (not module load time) so window vars set by app.js are available
         const SUPABASE_URL = document.querySelector('meta[name="supabase-url"]')?.content
             || window.OPAI_SUPABASE_URL || '';
@@ -114,6 +122,7 @@ const opaiAuth = (() => {
      * Auto-refreshes if expired.
      */
     async function getToken() {
+        if (window.OPAI_AUTH_DISABLED) return null;
         if (!supabase) return null;
         const { data: { session } } = await supabase.auth.getSession();
         return session?.access_token || null;
@@ -121,10 +130,15 @@ const opaiAuth = (() => {
 
     /**
      * Fetch with auth header automatically added.
+     * Falls back to unauthenticated fetch when auth is disabled.
      */
     async function fetchWithAuth(url, options = {}) {
         const token = await getToken();
         if (!token) {
+            if (window.OPAI_AUTH_DISABLED) {
+                // Auth disabled — do unauthenticated fetch
+                return fetch(url, options);
+            }
             window.location.href = '/auth/login';
             throw new Error('Not authenticated');
         }
@@ -198,9 +212,18 @@ const opaiAuth = (() => {
         return currentUser?.app_metadata?.role === 'admin';
     }
 
+    /**
+     * Get current session (user + access_token).
+     * Returns null if not authenticated.
+     */
+    function getSession() {
+        return currentSession;
+    }
+
     return {
         init,
         getToken,
+        getSession,
         fetchWithAuth,
         fetchJSON,
         getAuthMessage,

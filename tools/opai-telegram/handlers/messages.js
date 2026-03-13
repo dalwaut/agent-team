@@ -7,21 +7,31 @@
  *   - COLD: digest summary + last exchange + --resume
  *   - EXPIRED/NEW: digest only or empty, fresh session
  *
- * Also handles YouTube URL detection with inline action buttons.
+ * Also handles YouTube and Instagram URL detection with inline action buttons.
  */
 
 const fs = require('fs');
 const path = require('path');
-const { InlineKeyboard } = require('grammy');
-const { askClaude, buildPrompt } = require('../claude-handler');
+const { InlineKeyboard, InputFile } = require('grammy');
+const { askClaude, buildPrompt, OPAI_ROOT } = require('../claude-handler');
 const { getContextStrategy, recordMessage, buildScopeKey } = require('../conversation-state');
 const { createJob, completeJob, failJob } = require('../job-manager');
 const { hasPermission, getTopicScope, hasWorkspaceAccess } = require('../access-control');
 const { detectIntent, handleIntent } = require('../teamhub-fast');
 const { detectWpIntent, handleWpIntent } = require('../wordpress-fast');
-const { cacheVideo, handlePendingTaskInput, cacheDangerResponse } = require('./callbacks');
+const { cacheVideo, cacheReel, handlePendingTaskInput, cacheDangerResponse } = require('./callbacks');
 const { logAudit } = require('./utils');
 const { getUserRole } = require('../access-control');
+const { transcribeVoice } = require('../voice-transcriber');
+const { isFileAllowedForConversation } = require('../file-sender');
+
+// System notification topics — text messages are ignored (notification-only).
+// Buttons/callbacks still work via callbacks.js.
+const SYSTEM_TOPICS = new Set(
+  [process.env.ALERT_THREAD_ID, process.env.SERVER_STATUS_THREAD_ID, process.env.HITL_THREAD_ID]
+    .filter(Boolean)
+    .map(Number)
+);
 
 // Email auto-discovery: track which users we've already prompted (24h cooldown)
 const _discoveryPrompted = new Set();
@@ -49,6 +59,9 @@ const MAX_MESSAGE_LENGTH = 4096;
 
 // YouTube URL detection
 const YT_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/i;
+
+// Instagram URL detection
+const IG_REGEX = /(?:https?:\/\/)?(?:www\.)?instagram\.com\/(?:reel|reels|p|tv)\/([\w-]+)\/?(?:\?[^\s]*)?/i;
 
 /**
  * Split a message into chunks respecting Telegram's 4096 char limit.
@@ -84,26 +97,16 @@ function formatElapsed(seconds) {
 }
 
 function getAckMessage(state, content) {
-  // State-aware + content-aware acknowledgment
-  const short = content?.toLowerCase() || '';
-
-  // Content-aware acks
-  if (short.match(/^(hi|hey|hello|yo|sup|what'?s up)/)) return 'Hey there...';
-  if (short.includes('task') || short.includes('todo')) return 'Checking tasks...';
-  if (short.includes('email') || short.includes('inbox')) return 'Checking email...';
-  if (short.includes('status') || short.includes('health')) return 'Checking status...';
-  if (short.includes('log')) return 'Pulling logs...';
-  if (short.includes('deploy') || short.includes('build')) return 'Looking into that...';
-  if (short.includes('search') || short.includes('find')) return 'Searching...';
-
-  // State-aware fallbacks
+  // State-aware acknowledgment only — no content keyword matching.
+  // Content-aware acks were causing misleading framing (e.g. "Checking tasks..."
+  // when the user merely mentioned "task" in a longer message).
   switch (state) {
+    case 'ACTIVE':
+      return 'On it...';
     case 'COLD':
       return 'Picking up where we left off...';
     case 'EXPIRED':
       return 'Starting fresh...';
-    case 'ACTIVE':
-      return 'On it...';
     default:
       return 'Thinking...';
   }
@@ -113,9 +116,9 @@ function getProcessingMessage(elapsed) {
   if (elapsed < 15) return '*Working on it...*';
   if (elapsed < 30) return `*Still working...* (${formatElapsed(elapsed)})`;
   if (elapsed < 60) return `*Deeper analysis in progress...* (${formatElapsed(elapsed)})`;
-  if (elapsed < 90) return `*This one's taking a bit — hang tight.* (${formatElapsed(elapsed)})`;
-  if (elapsed < 120) return `*Almost there...* (${formatElapsed(elapsed)})`;
-  return `*Complex request — still on it.* (${formatElapsed(elapsed)})`;
+  if (elapsed < 120) return `*This one's taking a bit — hang tight.* (${formatElapsed(elapsed)})`;
+  if (elapsed < 180) return `*Complex task — still running. I'll update you when complete.* (${formatElapsed(elapsed)})`;
+  return `*Still working on this — will notify you when done.* (${formatElapsed(elapsed)})`;
 }
 
 /**
@@ -194,6 +197,76 @@ async function handleYouTubeUrl(ctx, url, videoId) {
 }
 
 /**
+ * Handle an Instagram URL — fetch metadata/transcript and show action buttons.
+ * Uses shared/instagram.js (processInstagramUrl) which spawns the Python library.
+ */
+async function handleInstagramUrl(ctx, url, shortcode) {
+  const ackMsg = await ctx.reply('*Fetching reel info...*', {
+    parse_mode: 'Markdown',
+    message_thread_id: ctx.message.message_thread_id,
+  });
+
+  try {
+    const igPath = path.join(__dirname, '..', '..', 'shared', 'instagram.js');
+    let caption, transcript, author, summary;
+
+    const fullUrl = url.startsWith('http') ? url : 'https://' + url;
+
+    if (fs.existsSync(igPath)) {
+      const { processInstagramUrl } = require(igPath);
+      const result = await processInstagramUrl(fullUrl, { mode: 'intel', frames: false });
+      author = result?.author ? `@${result.author}` : '';
+      caption = result?.caption || '';
+      transcript = result?.transcript || null;
+
+      // Build a preview
+      const parts = [];
+      if (author) parts.push(`*Author:* ${author}`);
+      if (result?.likes != null) parts.push(`Likes: ${Number(result.likes).toLocaleString()}`);
+      if (result?.views != null) parts.push(`Views: ${Number(result.views).toLocaleString()}`);
+      if (caption) parts.push('', caption.substring(0, 600));
+      if (transcript) {
+        const preview = transcript.substring(0, 400).trim();
+        parts.push('', '*Transcript:*', preview + (preview.length < transcript.length ? '...' : ''));
+      }
+      summary = parts.join('\n') || 'Reel data fetched.';
+    } else {
+      summary = 'Instagram library not available.';
+      caption = '';
+      transcript = null;
+    }
+
+    const displaySummary = summary.substring(0, 2000);
+
+    cacheReel(shortcode, {
+      caption,
+      transcript,
+      author,
+      url: fullUrl,
+    });
+
+    const keyboard = new InlineKeyboard()
+      .text('Build Guide', 'ig:build:' + shortcode)
+      .text('Intel Report', 'ig:intel:' + shortcode)
+      .row()
+      .text('Save to Brain', 'ig:save:' + shortcode)
+      .text('Research', 'ig:research:' + shortcode);
+
+    await ctx.api.editMessageText(
+      ctx.chat.id,
+      ackMsg.message_id,
+      displaySummary,
+      { parse_mode: 'Markdown', reply_markup: keyboard }
+    );
+  } catch (err) {
+    console.error('[TG] Instagram error:', err.message);
+    try {
+      await ctx.api.editMessageText(ctx.chat.id, ackMsg.message_id, 'Could not fetch reel info: ' + err.message);
+    } catch {}
+  }
+}
+
+/**
  * Process a Claude request in the background (non-blocking).
  * Called fire-and-forget so the webhook can respond immediately.
  */
@@ -230,7 +303,17 @@ async function processClaude(bot, { chatId, threadId, ackMessageId, scopeKey, us
     logAudit('claude-invocation', 'completed', `[${state}] Claude replied (${elapsed}s)`, { username, chatId, state });
 
     if (result.text && result.text.trim()) {
-      const trimmed = result.text.trim();
+      let trimmed = result.text.trim();
+
+      // --- Extract <<SEND_FILE:/path>> markers before display ---
+      const fileMarkerRegex = /<<SEND_FILE:([^>]+)>>/g;
+      const filesToSend = [];
+      let match;
+      while ((match = fileMarkerRegex.exec(trimmed)) !== null) {
+        filesToSend.push(match[1].trim());
+      }
+      // Strip markers from display text
+      trimmed = trimmed.replace(fileMarkerRegex, '').replace(/\n{3,}/g, '\n\n').trim();
 
       // Record bot response in ring buffer
       recordMessage(scopeKey, 'assistant', 'OPAI Bot', trimmed);
@@ -271,7 +354,39 @@ async function processClaude(bot, { chatId, threadId, ackMessageId, scopeKey, us
         }
       }
 
-      console.log(`[TG] Replied (${trimmed.length} chars, ${elapsed}s, state: ${state}${showDangerButton ? ', +danger-btn' : ''})`);
+      // --- Send extracted files as Telegram documents ---
+      if (filesToSend.length > 0) {
+        for (const rawPath of filesToSend) {
+          try {
+            const absPath = path.isAbsolute(rawPath) ? rawPath : path.join(OPAI_ROOT, rawPath);
+            const resolved = path.resolve(absPath);
+            const check = isFileAllowedForConversation(resolved);
+            if (!check.safe) {
+              await bot.api.sendMessage(chatId, `File blocked: ${check.reason} (\`${path.basename(resolved)}\`)`, { parse_mode: 'Markdown', ...threadOpts });
+              continue;
+            }
+            if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+              await bot.api.sendMessage(chatId, `File not found: \`${path.basename(rawPath)}\``, { parse_mode: 'Markdown', ...threadOpts });
+              continue;
+            }
+            const stat = fs.statSync(resolved);
+            if (stat.size > 50 * 1024 * 1024) {
+              await bot.api.sendMessage(chatId, `File too large: \`${path.basename(resolved)}\` (${Math.round(stat.size / 1024 / 1024)}MB, limit 50MB)`, { parse_mode: 'Markdown', ...threadOpts });
+              continue;
+            }
+            await bot.api.sendDocument(chatId, new InputFile(resolved), {
+              caption: path.basename(resolved),
+              ...threadOpts,
+            });
+            console.log(`[TG] Sent file: ${path.basename(resolved)} (${stat.size} bytes)`);
+          } catch (fileErr) {
+            console.error(`[TG] File send error:`, fileErr.message);
+            try { await bot.api.sendMessage(chatId, `Failed to send file: ${fileErr.message}`, threadOpts); } catch {}
+          }
+        }
+      }
+
+      console.log(`[TG] Replied (${trimmed.length} chars, ${elapsed}s, state: ${state}${showDangerButton ? ', +danger-btn' : ''}${filesToSend.length ? `, +${filesToSend.length} file(s)` : ''})`);
     } else {
       await bot.api.editMessageText(chatId, ackMessageId, '`No response received.`', { parse_mode: 'Markdown' });
     }
@@ -328,6 +443,11 @@ function registerMessageHandler(bot) {
     const username = ctx.from.first_name || ctx.from.username || String(userId);
     const chatId = ctx.chat.id;
     const threadId = ctx.message.message_thread_id || 'general';
+
+    // System notification topics (Alerts, Server Status, HITL) are notification-only.
+    // Silently ignore text messages — inline button callbacks still work via callbacks.js.
+    if (threadId !== 'general' && SYSTEM_TOPICS.has(Number(threadId))) return;
+
     const scopeKey = buildScopeKey(chatId, threadId, userId);
     const admin = hasPermission(userId, 'admin');
     const content = ctx.message.text;
@@ -362,6 +482,13 @@ function registerMessageHandler(bot) {
       return;
     }
 
+    // Instagram URL detection — intercept before Claude
+    const igMatch = content.match(IG_REGEX);
+    if (igMatch) {
+      handleInstagramUrl(ctx, igMatch[0], igMatch[1]).catch(err => console.error('[TG] Instagram bg error:', err.message));
+      return;
+    }
+
     // --- Email auto-discovery: prompt owner to map new admin group users ---
     const adminGroupId = process.env.ADMIN_GROUP_ID;
     const ownerId = process.env.OWNER_USER_ID;
@@ -390,6 +517,10 @@ function registerMessageHandler(bot) {
     }
 
     // --- Fast Path: Direct API calls for known workspace intents ---
+    // Skip fast path for admin DMs — full Claude conversation takes priority.
+    // Fast path is for workspace topics and member queries, not admin comms.
+    const isAdminDM = admin && threadId === 'general';
+
     // Resolve workspace ID from topic binding for scoped queries
     let wsId = null;
     if (threadId !== 'general') {
@@ -397,7 +528,7 @@ function registerMessageHandler(bot) {
       if (topicScope) wsId = topicScope.workspaceId;
     }
 
-    const intent = detectIntent(content);
+    const intent = !isAdminDM ? detectIntent(content) : null;
     if (intent) {
       console.log(`[TG] [FAST] ${username}: "${content.substring(0, 80)}" -> ${intent.intent} (ws: ${wsId || 'default'})`);
       recordMessage(scopeKey, 'user', username, content);
@@ -468,4 +599,140 @@ function registerMessageHandler(bot) {
   });
 }
 
-module.exports = { registerMessageHandler, splitMessage };
+/**
+ * Register the voice message handler on the bot.
+ * Downloads OGG from Telegram, transcribes via Groq Whisper, then feeds into Claude pipeline.
+ * @param {import('grammy').Bot} bot
+ */
+function registerVoiceHandler(bot) {
+  bot.on('message:voice', async (ctx) => {
+    const userId = ctx.from.id;
+    const username = ctx.from.first_name || ctx.from.username || String(userId);
+    const chatId = ctx.chat.id;
+    const threadId = ctx.message.message_thread_id || 'general';
+
+    // System topics — ignore voice too
+    if (threadId !== 'general' && SYSTEM_TOPICS.has(Number(threadId))) return;
+
+    const scopeKey = buildScopeKey(chatId, threadId, userId);
+    const admin = hasPermission(userId, 'admin');
+    const duration = ctx.message.voice.duration || 0;
+
+    console.log(`[TG] [VOICE] ${username}: voice message (${duration}s)`);
+
+    // Workspace scoping
+    let workspaceName = null;
+    if (threadId !== 'general') {
+      const topicScope = getTopicScope(chatId, threadId);
+      if (topicScope && topicScope.workspaceId) {
+        if (!hasWorkspaceAccess(userId, topicScope.workspaceId)) {
+          return ctx.reply('You do not have access to this workspace topic.');
+        }
+        workspaceName = topicScope.workspaceName;
+      }
+    }
+
+    // Send transcription ack
+    const ackMsg = await ctx.reply('*Transcribing...*', {
+      parse_mode: 'Markdown',
+      message_thread_id: ctx.message.message_thread_id,
+    });
+
+    try {
+      // Download voice file from Telegram
+      const file = await ctx.api.getFile(ctx.message.voice.file_id);
+      const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`;
+      const res = await fetch(fileUrl);
+      if (!res.ok) throw new Error(`Failed to download voice file: ${res.status}`);
+      const buffer = Buffer.from(await res.arrayBuffer());
+
+      // Transcribe
+      const transcript = await transcribeVoice(buffer);
+      if (transcript.error) {
+        await ctx.api.editMessageText(chatId, ackMsg.message_id, `Transcription failed: ${transcript.error}`);
+        return;
+      }
+
+      if (!transcript.text || !transcript.text.trim()) {
+        await ctx.api.editMessageText(chatId, ackMsg.message_id, 'Could not transcribe — no speech detected.');
+        return;
+      }
+
+      const content = transcript.text.trim();
+      const langLabel = transcript.language ? ` [${transcript.language}]` : '';
+
+      // Show transcript to user
+      await ctx.api.editMessageText(chatId, ackMsg.message_id,
+        `*You said${langLabel}:* ${content}`,
+        { parse_mode: 'Markdown' }
+      );
+
+      console.log(`[TG] [VOICE] Transcribed (${content.length} chars${langLabel}): "${content.substring(0, 80)}"`);
+
+      // Record as user message
+      recordMessage(scopeKey, 'user', username, `[voice] ${content}`);
+
+      // --- Fast paths (same as text) ---
+      const isAdminDM = admin && threadId === 'general';
+      let wsId = null;
+      if (threadId !== 'general') {
+        const topicScope = getTopicScope(chatId, threadId);
+        if (topicScope) wsId = topicScope.workspaceId;
+      }
+
+      const intent = !isAdminDM ? detectIntent(content) : null;
+      if (intent) {
+        try {
+          const result = await handleIntent(intent.intent, intent.query, wsId);
+          if (result) {
+            recordMessage(scopeKey, 'assistant', 'OPAI Bot', result);
+            try {
+              await ctx.reply(result, { parse_mode: 'Markdown', message_thread_id: ctx.message.message_thread_id });
+            } catch {
+              await ctx.reply(result, { message_thread_id: ctx.message.message_thread_id });
+            }
+            return;
+          }
+        } catch {}
+      }
+
+      const wpIntent = detectWpIntent(content);
+      if (wpIntent) {
+        try {
+          const result = await handleWpIntent(wpIntent.intent);
+          if (result) {
+            recordMessage(scopeKey, 'assistant', 'OPAI Bot', result);
+            try {
+              await ctx.reply(result, { parse_mode: 'Markdown', message_thread_id: ctx.message.message_thread_id });
+            } catch {
+              await ctx.reply(result, { message_thread_id: ctx.message.message_thread_id });
+            }
+            return;
+          }
+        } catch {}
+      }
+
+      // --- Slow path: Claude ---
+      const { contextBlock, useResume, sessionId, state } = getContextStrategy(scopeKey);
+
+      const claudeAck = await ctx.reply(`*${getAckMessage(state, content)}*`, {
+        parse_mode: 'Markdown',
+        message_thread_id: ctx.message.message_thread_id,
+      });
+
+      processClaude(bot, {
+        chatId, threadId: String(threadId), ackMessageId: claudeAck.message_id,
+        scopeKey, username, content, admin, workspaceName,
+        state, contextBlock, useResume, sessionId,
+      }).catch(err => console.error('[TG] Background Claude (voice) error:', err.message));
+
+    } catch (err) {
+      console.error('[TG] [VOICE] Error:', err.message);
+      try {
+        await ctx.api.editMessageText(chatId, ackMsg.message_id, `Voice processing failed: ${err.message}`);
+      } catch {}
+    }
+  });
+}
+
+module.exports = { registerMessageHandler, registerVoiceHandler, splitMessage };

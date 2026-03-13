@@ -86,6 +86,11 @@ async function sendResponse(response, envPrefix) {
       headers: {},
     };
 
+    // Merge in any custom headers from the caller (e.g., X-OPAI-ARL-Sent)
+    if (response.headers && typeof response.headers === 'object') {
+      Object.assign(mailOptions.headers, response.headers);
+    }
+
     // Set In-Reply-To and References for proper threading
     if (response.emailMessageId) {
       mailOptions.headers['In-Reply-To'] = response.emailMessageId;
@@ -220,7 +225,7 @@ async function saveDraftToAccount(response, envPrefix) {
       }
     }
 
-    try { await client.logout(); } catch {}
+    try { await client.logout(); } catch { }
     console.error(`[SENDER] Failed to save draft for ${imap.user}:`, err.message);
     return { success: false, error: err.message };
   }
@@ -265,7 +270,7 @@ async function removeDraftFromAccount(subject, envPrefix) {
     await client.logout();
     return true;
   } catch (err) {
-    try { await client.logout(); } catch {}
+    try { await client.logout(); } catch { }
     console.error(`[SENDER] Failed to remove draft:`, err.message);
     return false;
   }
@@ -279,33 +284,33 @@ async function removeDraftFromAccount(subject, envPrefix) {
  * Map internal classification tags to display-friendly label names.
  * These become Gmail labels (under OPAI/) or IMAP keywords.
  */
-const TAG_DISPLAY_MAP = {
-  'urgent':               'OPAI/Urgent',
-  'action-required':      'OPAI/Action-Required',
-  'informational':        'OPAI/Informational',
-  'follow-up':            'OPAI/Follow-Up',
-  'scheduling':           'OPAI/Scheduling',
-  'invoice':              'OPAI/Invoice',
-  'support':              'OPAI/Support',
+const LABEL_DISPLAY_MAP = {
+  'urgent': 'OPAI/Urgent',
+  'action-required': 'OPAI/Action-Required',
+  'informational': 'OPAI/Informational',
+  'follow-up': 'OPAI/Follow-Up',
+  'scheduling': 'OPAI/Scheduling',
+  'invoice': 'OPAI/Invoice',
+  'support': 'OPAI/Support',
   'client-communication': 'OPAI/Client',
-  'internal':             'OPAI/Internal',
-  'automated':            'OPAI/System',
-  'marketing':            'OPAI/Marketing',
-  'personal':             'OPAI/Personal',
-  'notification':         'OPAI/System',
-  'approval-needed':      'OPAI/Action-Required',
-  'time-sensitive':       'OPAI/Urgent',
-  'newsletter':           'OPAI/Newsletter',
-  'fyi':                  'OPAI/Informational',
-  'no-response-needed':   'OPAI/Informational',
-  'thread-update':        'OPAI/Follow-Up',
-  'proposal':             'OPAI/Action-Required',
-  'system-alert':         'OPAI/System-Alert',
-  'security-alert':       'OPAI/Security-Alert',
+  'internal': 'OPAI/Internal',
+  'automated': 'OPAI/System',
+  'marketing': 'OPAI/Marketing',
+  'personal': 'OPAI/Personal',
+  'notification': 'OPAI/System',
+  'approval-needed': 'OPAI/Action-Required',
+  'time-sensitive': 'OPAI/Urgent',
+  'newsletter': 'OPAI/Newsletter',
+  'fyi': 'OPAI/Informational',
+  'no-response-needed': 'OPAI/Informational',
+  'thread-update': 'OPAI/Follow-Up',
+  'proposal': 'OPAI/Action-Required',
+  'system-alert': 'OPAI/System-Alert',
+  'security-alert': 'OPAI/Security-Alert',
   'service-notification': 'OPAI/System',
-  'password-reset':       'OPAI/System',
-  'billing':              'OPAI/Billing',
-  'verification':         'OPAI/System',
+  'password-reset': 'OPAI/System',
+  'billing': 'OPAI/Billing',
+  'verification': 'OPAI/System',
 };
 
 /**
@@ -313,11 +318,11 @@ const TAG_DISPLAY_MAP = {
  */
 const PRIORITY_LABEL_MAP = {
   'critical': 'OPAI/Priority-Critical',
-  'high':     'OPAI/Priority-High',
+  'high': 'OPAI/Priority-High',
 };
 
 /**
- * Apply classification tags to an email on the IMAP server.
+ * Apply classification labels to an email on the IMAP server.
  *
  * For Gmail: Adds Gmail labels (e.g., "OPAI/Urgent", "OPAI/Marketing").
  *   These appear as labels in the Gmail app and web interface.
@@ -326,14 +331,14 @@ const PRIORITY_LABEL_MAP = {
  *   Some clients show these, some don't. Best-effort.
  *
  * @param {number} uid — The IMAP UID of the message
- * @param {string[]} tags — Classification tags from classifier.js
+ * @param {string[]} labels — Classification labels from classifier.js
  * @param {string} priority — Priority level (critical/high/normal/low)
  * @param {boolean} isSystem — Whether this is a system/automated message
  * @param {string} envPrefix — Account env_prefix
  * @param {string} [mailbox='INBOX'] — Mailbox the message is in
  * @returns {Promise<{success: boolean, labels?: string[], error?: string}>}
  */
-async function applyTagsToAccount(uid, tags, priority, isSystem, envPrefix, mailbox = 'INBOX') {
+async function applyLabelsToAccount(uid, labels, priority, isSystem, envPrefix, mailbox = 'INBOX') {
   const imap = getImapConfig(envPrefix);
   if (!imap.host || !imap.user || !imap.pass) {
     return { success: false, error: `Missing IMAP credentials for prefix "${envPrefix}"` };
@@ -341,9 +346,17 @@ async function applyTagsToAccount(uid, tags, priority, isSystem, envPrefix, mail
 
   // Build the set of labels to apply
   const labelsToApply = new Set();
-  for (const tag of tags) {
-    const label = TAG_DISPLAY_MAP[tag];
-    if (label) labelsToApply.add(label);
+  for (const tag of labels) {
+    const gmailLabel = LABEL_DISPLAY_MAP[tag];
+    if (gmailLabel) {
+      labelsToApply.add(gmailLabel);
+    } else if (tag.startsWith('OPAI/')) {
+      // Pre-formatted label — pass through directly
+      labelsToApply.add(tag);
+    } else if (tag && !tag.includes(' ') && tag.length > 1) {
+      // Custom label — prefix with OPAI/
+      labelsToApply.add('OPAI/' + tag.charAt(0).toUpperCase() + tag.slice(1));
+    }
   }
 
   // Add priority label for critical/high
@@ -358,7 +371,7 @@ async function applyTagsToAccount(uid, tags, priority, isSystem, envPrefix, mail
 
   if (labelsToApply.size === 0) return { success: true, labels: [] };
 
-  const labels = Array.from(labelsToApply);
+  const appliedLabels = Array.from(labelsToApply);
   const isGmail = imap.host.includes('gmail');
 
   const client = new ImapFlow({
@@ -379,22 +392,22 @@ async function applyTagsToAccount(uid, tags, priority, isSystem, envPrefix, mail
       if (isGmail) {
         // Gmail: Use X-GM-LABELS to add labels
         // ImapFlow supports this via store with custom data items
-        for (const label of labels) {
+        for (const lbl of appliedLabels) {
           try {
-            await client.messageFlagsAdd(uid, { gmailLabels: [label] });
+            await client.messageFlagsAdd(uid, { gmailLabels: [lbl] });
           } catch {
             // Label may not exist yet — Gmail auto-creates labels on first use
             // but some edge cases fail. Try as keyword fallback.
             try {
-              const keyword = label.replace(/\//g, '-').replace(/\s/g, '_');
+              const keyword = lbl.replace(/\//g, '-').replace(/\s/g, '_');
               await client.messageFlagsAdd(uid, [keyword]);
-            } catch {}
+            } catch { }
           }
         }
       } else {
         // Standard IMAP: Add as keywords (custom flags)
         // Convert label names to IMAP-safe keywords (no spaces, no special chars)
-        const keywords = labels.map(l =>
+        const keywords = appliedLabels.map(l =>
           l.replace('OPAI/', 'OPAI_').replace(/-/g, '_').replace(/\s/g, '_')
         );
         await client.messageFlagsAdd(uid, keywords);
@@ -404,11 +417,11 @@ async function applyTagsToAccount(uid, tags, priority, isSystem, envPrefix, mail
     }
 
     await client.logout();
-    console.log(`[SENDER] Tags applied to UID ${uid}: [${labels.join(', ')}]`);
-    return { success: true, labels };
+    console.log(`[SENDER] Labels applied to UID ${uid}: [${appliedLabels.join(', ')}]`);
+    return { success: true, labels: appliedLabels };
   } catch (err) {
-    try { await client.logout(); } catch {}
-    console.error(`[SENDER] Failed to apply tags to UID ${uid}:`, err.message);
+    try { await client.logout(); } catch { }
+    console.error(`[SENDER] Failed to apply labels to UID ${uid}:`, err.message);
     return { success: false, error: err.message };
   }
 }
@@ -464,7 +477,7 @@ async function moveToTrash(uid, sourceMailbox, envPrefix) {
     console.log(`[SENDER] Moved UID ${uid} from ${sourceMailbox} to ${trashFolder}`);
     return { success: true };
   } catch (err) {
-    try { await client.logout(); } catch {}
+    try { await client.logout(); } catch { }
     console.error(`[SENDER] Failed to move UID ${uid} to trash:`, err.message);
     return { success: false, error: err.message };
   }
@@ -489,7 +502,7 @@ async function moveToFolder(uid, sourceMailbox, targetFolder, envPrefix) {
   try {
     await client.connect();
     // Ensure target folder exists (creates if missing)
-    try { await client.mailboxCreate(targetFolder); } catch {}
+    try { await client.mailboxCreate(targetFolder); } catch { }
     const lock = await client.getMailboxLock(sourceMailbox);
     try {
       await client.messageMove(uid, targetFolder, { uid: true });
@@ -500,8 +513,49 @@ async function moveToFolder(uid, sourceMailbox, targetFolder, envPrefix) {
     console.log(`[SENDER] Moved UID ${uid} from ${sourceMailbox} to ${targetFolder}`);
     return { success: true };
   } catch (err) {
-    try { await client.logout(); } catch {}
+    try { await client.logout(); } catch { }
     console.error(`[SENDER] Failed to move UID ${uid} to ${targetFolder}:`, err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Mark an email as spam — moves to Gmail's Spam folder and reports it.
+ * For Gmail: moves to [Gmail]/Spam. For standard IMAP: moves to Junk/Spam folder.
+ */
+async function markAsSpam(uid, sourceMailbox, envPrefix) {
+  const imap = getImapConfig(envPrefix);
+  if (!imap.host || !imap.user || !imap.pass) {
+    return { success: false, error: `Missing IMAP credentials for prefix "${envPrefix}"` };
+  }
+
+  const isGmail = imap.host.includes('gmail');
+  const spamFolder = isGmail ? '[Gmail]/Spam' : 'Junk';
+
+  const client = new ImapFlow({
+    host: imap.host,
+    port: imap.port,
+    secure: true,
+    auth: { user: imap.user, pass: imap.pass },
+    logger: false,
+    socketTimeout: 30000,
+    greetingTimeout: 15000,
+  });
+
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock(sourceMailbox);
+    try {
+      await client.messageMove(uid, spamFolder, { uid: true });
+    } finally {
+      lock.release();
+    }
+    await client.logout();
+    console.log(`[SENDER] Marked UID ${uid} as spam (moved to ${spamFolder})`);
+    return { success: true, folder: spamFolder };
+  } catch (err) {
+    try { await client.logout(); } catch { }
+    console.error(`[SENDER] Failed to mark UID ${uid} as spam:`, err.message);
     return { success: false, error: err.message };
   }
 }
@@ -549,10 +603,10 @@ async function forwardEmail(uid, sourceMailbox, forwardTo, envPrefix) {
     console.log(`[SENDER] Forwarded UID ${uid} to ${forwardTo}`);
     return { success: true };
   } catch (err) {
-    try { await client.logout(); } catch {}
+    try { await client.logout(); } catch { }
     console.error(`[SENDER] Failed to forward UID ${uid}:`, err.message);
     return { success: false, error: err.message };
   }
 }
 
-module.exports = { sendResponse, saveDraftToAccount, removeDraftFromAccount, applyTagsToAccount, getEnvPrefixForAccount, createTransport, moveToTrash, moveToFolder, forwardEmail };
+module.exports = { sendResponse, saveDraftToAccount, removeDraftFromAccount, applyLabelsToAccount, applyTagsToAccount: applyLabelsToAccount, getEnvPrefixForAccount, createTransport, moveToTrash, moveToFolder, markAsSpam, forwardEmail };

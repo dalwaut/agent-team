@@ -35,7 +35,10 @@ YouTube processing is a **shared library** (`tools/shared/youtube.py` + `tools/s
 
 1. **URL detection** — regex matches `youtube.com/watch`, `youtu.be/`, `shorts/`, `embed/`, `live/`, `v/`
 2. **Metadata** — YouTube oEmbed API (no API key needed) returns title, author, thumbnail
-3. **Transcript** — `youtube-transcript-api` Python library (v1.2.4+, instance-based API)
+3. **Transcript** — Multi-provider fallback chain:
+   - **Primary:** `youtube-transcript-api` Python library (v1.2.4+, free, local)
+   - **Proxy:** Same lib via SOCKS5 tunnel (on IP block)
+   - **Supadata API:** `api.supadata.ai/v1/transcript` (100 free/month, then paid)
 4. **Summarization** — Claude CLI (`claude --print --output-format text --model`) for structured JSON summary
 5. **Actions** — Save to Brain, start Research, Re-Write content pack, create PRD idea, answer questions
 
@@ -57,6 +60,7 @@ The single source of truth. All Python services and the Node.js wrapper use this
 | `process_video(url)` | `async str -> dict` | Combined: metadata + transcript concurrently |
 | `summarize_video(video_info, model, timeout)` | `async dict -> dict` | Claude summary: `{description, key_points, topics, summary}` |
 | `truncate_transcript(text, max_chars)` | `str,int -> str` | Smart truncation: 20% first, sampled middle, 10% last |
+| `get_supadata_usage()` | `-> dict` | Usage stats: `{month, used, limit, remaining, warning}` |
 
 ### CLI Entry Point
 
@@ -403,6 +407,44 @@ Default limits:
 - Chat/Discord/Research: 60,000 chars
 - PRD: 50,000 chars (via Discord reaction body limit)
 - CLI output: 100,000 chars
+
+---
+
+## Supadata API (Fallback Provider)
+
+**Service:** [supadata.ai](https://supadata.ai) — YouTube transcript API
+**Free Tier:** 100 requests/month (resets monthly)
+**API Key:** Vault → `SUPADATA_API_KEY`
+**Usage Tracker:** `tools/opai-engine/data/supadata-usage.json`
+
+### How It Works
+
+Supadata is the **third** provider in the fallback chain, used only when both the local `youtube-transcript-api` library and SOCKS5 proxy fail. This preserves the free quota for situations where the primary methods are blocked.
+
+```
+1. youtube-transcript-api (free, unlimited) ──failed──>
+2. youtube-transcript-api + SOCKS5 proxy    ──failed──>
+3. Supadata API (100/month free)            ──failed──>
+4. RuntimeError raised
+```
+
+### Usage Monitoring
+
+```python
+from youtube import get_supadata_usage
+usage = get_supadata_usage()
+# {"month": "2026-03", "used": 12, "limit": 100, "remaining": 88, "warning": false}
+```
+
+- Warns in logs at 80% usage (80+ calls)
+- Blocks further calls at 100% (returns None, falls through to error)
+- Auto-resets on new month
+- Call history kept (last 20 entries) for debugging
+
+### Affiliate Program
+
+- **Commission:** 33% recurring on paid customer referrals
+- **Tracked in:** `Library/helm-playbooks/affiliate-revenue-streams.md`
 
 ---
 

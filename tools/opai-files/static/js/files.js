@@ -17,6 +17,9 @@ let clipboard = { paths: [], mode: null }; // mode: 'copy' | 'cut'
 // AI state
 let aiPlanId = null;
 
+// Admin context switching
+let fileContext = ''; // '' = server workspace, 'personal' = NAS personal folder
+
 // ── Auth ──────────────────────────────────────────────
 
 async function initAuth() {
@@ -60,7 +63,9 @@ async function initAuth() {
 }
 
 function authHeaders() {
-    return { 'Authorization': `Bearer ${token}` };
+    const h = { 'Authorization': `Bearer ${token}` };
+    if (fileContext) h['X-Files-Context'] = fileContext;
+    return h;
 }
 
 async function apiFetch(url, opts = {}) {
@@ -1636,6 +1641,43 @@ function goUp() {
 
 // ── Init ──────────────────────────────────────────────
 
+// ── Admin context switching ───────────────────────────────────
+
+async function initContextSwitcher() {
+    try {
+        const resp = await apiFetch('/files/api/files/contexts');
+        const data = await resp.json();
+        if (!data.is_admin) return;
+        const personal = data.contexts.find(c => c.id === 'personal');
+        if (!personal) return;
+        const btn = document.getElementById('btn-context-switch');
+        btn.style.display = '';
+        updateContextButton();
+    } catch (e) { /* non-critical */ }
+}
+
+function updateContextButton() {
+    const btn = document.getElementById('btn-context-switch');
+    if (!btn) return;
+    if (fileContext === 'personal') {
+        btn.textContent = 'Server Files';
+        btn.title = 'Switch to server workspace';
+        btn.classList.add('context-personal');
+    } else {
+        btn.textContent = 'My Files';
+        btn.title = 'Switch to personal NAS folder';
+        btn.classList.remove('context-personal');
+    }
+}
+
+async function toggleFileContext() {
+    fileContext = fileContext === 'personal' ? '' : 'personal';
+    updateContextButton();
+    currentPath = '';
+    await navigateTo('');
+    toast(fileContext === 'personal' ? 'Viewing personal files' : 'Viewing server workspace', 'info');
+}
+
 (async () => {
     const ok = await initAuth();
     if (!ok) return;
@@ -1644,6 +1686,7 @@ function goUp() {
     document.getElementById('app').classList.remove('hidden');
 
     initEvents();
+    await initContextSwitcher();
 
     // Check for path in URL
     const params = new URLSearchParams(window.location.search);

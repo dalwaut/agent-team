@@ -15,13 +15,16 @@ const { hasPermission, getUserRole } = require('../access-control');
 const { askClaude, askClaudeDangerous, OPAI_ROOT } = require('../claude-handler');
 const { handleWpCallback } = require('../wordpress-fast');
 const { logDangerousRun } = require('./utils');
-const { enginePost } = require('../engine-api');
+const { engineGet, enginePost } = require('../engine-api');
 
 // Pending confirmations: actionId -> { type, payload, requestedBy, chatId, threadId, expiresAt }
 const pendingActions = new Map();
 
 // Cache video info from the message handler so callbacks can access it
 const videoCache = new Map();
+
+// Cache reel info from the message handler so callbacks can access it
+const reelCache = new Map();
 
 // --- Dangerous Runs ---
 // Key: actionId -> { instruction, conversationContext, scopeKey, requestedBy, chatId, threadId, username, expiresAt }
@@ -46,6 +49,9 @@ setInterval(() => {
   for (const [id, entry] of videoCache) {
     if (entry.expiresAt < now) videoCache.delete(id);
   }
+  for (const [id, entry] of reelCache) {
+    if (entry.expiresAt < now) reelCache.delete(id);
+  }
   for (const [id, entry] of pendingTasks) {
     if (entry.expiresAt < now) pendingTasks.delete(id);
   }
@@ -62,6 +68,16 @@ setInterval(() => {
  */
 function cacheVideo(videoId, data) {
   videoCache.set(videoId, {
+    ...data,
+    expiresAt: Date.now() + 60 * 60 * 1000, // 1 hour
+  });
+}
+
+/**
+ * Store reel info for callback access.
+ */
+function cacheReel(shortcode, data) {
+  reelCache.set(shortcode, {
     ...data,
     expiresAt: Date.now() + 60 * 60 * 1000, // 1 hour
   });
@@ -254,6 +270,166 @@ function registerCallbacks(bot) {
 
       default:
         await ctx.editMessageText(`Unknown action: ${action}`, { reply_markup: undefined });
+    }
+  });
+
+  // --- Instagram Reel Actions ---
+
+  bot.callbackQuery(/^ig:(\w+):(.+)$/, async (ctx) => {
+    const action = ctx.match[1];
+    const shortcode = ctx.match[2];
+    await ctx.answerCallbackQuery();
+
+    const cached = reelCache.get(shortcode) || { shortcode, url: `https://www.instagram.com/reel/${shortcode}/` };
+    const reelUrl = cached.url || `https://www.instagram.com/reel/${shortcode}/`;
+    const originalText = ctx.callbackQuery.message?.text || '';
+
+    switch (action) {
+      case 'build': {
+        // Heavy: download + frames + Vision analysis
+        await ctx.editMessageText(`*Extracting build guide...* This downloads the video and analyzes frames — may take a minute.`, {
+          parse_mode: 'Markdown', reply_markup: undefined,
+        });
+        try {
+          const igPath = path.join(__dirname, '..', '..', 'shared', 'instagram.js');
+          const { processInstagramUrl } = require(igPath);
+          const result = await processInstagramUrl(reelUrl, { mode: 'build', frames: true });
+          const analysis = result?.analysis || {};
+
+          let response;
+          if (analysis.error) {
+            response = `Build analysis error: ${analysis.error}`;
+          } else if (analysis.raw_analysis) {
+            response = analysis.raw_analysis.substring(0, 3800);
+          } else {
+            const parts = [];
+            if (analysis.title) parts.push(`*${analysis.title}*`);
+            if (analysis.difficulty) parts.push(`Difficulty: ${analysis.difficulty}`);
+            if (analysis.estimated_time) parts.push(`Time: ${analysis.estimated_time}`);
+            if (analysis.materials?.length) parts.push(`\n*Materials:*\n${analysis.materials.map(m => `- ${m}`).join('\n')}`);
+            if (analysis.tools?.length) parts.push(`\n*Tools:*\n${analysis.tools.map(t => `- ${t}`).join('\n')}`);
+            if (analysis.steps?.length) {
+              parts.push(`\n*Steps:*`);
+              for (const s of analysis.steps) {
+                parts.push(`${s.step}. ${s.description}`);
+              }
+            }
+            if (analysis.safety_notes?.length) parts.push(`\n*Safety:*\n${analysis.safety_notes.map(n => `- ${n}`).join('\n')}`);
+            response = parts.join('\n').substring(0, 3800) || 'No build guide generated.';
+          }
+
+          await ctx.editMessageText(response, { parse_mode: 'Markdown', reply_markup: undefined });
+        } catch (err) {
+          await ctx.editMessageText(`Build guide failed: ${err.message}`, { reply_markup: undefined });
+        }
+        break;
+      }
+
+      case 'intel': {
+        // Light: transcript + metadata + text analysis
+        await ctx.editMessageText(`*Analyzing reel for content strategy...*`, {
+          parse_mode: 'Markdown', reply_markup: undefined,
+        });
+        try {
+          const igPath = path.join(__dirname, '..', '..', 'shared', 'instagram.js');
+          const { processInstagramUrl } = require(igPath);
+          const result = await processInstagramUrl(reelUrl, { mode: 'intel', frames: false });
+          const analysis = result?.analysis || {};
+
+          let response;
+          if (analysis.error) {
+            response = `Intel analysis error: ${analysis.error}`;
+          } else if (analysis.raw_analysis) {
+            response = analysis.raw_analysis.substring(0, 3800);
+          } else {
+            const parts = [];
+            if (analysis.hook_analysis) parts.push(`*Hook:* ${analysis.hook_analysis}`);
+            if (analysis.content_structure) parts.push(`\n*Structure:* ${analysis.content_structure}`);
+            if (analysis.content_format) parts.push(`*Format:* ${analysis.content_format}`);
+            if (analysis.target_audience) parts.push(`*Audience:* ${analysis.target_audience}`);
+            if (analysis.engagement_ratio) parts.push(`*Engagement:* ${analysis.engagement_ratio}`);
+            if (analysis.estimated_production_effort) parts.push(`*Effort:* ${analysis.estimated_production_effort}`);
+            if (analysis.virality_factors?.length) parts.push(`\n*Virality Factors:*\n${analysis.virality_factors.map(f => `- ${f}`).join('\n')}`);
+            if (analysis.replication_tips?.length) parts.push(`\n*Replication Tips:*\n${analysis.replication_tips.map(t => `- ${t}`).join('\n')}`);
+            response = parts.join('\n').substring(0, 3800) || 'No intel report generated.';
+          }
+
+          await ctx.editMessageText(response, { parse_mode: 'Markdown', reply_markup: undefined });
+        } catch (err) {
+          await ctx.editMessageText(`Intel report failed: ${err.message}`, { reply_markup: undefined });
+        }
+        break;
+      }
+
+      case 'save': {
+        // Save to Brain via Brain API
+        await ctx.editMessageText(`Saving reel to Brain...`, { reply_markup: undefined });
+        try {
+          const payload = {
+            url: reelUrl,
+            caption: cached.caption || null,
+            author: cached.author || null,
+            transcript: cached.transcript || null,
+          };
+
+          const saveResult = await enginePost('/brain/api/instagram/save', payload);
+          const nodeId = saveResult?.id || '?';
+          await ctx.editMessageText(
+            `${originalText}\n\n---\nSaved to Brain (node: \`${String(nodeId).substring(0, 8)}\`)`,
+            { reply_markup: undefined, parse_mode: 'Markdown' }
+          );
+        } catch (err) {
+          // Fallback: save as notes file
+          try {
+            const notesDir = path.join(OPAI_ROOT, 'notes', 'Instagram');
+            if (!fs.existsSync(notesDir)) fs.mkdirSync(notesDir, { recursive: true });
+            const date = new Date().toISOString().split('T')[0];
+            const filename = `${date} — reel-${shortcode}.md`;
+            const content = [
+              `# Instagram Reel: ${shortcode}`,
+              '', `- **URL**: ${reelUrl}`,
+              `- **Saved**: ${new Date().toISOString()}`,
+              cached.author ? `- **Author**: ${cached.author}` : '',
+              '', cached.caption ? `## Caption\n\n${cached.caption}` : '',
+              '', cached.transcript ? `## Transcript\n\n${cached.transcript}` : '',
+            ].filter(Boolean).join('\n');
+            fs.writeFileSync(path.join(notesDir, filename), content, 'utf8');
+            await ctx.editMessageText(
+              `${originalText}\n\n---\nSaved to \`notes/Instagram/${filename}\``,
+              { reply_markup: undefined, parse_mode: 'Markdown' }
+            );
+          } catch (saveErr) {
+            await ctx.editMessageText(`Save failed: ${err.message}`, { reply_markup: undefined });
+          }
+        }
+        break;
+      }
+
+      case 'research': {
+        await ctx.editMessageText(`Researching reel... Claude is analyzing.`, { reply_markup: undefined });
+        try {
+          const context = [
+            cached.author ? `Author: ${cached.author}` : '',
+            cached.caption ? `Caption: ${cached.caption.substring(0, 500)}` : '',
+            cached.transcript ? `Transcript: ${cached.transcript.substring(0, 2000)}` : '',
+          ].filter(Boolean).join('\n');
+
+          const result = await askClaude({
+            prompt: `Research this Instagram reel in depth: ${reelUrl}\n\n${context}\n\nProvide key insights, content strategy analysis, and how we could create similar content.`,
+            scopeKey: `ig-research-${shortcode}`,
+          });
+          const response = (result.text || 'No analysis available.').substring(0, 3800);
+          await ctx.editMessageText(`*Research: reel/${shortcode}*\n\n${response}`, {
+            parse_mode: 'Markdown', reply_markup: undefined,
+          });
+        } catch (err) {
+          await ctx.editMessageText(`Research failed: ${err.message}`, { reply_markup: undefined });
+        }
+        break;
+      }
+
+      default:
+        await ctx.editMessageText(`Unknown Instagram action: ${action}`, { reply_markup: undefined });
     }
   });
 
@@ -575,32 +751,196 @@ function registerCallbacks(bot) {
   });
 
   // ── HITL Briefing Actions ──────
+  // Supports both legacy filename-based and Team Hub UUID-based items.
+  // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  // "gc" action = "Picked up in GravityClaw" — acknowledges, suppresses escalation.
 
-  bot.callbackQuery(/^hitl:(run|dismiss):(.+)$/, async (ctx) => {
+  bot.callbackQuery(/^hitl:(run|approve|dismiss|reject|gc):(.+)$/, async (ctx) => {
     const action = ctx.match[1];
-    const filename = ctx.match[2];
+    const itemKey = ctx.match[2];
 
     if (getUserRole(ctx.from.id) !== 'owner' && !hasPermission(ctx.from.id, 'admin')) {
       await ctx.answerCallbackQuery({ text: 'Admin only.', show_alert: true });
       return;
     }
 
-    await ctx.answerCallbackQuery({ text: action === 'run' ? 'Running...' : 'Dismissing...' });
+    const ackMap = {
+      run: 'Running...',
+      approve: 'Approving...',
+      dismiss: 'Dismissing...',
+      reject: 'Rejecting...',
+      gc: 'Acknowledged — handling in GravityClaw',
+    };
+    await ctx.answerCallbackQuery({ text: ackMap[action] || 'Processing...' });
+
+    // Detect if this is a Team Hub UUID or legacy filename
+    const isTeamHub = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(itemKey);
 
     try {
-      await enginePost(`/hitl/${encodeURIComponent(filename)}/respond`, { action });
+      if (action === 'gc') {
+        // "Picked up in GC" — acknowledge escalation, don't change item status
+        if (isTeamHub) {
+          // Tell Engine to acknowledge (clears escalation timer)
+          await enginePost(`/action-items/th:${itemKey}/act`, { action: 'gc' }).catch(() => {});
+        }
+        await ctx.editMessageText(
+          `\uD83D\uDCBB \`${itemKey.substring(0, 8)}...\` — *Picked up in GravityClaw*\n\nBy ${ctx.from.first_name}`,
+          { parse_mode: 'Markdown', reply_markup: undefined }
+        );
+      } else if (isTeamHub) {
+        // Route through Engine action-items API → Team Hub
+        await enginePost(`/action-items/th:${itemKey}/act`, { action });
 
-      const icon = action === 'run' ? '\u25B6\uFE0F' : '\uD83D\uDDD1\uFE0F';
-      const label = action === 'run' ? 'Running...' : 'Dismissed';
-      await ctx.editMessageText(
-        `${icon} \`${filename}\` — ${label}`,
-        { parse_mode: 'Markdown', reply_markup: undefined }
-      );
+        const iconMap = { run: '\u25B6\uFE0F', approve: '\u2705', dismiss: '\uD83D\uDDD1\uFE0F', reject: '\u274C' };
+        const labelMap = { run: 'Running...', approve: 'Approved', dismiss: 'Dismissed', reject: 'Rejected' };
+        const icon = iconMap[action] || '\u2699\uFE0F';
+        const label = labelMap[action] || action;
+        await ctx.editMessageText(
+          `${icon} \`${itemKey.substring(0, 8)}...\` — ${label}\n\nBy ${ctx.from.first_name}`,
+          { parse_mode: 'Markdown', reply_markup: undefined }
+        );
+      } else {
+        // Legacy: route to old HITL endpoint
+        await enginePost(`/hitl/${encodeURIComponent(itemKey)}/respond`, { action });
+
+        const iconMap = { run: '\u25B6\uFE0F', approve: '\u2705', dismiss: '\uD83D\uDDD1\uFE0F', reject: '\u274C' };
+        const labelMap = { run: 'Running...', approve: 'Approved', dismiss: 'Dismissed', reject: 'Rejected' };
+        const icon = iconMap[action] || '\u2699\uFE0F';
+        const label = labelMap[action] || action;
+        await ctx.editMessageText(
+          `${icon} \`${itemKey}\` — ${label}`,
+          { parse_mode: 'Markdown', reply_markup: undefined }
+        );
+      }
     } catch (err) {
       await ctx.editMessageText(
         `HITL ${action} failed: ${err.message}`,
         { reply_markup: undefined }
       );
+    }
+  });
+
+  // ── Service Restart from Alerts ──────
+
+  bot.callbackQuery(/^svc:restart:(.+)$/, async (ctx) => {
+    const workerId = ctx.match[1];
+
+    if (getUserRole(ctx.from.id) !== 'owner' && !hasPermission(ctx.from.id, 'admin')) {
+      await ctx.answerCallbackQuery({ text: 'Admin only.', show_alert: true });
+      return;
+    }
+
+    await ctx.answerCallbackQuery({ text: `Restarting ${workerId}...` });
+
+    try {
+      await enginePost(`/workers/${encodeURIComponent(workerId)}/tg-restart`);
+      await ctx.editMessageText(
+        `\u{1F504} \`${workerId}\` \u2014 *Restarting...*\n\nTriggered by ${ctx.from.first_name}`,
+        { parse_mode: 'Markdown', reply_markup: undefined }
+      );
+
+      // Poll for recovery — check every 5s for up to 60s
+      const pollStart = Date.now();
+      const pollInterval = setInterval(async () => {
+        try {
+          if (Date.now() - pollStart > 60000) {
+            clearInterval(pollInterval);
+            await ctx.editMessageText(
+              `\u{26A0}\u{FE0F} \`${workerId}\` \u2014 *Restart sent but not yet confirmed healthy*\nCheck /status in a few minutes.`,
+              { parse_mode: 'Markdown' }
+            );
+            return;
+          }
+          const detail = await engineGet(`/workers/${encodeURIComponent(workerId)}`);
+          if (detail && detail.healthy === true) {
+            clearInterval(pollInterval);
+            await ctx.editMessageText(
+              `\u{2705} \`${workerId}\` \u2014 *Back Online*\n\nRestarted by ${ctx.from.first_name}`,
+              { parse_mode: 'Markdown' }
+            );
+          }
+        } catch {
+          // Worker may not be queryable yet — keep polling
+        }
+      }, 5000);
+    } catch (err) {
+      await ctx.editMessageText(
+        `\u{274C} Failed to restart \`${workerId}\`: ${err.message}`,
+        { parse_mode: 'Markdown', reply_markup: undefined }
+      );
+    }
+  });
+
+  bot.callbackQuery(/^svc:restartall:(.+)$/, async (ctx) => {
+    const workerIds = ctx.match[1].split(',');
+
+    if (getUserRole(ctx.from.id) !== 'owner' && !hasPermission(ctx.from.id, 'admin')) {
+      await ctx.answerCallbackQuery({ text: 'Admin only.', show_alert: true });
+      return;
+    }
+
+    await ctx.answerCallbackQuery({ text: `Restarting ${workerIds.length} services...` });
+
+    const results = [];
+    const pendingIds = [];
+    for (const wid of workerIds) {
+      try {
+        await enginePost(`/workers/${encodeURIComponent(wid)}/tg-restart`);
+        results.push(`\u{1F504} \`${wid}\` restarting`);
+        pendingIds.push(wid);
+      } catch (err) {
+        results.push(`\u{274C} \`${wid}\` failed: ${err.message}`);
+      }
+    }
+
+    await ctx.editMessageText(
+      `*Restart All*\n\n${results.join('\n')}\n\nTriggered by ${ctx.from.first_name}`,
+      { parse_mode: 'Markdown', reply_markup: undefined }
+    );
+
+    // Poll for recovery of all restarted workers
+    if (pendingIds.length > 0) {
+      const remaining = new Set(pendingIds);
+      const pollStart = Date.now();
+      const pollInterval = setInterval(async () => {
+        try {
+          if (Date.now() - pollStart > 60000) {
+            clearInterval(pollInterval);
+            if (remaining.size > 0) {
+              const finalResults = pendingIds.map(wid =>
+                remaining.has(wid)
+                  ? `\u{26A0}\u{FE0F} \`${wid}\` not yet confirmed`
+                  : `\u{2705} \`${wid}\` back online`
+              );
+              await ctx.editMessageText(
+                `*Restart All*\n\n${finalResults.join('\n')}\n\nRestarted by ${ctx.from.first_name}`,
+                { parse_mode: 'Markdown' }
+              );
+            }
+            return;
+          }
+          for (const wid of [...remaining]) {
+            try {
+              const detail = await engineGet(`/workers/${encodeURIComponent(wid)}`);
+              if (detail && detail.healthy === true) {
+                remaining.delete(wid);
+              }
+            } catch {
+              // Worker may not be queryable yet
+            }
+          }
+          if (remaining.size === 0) {
+            clearInterval(pollInterval);
+            const allOnline = pendingIds.map(wid => `\u{2705} \`${wid}\` back online`);
+            await ctx.editMessageText(
+              `*Restart All*\n\n${allOnline.join('\n')}\n\nRestarted by ${ctx.from.first_name}`,
+              { parse_mode: 'Markdown' }
+            );
+          }
+        } catch {
+          // Keep polling
+        }
+      }, 5000);
     }
   });
 
@@ -837,6 +1177,44 @@ function registerCallbacks(bot) {
         message_thread_id: ctx.callbackQuery.message?.message_thread_id,
       }
     );
+  });
+
+  // ── Assembly Line gate callbacks ──────────────────────
+  bot.callbackQuery(/^asm:(approve|reject|ship|abort):(.+)$/, async (ctx) => {
+    const action = ctx.match[1];
+    const runId = ctx.match[2];
+    await ctx.answerCallbackQuery();
+
+    try {
+      let resp;
+      if (action === 'approve') {
+        resp = await enginePost(`/assembly/gate/${runId}/plan`, { action: 'approve' });
+      } else if (action === 'reject') {
+        resp = await enginePost(`/assembly/gate/${runId}/plan`, { action: 'reject' });
+      } else if (action === 'ship') {
+        resp = await enginePost(`/assembly/gate/${runId}/ship`, { action: 'approve' });
+      } else if (action === 'abort') {
+        resp = await enginePost(`/assembly/abort/${runId}`);
+      }
+
+      const statusEmoji = (action === 'approve' || action === 'ship') ? '✅' : '🛑';
+      const statusText = {
+        approve: 'Plan approved — building...',
+        reject: 'Plan rejected — run aborted.',
+        ship: 'Ship approved — run complete!',
+        abort: 'Run aborted.',
+      }[action];
+
+      await ctx.editMessageText(
+        `${statusEmoji} Assembly \`${runId}\` — ${statusText}`,
+        { reply_markup: undefined, parse_mode: 'Markdown' }
+      );
+    } catch (e) {
+      await ctx.editMessageText(
+        `❌ Assembly action failed: ${e.message}`,
+        { reply_markup: undefined }
+      );
+    }
   });
 }
 
@@ -1238,7 +1616,7 @@ function cacheDangerResponse(cacheKey, text, scopeKey) {
 }
 
 module.exports = {
-  registerCallbacks, confirmKeyboard, queueAction, cacheVideo, pendingActions,
+  registerCallbacks, confirmKeyboard, queueAction, cacheVideo, cacheReel, pendingActions,
   pendingTasks, pendingDangerRuns, startTaskCreation, handlePendingTaskInput,
   cacheDangerResponse,
 };

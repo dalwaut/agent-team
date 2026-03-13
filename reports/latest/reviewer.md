@@ -1,280 +1,449 @@
 # Report: reviewer
 
-# Comprehensive Code Review Report — OPAI Workspace
 
-**Date**: 2026-02-23  
-**Scope**: Full codebase at `/workspace/synced/opai/`  
-**Languages**: Bash (27 scripts), Python (30+ files), TypeScript/JavaScript (50+ source files), JSON configs  
-**Reviewer**: Automated multi-agent review (4 parallel reviewers)
+
+# OPAI Codebase — Comprehensive Code Review
+
+**Review Date:** 2026-03-04
+**Scope:** 300+ Python files, 200+ TypeScript/TSX files, 50+ JS files, 40+ shell scripts across 22 services
+**Reviewer:** Automated deep review (6 parallel review agents)
 
 ---
 
 ## Executive Summary
 
-The OPAI workspace is a sophisticated multi-agent orchestration framework managing 39+ projects, 30+ microservices, and 22 agent roles. The review identified **75 findings** across 6 categories, including **8 critical** issues (all credential exposures), **15 high** severity issues, and numerous medium/low findings.
+The OPAI codebase is a massive, ambitious autonomous infrastructure — 22 active services, 13-worker Claude Code fleet, 42 agent roles. The architecture shows strong conceptual design but has accumulated significant security debt and consistency gaps as it has scaled. The most critical findings center on **missing authentication on write endpoints**, **plaintext credential storage**, and **hardcoded secrets in source code**.
 
-**The single most urgent action is credential rotation**: Supabase service role keys, a Supabase Personal Access Token, a ClickUp API key, and a Tailsync auth token are all hardcoded in source files.
+**Total Issues Found: 227**
 
----
-
-## 1. Critical Findings (Must Fix Immediately)
-
-### CRIT-01: Hardcoded Supabase Service Role Key (Bash)
-- **File**: `scripts/test-agent-task-flow.sh:36-37`
-- **Category**: Security / Bash
-- **Severity**: **Must Fix**
-- The service role JWT (`eyJhbG...`) bypasses all Row Level Security. Full database read/write/delete for anyone with repo access.
-- **Fix**: Replace with `SB_SERVICE="${SUPABASE_SERVICE_KEY:?not set}"`
-
-### CRIT-02: Hardcoded Supabase PAT (Bash)
-- **File**: `scripts/supabase-sql.sh:32`
-- **Category**: Security / Bash
-- **Severity**: **Must Fix**
-- Supabase Personal Access Token `sbp_629281...` is hardcoded. Grants management API access including arbitrary SQL execution.
-- **Fix**: `SUPABASE_PAT="${SUPABASE_PAT:?not set}"`
-
-### CRIT-03: Hardcoded Supabase Service Role Key (Python)
-- **File**: `scripts/migrate-registry-to-hub.py:22-25`
-- **Category**: Security / Python
-- **Severity**: **Must Fix**
-- Same service_role JWT as a hard-coded default fallback in Python. Full RLS bypass.
-- **Fix**: `SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]` (no default)
-
-### CRIT-04: Hardcoded Supabase Anon Key (Python)
-- **File**: `Projects/SEO-GEO-Automator/Codebase/n8n/generate_workflow_json.py:7`
-- **Category**: Security / Python
-- **Severity**: **Must Fix**
-- Anon key for a different Supabase project (`aggxspqz...`) hard-coded with no env var fallback.
-- **Fix**: `SUPABASE_KEY = os.environ["SUPABASE_ANON_KEY"]`
-
-### CRIT-05: Hardcoded ClickUp API Key (Config)
-- **File**: `.mcp.json:16`
-- **Category**: Security / Configuration
-- **Severity**: **Must Fix**
-- Plaintext ClickUp API key `pk_12684773_506E7B...` in a synced/version-controlled file.
-- **Fix**: Reference env var: `"CLICKUP_API_KEY": "${CLICKUP_API_KEY}"`
-
-### CRIT-06: Hardcoded Tailsync Auth Token (Bash)
-- **File**: `scripts/fix-inotify-limits.sh:38`
-- **Category**: Security / Bash
-- **Severity**: **Must Fix**
-- Tailsync auth token `ts_3e927c...` embedded in a heredoc config block.
-- **Fix**: `AUTH_TOKEN="${TAILSYNC_AUTH_TOKEN:?not set}"`
-
-### CRIT-07: Bare `except Exception: pass` in Updater Main Loop (Python)
-- **File**: `tools/opai-monitor/updater.py:353`
-- **Category**: Error Handling / Python
-- **Severity**: **Must Fix**
-- The updater's infinite loop silently swallows all errors. Could be broken for days with zero visibility.
-- **Fix**: `except Exception: log.exception("Updater scan failed")`
-
-### CRIT-08: Hardcoded Personal Email Address (Bash)
-- **File**: `scripts/daily-git-push.sh:18`
-- **Category**: Security / Bash
-- **Severity**: **Must Fix**
-- Personal email `dalwaut@gmail.com` hardcoded for notifications. PII + maintainability concern.
-- **Fix**: `NOTIFY_EMAIL="${OPAI_NOTIFY_EMAIL:-}"`
+| Severity | Count |
+|----------|-------|
+| Critical | 23 |
+| High | 56 |
+| Medium | 97 |
+| Low | 51 |
 
 ---
 
-## 2. High Severity Findings (Should Fix Soon)
+## Table of Contents
 
-### HIGH-01: SQL Injection in `describe_table` (Bash)
-- **File**: `scripts/supabase-sql.sh:115`
-- **Category**: Security / Bash
-- **Severity**: **Should Fix**
-- Table name interpolated directly into SQL. Input `'; DROP TABLE profiles; --` would execute.
-- **Fix**: Validate with `[[ "$table" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]`
-
-### HIGH-02: Missing Temp File Cleanup Traps (Bash)
-- **Files**: `scripts/familiarize.sh:87`, `run_agents.sh:112`, `run_agents_seq.sh:101`, `run_squad.sh:166,218`, `run_builder.sh:186`, `run_auto.sh:141,217`
-- **Category**: Bash
-- **Severity**: **Should Fix**
-- `mktemp` used without `trap 'rm -f "$temp_prompt"' EXIT`. Interruptions leave temp files with prompt data.
-- **Fix**: Add `trap` immediately after every `mktemp`
-
-### HIGH-03: Missing Strict Mode in 7+ Scripts (Bash)
-- **Files**: `install-services.sh`, `opai-control.sh`, `fix-inotify-limits.sh` (only `set -e`); `migrate-tailsync-to-user-service.sh`, all `Agents/*.sh` (none at all)
-- **Category**: Bash
-- **Severity**: **Should Fix**
-- Without `set -u`, unset variables expand silently. Without `pipefail`, piped failures are ignored.
-- **Fix**: All scripts should use `set -Eeuo pipefail`
-
-### HIGH-04: Glob-Based Temp Cleanup Race Condition (Bash)
-- **File**: `scripts/run_agents.sh:151`, `scripts/run_squad.sh:252`
-- **Category**: Bash
-- **Severity**: **Should Fix**
-- `rm -f /tmp/claude_prompt_*.??????` deletes temp files from concurrent runs.
-- **Fix**: Use per-run temp directories: `TMPDIR=$(mktemp -d /tmp/claude_run_$$.XXXXXX)`
-
-### HIGH-05: Synchronous `time.sleep(3)` Blocking Event Loop (Python)
-- **File**: `tools/opai-monitor/services.py:68`
-- **Category**: Python / Async
-- **Severity**: **Should Fix**
-- Called from FastAPI route `POST /agents/kill-all`. Blocks all WebSocket connections for 3 seconds.
-- **Fix**: `await asyncio.sleep(3)` or `await asyncio.to_thread(kill_all_agents)`
-
-### HIGH-06: Synchronous `open()` in `async def tail_file()` (Python)
-- **File**: `tools/opai-monitor/log_reader.py:55`
-- **Category**: Python / Async
-- **Severity**: **Should Fix**
-- Synchronous file I/O blocks the event loop during log reads.
-- **Fix**: Use `aiofiles` or `asyncio.to_thread()`
-
-### HIGH-07: Unclosed `httpx.AsyncClient` (Python)
-- **File**: `tools/opai-monitor/routes_users.py:153`
-- **Category**: Python / Resources
-- **Severity**: **Should Fix**
-- `httpx.AsyncClient()` created inline without context manager. Connection leak.
-- **Fix**: `async with httpx.AsyncClient(timeout=15) as client:`
-
-### HIGH-08: Hard-coded localhost URLs for Service-to-Service Calls (Python)
-- **Files**: `tools/opai-monitor/routes_users.py:154,271`, `routes_api.py:90`
-- **Category**: Python / Configuration
-- **Severity**: **Should Fix**
-- IP addresses and port numbers scattered as string literals. Add to `config.py`.
-
-### HIGH-09: Pervasive `any` Type Usage in TypeScript MCPs
-- **Files**: 20+ occurrences across `mcps/Wordpress-VEC/src/`, `mcps/clickup-mcp/src/`, `mcps/boutabyte-mcp/src/`
-- **Category**: Type Safety
-- **Severity**: **Should Fix**
-- All API responses typed as `any`, all tool args cast with `args as any`.
-- **Fix**: Define response interfaces for each external API
-
-### HIGH-10: Discord Bridge `index.js` is 1733 Lines (JS)
-- **File**: `tools/discord-bridge/index.js` (1733 lines)
-- **Category**: Quality / Complexity
-- **Severity**: **Should Fix**
-- Single file contains message routing, Claude invocation, hub commands, email handling, YouTube processing, review state machine. Multiple functions exceed 50 lines (up to 148 lines).
-- **Fix**: Split into 6+ modules (message-router, claude-runner, hub-commands, email-commands, review-flow, youtube-handler)
-
-### HIGH-11: DRY Violation — Duplicated `askClaude` Functions (JS)
-- **File**: `tools/discord-bridge/index.js:976-1051` and `1451-1525`
-- **Category**: Quality / DRY
-- **Severity**: **Should Fix**
-- `askClaude` and `askClaudeWithMcp` share ~90% identical logic.
-- **Fix**: Unify into single parameterized function
-
-### HIGH-12: Status Enum Inconsistency (Config/JS)
-- **Files**: `tasks/task-manager.js:128-129` and `tasks/registry.json` (21 tasks)
-- **Category**: Consistency
-- **Severity**: **Should Fix**
-- Code defines 5 statuses but registry uses 7 (`cancelled`, `failed` undeclared). 72% of tasks use unrecognized statuses.
-- **Fix**: Add `cancelled` and `failed` to status icons, guards, and filters
-
-### HIGH-13: Squad References Non-Existent Agents (Config)
-- **File**: `team.json:655-661`
-- **Category**: Consistency
-- **Severity**: **Should Fix**
-- `brain` squad references `brain_curator`, `brain_researcher`, `brain_linker` — none defined in roles.
-- **Fix**: Create the role definitions or remove the squad
-
-### HIGH-14: Bare `except:` in SEO-GEO Script (Python)
-- **File**: `Projects/SEO-GEO-Automator/Codebase/n8n/generate_workflow_json.py:97`
-- **Category**: Python / Error Handling
-- **Severity**: **Should Fix**
-- Bare `except:` catches `SystemExit`, `KeyboardInterrupt`. Silently swallows all errors.
-- **Fix**: `except (IndexError, ValueError) as e: print(f"Warning: {e}", file=sys.stderr)`
-
-### HIGH-15: Hard-coded Admin User ID (Python)
-- **File**: `scripts/migrate-registry-to-hub.py:27`
-- **Category**: Python / Configuration
-- **Severity**: **Should Fix**
-- UUID `1c93c5fe-d304-40f2-9169-765d0d2b7638` hardcoded. Wrong user in different environments.
-- **Fix**: `ADMIN_USER_ID = os.environ["OPAI_ADMIN_USER_ID"]`
+1. [Critical Security Findings (Immediate Action Required)](#1-critical-security-findings)
+2. [Shared Libraries Review (`tools/shared/`)](#2-shared-libraries)
+3. [OPAI Engine Review (`tools/opai-engine/`)](#3-opai-engine)
+4. [Brain / HELM / DAM Review](#4-brain--helm--dam)
+5. [BX4 / WordPress / Vault / Billing Review](#5-bx4--wordpress--vault--billing)
+6. [Shell Scripts & Caddyfile Review](#6-shell-scripts--caddyfile)
+7. [TypeScript / React / Frontend Review](#7-typescript--react--frontend)
+8. [Cross-Cutting Patterns](#8-cross-cutting-patterns)
+9. [Scorecard](#9-scorecard)
 
 ---
 
-## 3. Medium Severity Findings (Should Fix)
+## 1. Critical Security Findings
 
-| # | File | Category | Issue |
-|---|------|----------|-------|
-| M-01 | `scripts/setup-nfs.sh:23-26` | Bash | Hardcoded NAS IP `192.168.2.138`, mount point, NFS options |
-| M-02 | `scripts/test-agent-task-flow.sh:29-33` | Bash | 6 hardcoded paths and URLs not derived from `SCRIPT_DIR` |
-| M-03 | `scripts/provision-sandbox.sh:1-552` | Bash | 552-line script with no modular decomposition |
-| M-04 | `scripts/opai-control.sh:304,316` | Bash | Missing argument guard for `$2` on `restart-one` and `logs` commands |
-| M-05 | `scripts/fix-inotify-limits.sh:35,81` | Bash | Hardcoded username `dallas` and install path `/opt/tailsync-server` |
-| M-06 | `scripts/daily-git-push.sh:85` | Bash | `git add -A` stages everything including potential secrets |
-| M-07 | Multiple scripts | Bash | Magic number `1000` (report size threshold) and sleep durations undocumented |
-| M-08 | `tools/opai-monitor/routes_ws.py:26-112` | Python | 7 WebSocket handlers with `except (WebSocketDisconnect, Exception): pass` |
-| M-09 | `tools/opai-monitor/routes_users.py:163,275,286` | Python | Bare `except Exception: pass` on user provisioning/deletion |
-| M-10 | `tools/wp-agent/` vs `Projects/Lace & Pearls/wp-agent/` | Python | Complete wp-agent codebase duplicated in two locations |
-| M-11 | `tools/opai-monitor/collectors.py:147-159,202-213` | Python | Agent name extraction logic duplicated in two functions |
-| M-12 | `tools/wp-agent/api/server.py:61` | Python | Wildcard CORS `allow_origins=["*"]` with `allow_credentials=True` |
-| M-13 | `tools/opai-monitor/routes_users.py:562` | Python | Lockdown PIN compared with `==` (timing attack vulnerable). Use `hmac.compare_digest()` |
-| M-14 | `tools/opai-monitor/routes_users.py:371-388` | Python | `subprocess.Popen` with `stdout=PIPE` never read; zombie process leak |
-| M-15 | 18+ locations in discord-bridge | JS | Empty `catch {}` blocks silently swallow errors |
-| M-16 | Multiple files | JS | camelCase/snake_case/PascalCase naming mixed at data boundaries |
-| M-17 | 14+ magic numbers in discord-bridge, email-checker, MCPs | JS | Hardcoded timeouts, thresholds, cache TTLs, port numbers |
-| M-18 | `mcps/boutabyte-mcp/src/lib/file-api.ts:30-118` | JS | Duplicated multipart upload logic in `uploadFile`/`uploadBuffer` |
-| M-19 | `tools/email-checker/approval-server.js:51-73` | JS | Async Express route without try/catch |
-| M-20 | `tasks/task-manager.js:56-62`, `tools/work-companion/index.js:186-191` | JS | ID generation race condition (count-based, not max-based) |
-| M-21 | `tasks/task-manager.js:284` | JS | Logic bug: assignee change check runs after assignment, always true |
-| M-22 | `config/Caddyfile:13-244` | Config | Missing security headers (X-Frame-Options, CSP, HSTS, etc.) on 20+ proxied services |
-| M-23 | `config/contacts.json` | Config | PII (full names, personal emails) in plaintext sync'd file |
-| M-24 | `config/network.json:29` | Config | DSM URL uses HTTP (plaintext credentials) |
-| M-25 | `config/sandbox-defaults.json` | Config | Missing `owner` role (used in contacts.json but no sandbox default) |
-| M-26 | `config/orchestrator.json:59-64` | Config | Trusted senders list diverges from contacts.json |
-| M-27 | `team.json:40,343` | Config | Duplicate emoji `"AC"` on `accuracy` and `api_contract_checker` |
-| M-28 | `tasks/task-manager.js:42-43` | JS | Corrupt registry.json silently returns empty object, causing data loss on next save |
-| M-29 | Registry data | Config | Task schema drift — external systems add undocumented fields (`agentConfig`, `attachments`, `retryCount`) |
+These require immediate attention. Any one of them could lead to unauthorized access or data breach.
 
----
+### 1.1 Plaintext Credentials in Source Code
 
-## 4. Low Severity Findings (Suggestions)
+| # | File | Lines | Issue |
+|---|------|-------|-------|
+| 1 | `tools/opai-vault/migrate_credentials.py` | 39-320 | **~70 plaintext credentials** including Anthropic API key, OpenAI key, Stripe keys, Supabase service keys, SSH passwords, NAS passwords, email passwords, database passwords, Google OAuth secrets, GitHub PATs, and more. |
+| 2 | `scripts/test-agent-task-flow.sh` | 36-37 | Hardcoded Supabase anon key and service role key (full JWTs). |
+| 3 | `scripts/supabase-sql.sh` | 32 | Hardcoded Supabase Personal Access Token (`sbp_629281...`) with full DDL capability. |
+| 4 | `scripts/fix-inotify-limits.sh` | 38 | Hardcoded Tailscale auth token (`ts_3e927c...`). |
+| 5 | `tools/opai-vault/config.py` | 44 | AGE encryption public key as default value — anyone reading source knows the encryption identity. |
 
-| # | File | Category | Issue |
-|---|------|----------|-------|
-| L-01 | 27 scripts | Bash | Inconsistent shebangs (`#!/bin/bash` vs `#!/usr/bin/env bash`) |
-| L-02 | All scripts | Bash | Color variables (`RED`, `GREEN`, etc.) duplicated in every script. Extract to `lib/colors.sh` |
-| L-03 | 5+ scripts | Bash | Inline Python blocks with unescaped shell variable interpolation |
-| L-04 | `scripts/migrate.sh` | Bash | `$DRY_RUN` used as command (boolean anti-pattern) |
-| L-05 | `setup.sh:56-57` | Bash | Glob `cp` without handling spaces in filenames |
-| L-06 | `Agents/*.sh` (3 files) | Bash | No error handling, relative paths, UUOC (`cat file \| grep`) |
-| L-07 | 7+ scripts | Bash | `cat "$file" \| claude -p` instead of `claude -p < "$file"` |
-| L-08 | Multiple Python files | Python | Missing return type annotations on public functions |
-| L-09 | `tools/opai-monitor/session_collector.py` | Python | 5+ global cache variable pairs; should be a cache class |
-| L-10 | `tools/opai-monitor/updater.py:326-327` | Python | Unused variable `archived_ids` computed but never referenced |
-| L-11 | `tools/opai-monitor/updater.py:62` | Python | MD5 used for file fingerprinting (prefer SHA-256) |
-| L-12 | `tools/opai-monitor/updater.py:270` | Python | Parameters shadow built-ins (`id`, `type`) |
-| L-13 | All wp-agent `action_*` methods | Python | Missing return type annotations |
-| L-14 | `mcps/Wordpress-VEC/check_duplicates.ts`, `check_404s.ts` | JS | Dead code: `fetchAll` function defined but never called |
-| L-15 | `mcps/Wordpress-VEC/check_duplicates.ts:3-4` | JS | Unused imports (`fs`, `path`) |
-| L-16 | `mcps/Wordpress-VEC/delete_content.ts:6` | JS | Hardcoded post IDs in cleanup script still in repo |
-| L-17 | `mcps/Hostinger/Slim-hostinger.js` | JS | ESM `import` syntax in `.js` file without `"type": "module"` |
-| L-18 | All MCP servers | JS | Inconsistent error response shapes (plain text vs JSON vs JSON with stack) |
-| L-19 | Multiple files | JS | Inconsistent import ordering (no grouping convention) |
-| L-20 | `tasks/task-manager.js:493-598` | JS | CLI arg parsing lacks guards for missing values after flags |
-| L-21 | `config/network.json` | Config | Only 9 of 22+ services documented; stale since 2026-02-14 |
-| L-22 | `config/orchestrator.json` | Config | `daily_token_budget_enabled: false` with `auto_execute: true` — no cost guardrail |
-| L-23 | `mcps/Wordpress-VEC/check_404s.ts:38-63` | JS | Unbounded HTTP requests with no concurrency limiting |
+**Action:** Delete `migrate_credentials.py`. Rotate every credential listed. Move all secrets to vault or environment variables.
+
+### 1.2 Missing Authentication on Write Endpoints
+
+| # | Service | File | Endpoints | Impact |
+|---|---------|------|-----------|--------|
+| 6 | Engine | `routes/workers.py:85-104` | `approve_request`, `deny_request` | Anyone can approve/deny worker requests |
+| 7 | Engine | `routes/bottleneck.py:48-70` | `accept_suggestion`, `dismiss_suggestion`, `trigger_scan` | Unauthenticated config changes |
+| 8 | Engine | `routes/fleet.py:42-55` | `fleet_dispatch`, `fleet_cancel` | Unauthenticated task spawning/cancellation |
+| 9 | Engine | `routes/mail.py:47-105` | `get_inbox`, `send_message`, `reply_message` | Read any worker's mail, impersonate workers |
+| 10 | Engine | `routes/action_items.py` | `act_on_item`, `bulk_dismiss` | Unauthenticated task state modification |
+| 11 | Brain | `routes/youtube.py:72,204,356` | `save`, `research`, `rewrite` | Create brain nodes without auth |
+| 12 | Brain | `routes/instagram.py:85,235,385` | `save`, `research`, `rewrite` | Create brain nodes without auth |
+| 13 | DAM | All route files | All 11+ endpoints | Complete unauthenticated access to meta-orchestrator |
+
+**Action:** Add `dependencies=[Depends(require_admin)]` to every write endpoint across these services.
+
+### 1.3 Credential Storage & Injection Vulnerabilities
+
+| # | File | Lines | Issue |
+|---|------|-------|-------|
+| 14 | `tools/opai-wordpress/routes_sites.py` | 113-128 | WordPress `app_password`, `admin_password`, WooCommerce keys stored as **plaintext** in Supabase |
+| 15 | `tools/opai-helm/routes/webhooks.py` | 35-46 | Stripe webhook accepts unsigned payloads when `webhook_secret` is empty — enables forged events |
+| 16 | `tools/opai-helm/core/vault.py` | 22-30 | Path traversal: `vault_key` like `imp/../../etc/passwd` escapes vault directory |
+| 17 | `tools/opai-dam/core/skill_manager.py` | 29 | PostgREST query injection via unsanitized `query` parameter |
+| 18 | `tools/opai-vault/scripts/vault-cli.sh` | 69-76 | Shell injection via `$NAME`/`$VALUE` interpolated into inline Python |
+| 19 | `scripts/supabase-sql.sh` | 113-115 | SQL injection in `describe_table` — `$table` interpolated into SQL |
+| 20 | `tools/opai-vault/routes_auth.py` | 228,246,308,325 | WebAuthn challenges keyed by client IP — shared IP = challenge hijack |
+| 21 | `tools/opai-dam/routes/sessions.py` | 61-65 | User impersonation: accepts `user_id` from request body when JWT fails |
+| 22 | Portal `static/js/auth.js` | 32-37 | `window.OPAI_AUTH_DISABLED` flag bypasses all authentication |
+| 23 | Portal `static/js/auth.js` | 87-94 | Fail-open: if `/api/me/apps` fetch fails for any reason, user is granted access |
 
 ---
 
-## 5. Scorecard
+## 2. Shared Libraries (`tools/shared/`)
+
+10 files reviewed, 52 issues found.
+
+### Must Fix
+
+| # | File:Line | Category | Issue | Fix |
+|---|-----------|----------|-------|-----|
+| 1 | `auth.py:212` | Security | `user_id` string-interpolated into PostgREST URL without UUID validation | Validate with `uuid.UUID(user_id)` before interpolation |
+| 2 | `auth.py:270` | Security | Non-constant-time token comparison for service key | Use `hmac.compare_digest()` |
+| 3 | `claude_api.py:245` | Type Safety | `Optional[callable]` — lowercase `callable` is not a valid type hint | Use `Optional[Callable[..., Any]]` |
+| 4 | `google_auth.py:122` | Python/Async | Blocking sync I/O (`_load_vault()` filesystem + imports) inside `async def` | Use `await asyncio.to_thread(_get_client_config)` |
+| 5 | `google_workspace.py:175` | Resources | `httpx.AsyncClient` created but never guaranteed closed (no `__aenter__`/`__aexit__`) | Implement async context manager protocol |
+| 6 | `image_gen.py:112` | Security | Gemini API key exposed in URL query parameter | Pass via `x-goog-api-key` header instead |
+| 7 | `instagram.py:109-113` | Security | Subprocess-based vault access spawns Python child to read secrets via stdout | Use direct import pattern from `google_auth.py` |
+| 8 | `supadata.py:36-43` | Security | Same subprocess vault pattern | Same fix |
+| 9 | `claude_api.py:117,279` | Resources | `anthropic.AsyncAnthropic` client never closed | Use `async with` or call `await client.close()` |
+| 10 | `google_auth.py:230` | Security | Full refresh token printed to stdout | Truncate or mask |
+
+### Should Fix
+
+| # | File:Line | Category | Issue |
+|---|-----------|----------|-------|
+| 11 | `audit.py:37` vs `109` | Quality | Inconsistent timezone: `datetime.now()` vs `datetime.now(timezone.utc)` |
+| 12 | `audit.py:46-51,68-72` | Error Handling | `except Exception: pass` — silent swallow on corrupt JSON |
+| 13 | `auth.py:67,153-154,166-167,223` | Error Handling | 4 instances of silent exception swallowing in JWKS/JWT/profile code |
+| 14 | `audit.py:88-89`, `auth.py:105-106` | Type Safety | `int = None`, `str = None` instead of `Optional[int]`, `Optional[str]` (8+ instances) |
+| 15 | `instagram.py:621-626`, `youtube.py:258-261` | Quality | Coroutines awaited sequentially instead of `asyncio.gather()` |
+| 16 | `google_workspace.py:338` | Security | Drive query built with unescaped user input (single quote injection) |
+| 17 | `youtube.py:34-35` | Security | Real IP addresses and SSH commands in source comments |
+| 18 | `youtube.py:189` | Quality | Deprecated `asyncio.get_event_loop()` — use `get_running_loop()` |
+| 19 | `instagram.py:374` | Error Handling | `except Exception: pass` silently drops video frames |
+| 20 | `supadata.py:57-58` | Error Handling | Corrupt usage file silently resets counter to 0, bypassing rate limits |
+
+---
+
+## 3. OPAI Engine (`tools/opai-engine/`)
+
+56 files reviewed, 56 issues found. This is a **FastAPI** application (despite `app.py` line 1 saying Flask).
+
+### Security — Critical/High (14 issues)
+
+The authentication gaps are covered in Section 1.2 above. Additional findings:
+
+| # | File:Line | Severity | Issue | Fix |
+|---|-----------|----------|-------|-----|
+| 1 | `services/service_controller.py:218-224` | High | Command injection: task title embedded in Node.js `-e` flag | Pass data via stdin or temp file |
+| 2 | `routes/tasks.py:514-519` | High | `/files/read` endpoint takes `path` param with no auth — potential path traversal | Add `require_admin` + validate `read_file_safe()` |
+| 3 | `services/task_processor.py:36-41` | Medium | Personal email addresses hardcoded as trusted senders | Move to config |
+| 4 | `config.py` | Medium | Multiple hardcoded UUIDs (workspace IDs, queue IDs) | Move to env/config |
+| 5 | `background/worker_manager.py:30` | Medium | `NVM_NODE_BIN = "/home/dallas/.nvm/versions/node/v20.19.5/bin"` | Use `shutil.which("node")` |
+| 6 | `routes/google_chat.py:75` | Low | Raw exception string returned to API consumers | Return generic error |
+
+### Error Handling — High (5 issues)
+
+| # | File:Line | Issue | Fix |
+|---|-----------|-------|-----|
+| 1 | `services/guardrails.py:290` | **Runtime crash**: `registry["tasks"].append(task)` on a dict — `AttributeError` | Use `registry["tasks"][task_id] = task` |
+| 2 | `routes/tasks.py:144-145` + 3 more | `except Exception: pass` silently swallows Telegram, archive, count errors | Add `logger.warning(...)` |
+| 3 | `config.py` (load_orchestrator_config) | Corrupt `orchestrator.json` silently returns empty dict | Log warning, return marked fallback |
+| 4 | `ws/streams.py:30-31,43-44,73-74,111-112,129-130` | `except (WebSocketDisconnect, Exception): pass` — real errors lost | Separate catches, log non-disconnect errors |
+| 5 | `services/task_processor.py` | `write_registry()` not protected by `_registry_lock` — data corruption risk | Wrap all writes with `with _registry_lock:` |
+
+### Blocking Calls in Async (6 issues)
+
+| # | File:Line | Issue | Fix |
+|---|-----------|-------|-----|
+| 1 | `ws/streams.py:27,40` | Sync `psutil` calls in async WebSocket handlers block event loop every 2-3s | `await asyncio.to_thread(...)` |
+| 2 | `services/session_collector.py:77` | Sync `httpx.get()` in WebSocket handler blocks up to 10s | Use `httpx.AsyncClient` |
+| 3 | `services/collectors.py:35` | `psutil.cpu_freq()` called twice (once for check, once for value) | Cache in variable |
+| 4 | `services/service_controller.py` | `time.sleep(3)` in `kill_all_agents` | Use `await asyncio.sleep(3)` if async |
+
+### Pattern Consistency — High (4 issues)
+
+| # | Issue |
+|---|-------|
+| 1 | **Three competing error response patterns**: `HTTPException` vs `{"success": False, "error": ...}` with 200 vs `{"error": ...}` with 200. Standardize on `HTTPException`. |
+| 2 | **Inconsistent auth**: some routes use `require_admin`, others have zero auth, with no documented policy |
+| 3 | **Global mutable state injection**: `_thing = None; def set_thing(t): global _thing; _thing = t` in 6 route files — use FastAPI `Depends()` or `app.state` |
+| 4 | **Mix of sync/async handlers** without clear reasoning |
+
+### Code Quality — High (3 issues)
+
+| # | File | Lines | Issue |
+|---|------|-------|-------|
+| 1 | `services/task_processor.py` | 700+ | Covers task CRUD, email, audit, sessions, files, registry, agents — violates SRP |
+| 2 | `background/scheduler.py` | `_build_evolve_html()` | 80+ lines of inline HTML email template |
+| 3 | `routes/action_items.py` | 775+ | Source aggregation, scoring, dispatch all in one file |
+
+### Type Safety — High (3 issues)
+
+| # | File:Line | Issue |
+|---|-----------|-------|
+| 1 | `routes/tasks.py:104,151,525` | `data: dict = Body(...)` — zero Pydantic validation on 3 critical endpoints |
+| 2 | Multiple files | Missing return type annotations on all public service functions |
+| 3 | 6 route files | `set_detector(detector)` with no type hint — silently accepts any type |
+
+---
+
+## 4. Brain / HELM / DAM
+
+81 files reviewed, 30 issues found.
+
+### Critical (6 issues)
+
+All covered in Section 1 above: missing auth on YouTube/Instagram/DAM routes, Stripe webhook signature bypass, vault path traversal, PostgREST injection.
+
+### High (6 issues)
+
+| # | File:Line | Category | Issue | Fix |
+|---|-----------|----------|-------|-----|
+| 1 | `opai-brain/config.py:23` | Security | Admin UUID hardcoded in source | Use `os.getenv("BRAIN_ADMIN_USER_ID")` |
+| 2 | `opai-helm/core/vault.py:10` | Error Handling | Empty `VAULT_KEY` crashes with opaque `ValueError` | Validate at startup with clear error |
+| 3 | `opai-helm/connectors/hostinger.py:168` | Security | VPS IP `72.60.115.74` hardcoded | Use env var |
+| 4 | `opai-helm/routes/onboarding.py:29` | Quality | Hardcoded absolute template path | Derive from config |
+| 5 | `opai-dam/core/pipeline.py:246-247` | Error Handling | `except Exception: pass` in pipeline logging — invisible failures | Log at warning level |
+| 6 | `opai-dam/routes/sessions.py:61-65` | Security | User impersonation via body parameter + admin fallback | Remove `body.get("user_id")` fallback |
+
+### Medium (11 issues)
+
+| # | Category | Issue | Files |
+|---|----------|-------|-------|
+| 1 | DRY | Supabase helpers (`_sb_get/post/patch/delete`) copy-pasted across **14 Brain route files** with subtle variations | All `opai-brain/routes/*.py` |
+| 2 | Performance | New `httpx.AsyncClient` created per request — no connection pooling | All 3 services |
+| 3 | Type Safety | Missing type hints on all DAM and HELM supabase helper functions | `core/supabase.py` in both |
+| 4 | Error Handling | Silent `except Exception: pass` in Brain `nodes.py` (tag ops) and `tier.py` (quota check returns 0 on error — fail-open) | `nodes.py:188,231,241`, `tier.py:62` |
+| 5 | Security | String prefix path traversal check instead of `Path.is_relative_to()` | `brain/routes/nodes.py:153` |
+| 6 | Type Safety | No UUID validation on path parameters across all services | All route files |
+| 7 | Resources | Anthropic client created per call, never closed | `helm/core/ai.py:185` |
+| 8 | Concurrency | Global mutable caches without `asyncio.Lock` | `helm/connectors/hostinger.py:41`, `dam/core/executor.py:22` |
+| 9 | Performance | SSE stream polls DB every 2s with 3 queries per tick | `dam/routes/stream.py:27-75` |
+| 10 | Type Safety | All DAM routes use raw `request.json()` instead of Pydantic models | 6 DAM route files |
+| 11 | Quality | `config` parameter shadows module-level `import config` in 4 DAM executor functions | `dam/core/executor.py:155,164,178,189` |
+
+---
+
+## 5. BX4 / WordPress / Vault / Billing
+
+73 files reviewed, 52 issues found.
+
+### Critical (6 issues)
+
+| # | File | Issue |
+|---|------|-------|
+| 1 | `opai-vault/migrate_credentials.py:39-320` | ~70 plaintext credentials in source (covered in Section 1) |
+| 2 | `opai-vault/config.py:44` | AGE public key as default value (covered in Section 1) |
+| 3 | `opai-wordpress/routes_sites.py:113-128` | WordPress passwords stored as plaintext in Supabase |
+| 4 | `opai-wordpress/routes_sites.py:218-226` | Credentials endpoint returns plaintext passwords with no secondary confirmation |
+| 5 | `opai-bx4/routes/financial.py:~458` | Stripe secret keys stored as plaintext in Supabase |
+| 6 | `opai-vault/routes_auth.py:228,246,308,325` | WebAuthn challenges keyed by IP — shared proxy IP enables hijack |
+
+### High (10 issues)
+
+| # | File:Line | Category | Issue |
+|---|-----------|----------|-------|
+| 1 | `opai-vault/store.py:70-84,116-130` | Security | Plaintext secrets written to temp files during SOPS encryption — crash = cleartext on disk |
+| 2 | `opai-billing/routes_webhooks.py:119` | Security | Full Python exception strings returned to Stripe in webhook responses |
+| 3 | `opai-wordpress/routes_automation.py:710-740` | Security | Connector secret appears 3 times in response body |
+| 4 | `opai-vault/routes_user_vault.py:52-59` | Security | Service key sent as `apikey` header in user-scoped requests |
+| 5 | `opai-wordpress/services/connection_agent.py:26-28` | Security | Mixed auth header patterns (anon key + service key) across all WP routes |
+| 6 | `opai-wordpress/services/connection_agent.py:~181` | Security | HITL report filenames from user input — path traversal |
+| 7 | `opai-vault/routes_user_vault.py:94-95` | Error Handling | `except Exception: pass` on audit logging — broken auditing invisible |
+| 8 | `opai-billing/routes_api.py:253-254` | Error Handling | Silent Stripe error on product archival — DB/Stripe inconsistency |
+| 9 | `opai-billing/routes_subscriptions.py:143-145` | Error Handling | Silent Stripe error on subscription cancellation — DB shows canceled, Stripe still active |
+| 10 | `opai-bx4/connectors/stripe.py:241` | Python/Async | Sync `requests` library blocks event loop in async context |
+
+### Medium (21 issues)
+
+Key themes:
+- **Massive DRY violation**: Supabase helpers duplicated across **15+ route files** (~1500 lines of copy-paste) in BX4 and WordPress
+- **`_parse_recommendations()`** duplicated across 4 BX4 wing files
+- **5 files over 500 lines**: `deployer.py` (844), `routes_automation.py` (799), `routes_sites.py` (797), `financial.py` (688), `routes_auth.py` (512)
+- **File-based stores** (`auth_store.py`, `audit.py`) have TOCTOU race conditions — no file locking
+- **App-level user filtering** instead of RLS enforcement in vault
+- **Synchronous Anthropic client** in async BX4 advisor — blocks event loop for 10-60s per Claude call
+- **`object.__new__()`** used to bypass constructors in `site_manager.py`
+- **Bizarre `chr()` calls** in `bx4/routes/social.py:37-38` — `chr(63)` instead of `?`, `chr(0)` null bytes
+- **No rate limiting** on public checkout endpoint (`opai-billing/routes_checkout.py:63`)
+
+---
+
+## 6. Shell Scripts & Caddyfile
+
+42 shell scripts + 1 Caddyfile reviewed, 48 issues found.
+
+### Critical (6 issues)
+
+Hardcoded credentials covered in Section 1 plus:
+
+| # | File:Line | Issue | Fix |
+|---|-----------|-------|-----|
+| 1 | `opai-vault/scripts/vault-cli.sh:69-76` | Shell injection: `$NAME`/`$VALUE` interpolated into inline Python | Pass via environment variables |
+| 2 | `scripts/supabase-sql.sh:113-115` | SQL injection in `describe_table` | Validate table name with `^[a-zA-Z_][a-zA-Z0-9_]*$` |
+| 3 | `scripts/tg-notify.sh:27-29` + others | Telegram chat IDs and personal email hardcoded across multiple scripts | Move to shared config |
+
+### High (8 issues)
+
+| # | Issue | Files Affected |
+|---|-------|----------------|
+| 1 | **Missing `set -euo pipefail`** in 16 scripts | `opai-control.sh`, `install-services.sh`, `claude-*.sh`, `discord-bridge/start-bot.sh`, `entrypoint.sh`, `migrate-tailsync-to-user-service.sh` (no strict mode at all), and 10 more |
+| 2 | **Hardcoded IPs** in 6 scripts | `setup-nfs.sh` (NAS IP), `web-fetch-fallback.sh` (proxy IPs), `deploy-bb-vps.sh` (VPS IP) |
+| 3 | **Temp files without `trap ... EXIT` cleanup** | `familiarize.sh`, `run_agents.sh`, `run_builder.sh`, `run_auto.sh`, `run_squad.sh` — 6 scripts |
+| 4 | **`cat file \| command`** anti-pattern masks exit codes | 10 instances across `run_*.sh` scripts — use `< "$file"` redirect |
+| 5 | **`eval` on decrypted vault output** | `mcp-with-vault.sh:20` — shell metacharacters in vault values would execute |
+| 6 | **Inline Python with unquoted variable interpolation** | `migrate.sh`, `provision-sandbox.sh`, `run_agents.sh`, `vault-cli.sh` — 4 scripts |
+| 7 | **`git add -A`** in automated daily sync | `daily-git-push.sh:87` — stages everything including potential secrets |
+| 8 | **`export $(grep ... \| xargs)`** unsafe | `oc-control.sh:62` — special characters in env values can execute commands |
+
+### Caddyfile
+
+| # | Issue | Severity |
+|---|-------|----------|
+| 1 | No rate limiting on any endpoint | Medium |
+| 2 | No `request_body { max_size }` limit | Medium |
+| 3 | Internal API block pattern potentially bypassable via URL encoding | Medium |
+
+---
+
+## 7. TypeScript / React / Frontend
+
+5 projects reviewed, 47 issues found.
+
+### Critical (8 issues)
+
+| # | File | Issue |
+|---|------|-------|
+| 1 | `OPAI Mobile/constants/config.ts:3-5` | Hardcoded Supabase URL and anon key |
+| 2 | `Hostinger File Manager/src/App.jsx:37,172,204` | Hardcoded `localhost:3001` API URLs |
+| 3 | `Hostinger File Manager/src/context/ThemeContext.jsx` | 4 more hardcoded localhost URLs |
+| 4 | `Portal/static/js/auth.js:32-37` | `OPAI_AUTH_DISABLED` flag bypasses all auth |
+| 5 | `Portal/static/js/auth.js:87-94` | Fail-open: fetch error = access granted |
+| 6 | `Portal/static/js/navbar.js:352-354` | XSS: `innerHTML` with unsanitized `img.name` from user file input |
+| 7 | `SCC IDE/src/renderer/components/chat/ChatArea.tsx:272` | **Bug**: `String(data)` references undeclared variable — should be `rawData` |
+| 8 | `White-Noise/src/hooks/usePurchases.ts:7-8` | Placeholder RevenueCat API keys will silently fail in production |
+
+### High (14 issues)
+
+| # | Category | Issue | File |
+|---|----------|-------|------|
+| 1 | React | Non-null assertion on `session!.user.id` — race condition crash | `authStore.ts:40` |
+| 2 | React | Non-null assertions on `SecureStore!` — crashes if platform check fails | `storage.ts:13,20,27` |
+| 3 | React | Stale closure in `fadeOut` callback — `volume` captured at wrong time | `AudioContext.tsx:199-227` |
+| 4 | React | `useEffect` cleanup captures initial `null` sound — never unloads audio | `AudioContext.tsx:34-53` |
+| 5 | React | Missing effect dependencies in `useNotifications.ts:48` and `_layout.tsx:36` | Mobile app |
+| 6 | Quality | `App.jsx` is **640 lines** with 20+ `useState` calls | Hostinger File Manager |
+| 7 | Quality | `main/index.ts` is **1055 lines** — all Electron logic in one file | SCC IDE |
+| 8 | Quality | `ChatArea.tsx` is **699 lines** with 15+ `useRef` declarations | SCC IDE |
+| 9 | TypeScript | Zero TypeScript in Hostinger File Manager — all `.jsx`/`.js` | Entire project |
+| 10 | TypeScript | Zero TypeScript in Portal — all vanilla JS | Entire project |
+| 11 | Security | `sandbox: false` in Electron `webPreferences` | `main/index.ts:105` |
+| 12 | Security | `auth.js` and `auth-v3.js` are **identical 226-line files** — bugs must be fixed in two places | Portal |
+| 13 | Quality | `navbar.js` is **525 lines** — all logic in single IIFE | Portal |
+| 14 | Quality | No React error boundaries anywhere in Hostinger File Manager | Entire project |
+
+### TypeScript `any` Usage — Pervasive
+
+**22 instances of `catch (e: any)`** across OPAI Mobile stores:
+
+| Store | Count |
+|-------|-------|
+| `commandStore.ts` | 9 |
+| `tasksStore.ts` | 7 |
+| `monitorStore.ts` | 3 |
+| `chatStore.ts` | 1 |
+| `authStore.ts` | 1 |
+| `usePurchases.ts` | 1 |
+
+**Fix:** Create a shared utility: `function getErrorMessage(e: unknown): string { return e instanceof Error ? e.message : String(e); }`
+
+Additional `any` usage: `api.get<any>(...)` (5 instances), `(item: any)` in map callbacks (4 instances), `as any` casts (3 instances), `let db: any` in SCC IDE.
+
+---
+
+## 8. Cross-Cutting Patterns
+
+### 8.1 Silent Error Swallowing — Systemic
+
+**40+ instances** of `except Exception: pass` across the codebase. Most problematic locations:
+
+| Location | Impact |
+|----------|--------|
+| Audit logging (vault, bx4, engine) | Broken auditing invisible for days |
+| Stripe operations (billing) | DB/Stripe state divergence |
+| Tier quota checks (brain) | Users exceed quotas (fail-open) |
+| Pipeline logging (dam) | Invisible execution failures |
+| WebSocket handlers (engine) | Real errors masked by disconnect catch |
+
+**Recommendation:** Establish a project-wide rule: **no `except Exception: pass` without at minimum `logger.warning()`**. Enforce with a linter rule.
+
+### 8.2 Supabase Helper Duplication — Massive DRY Violation
+
+The same `_sb_get()`, `_sb_post()`, `_sb_patch()`, `_sb_delete()` functions are copy-pasted across **30+ route files** with subtle variations (different timeouts, different `Prefer` headers). Estimated **3000+ lines of duplicated code**.
+
+| Service | Files with duplicated helpers |
+|---------|-------------------------------|
+| Brain | 14 route files |
+| BX4 | 8 route files |
+| WordPress | 7 route files |
+| Engine | 2 route files |
+
+**Recommendation:** Create `{service}/core/supabase.py` (which HELM and DAM already have) for each service. Single source of truth.
+
+### 8.3 `httpx.AsyncClient` Per-Request Anti-Pattern
+
+Nearly every Supabase call across the entire codebase creates and destroys a new `httpx.AsyncClient`. This means:
+- No TCP connection reuse
+- No keep-alive
+- Repeated TLS handshakes
+- ~50-100ms added latency per request
+
+**Recommendation:** Create a shared client in each app's lifespan event:
+```python
+async def lifespan(app):
+    app.state.http = httpx.AsyncClient(timeout=15)
+    yield
+    await app.state.http.aclose()
+```
+
+### 8.4 Hardcoded Absolute Paths
+
+`/workspace/synced/opai` appears hardcoded in:
+- `opai-vault/config.py:10`
+- `scc-ide/src/main/index.ts:16`
+- `opai-vault/scripts/vault-cli.sh:18`
+- `opai-helm/routes/onboarding.py:29`
+- `scripts/test-agent-task-flow.sh:29-33`
+- Multiple other scripts and configs
+
+**Recommendation:** Derive from `__file__` or `BASH_SOURCE[0]` in all cases. Use `OPAI_ROOT` env var as fallback.
+
+### 8.5 `sys.path.insert` Repeated Everywhere
+
+Nearly every route file across Brain, HELM, DAM, BX4, and WordPress starts with:
+```python
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared"))
+```
+
+**Recommendation:** Set up proper Python packaging with `pyproject.toml`, or do the `sys.path` insert once in each `app.py`.
+
+---
+
+## 9. Scorecard
 
 | Category | Grade | Summary |
 |----------|-------|---------|
-| **Code Quality** | **C-** | Discord bridge at 1733 lines with 6+ functions >50 lines. Significant DRY violations (duplicated Claude invocation, duplicated wp-agent codebase, duplicated upload logic). Magic numbers scattered throughout. |
-| **Pattern Consistency** | **C** | Naming conventions mix camelCase/snake_case/PascalCase at data boundaries. Error response shapes differ across MCPs. Import ordering varies. Status enums drift between code and data. |
-| **Error Handling** | **D** | 25+ instances of silently swallowed errors across all languages. Empty `catch {}` blocks in JS, bare `except Exception: pass` in Python, missing `set -u` in Bash. The updater's main loop and task registry loader are particularly dangerous. |
-| **Type Safety** | **D+** | TypeScript MCPs use `any` pervasively (20+ occurrences). All API returns are untyped. Python public functions frequently lack annotations. JS task manager has no type information. |
-| **Python Patterns** | **C** | Async correctness violations (`time.sleep`, sync `open()` in async contexts). Unclosed HTTP clients. Wildcard CORS. Good use of FastAPI lifespan in monitor but deprecated `on_event` in wp-agent. |
-| **Bash Patterns** | **D+** | 8 hardcoded secrets across 4 scripts. No script uses full `set -Eeuo pipefail`. Missing temp file traps. SQL injection vulnerability. 552-line monolithic provisioner. |
-| **Security** | **F** | 8 credentials hardcoded in source (Supabase service key, PAT, anon keys, ClickUp API key, Tailsync token, personal email). SQL injection. Wildcard CORS with credentials. Timing-vulnerable PIN check. Missing security headers on reverse proxy. |
-| **Configuration** | **C-** | Stale network config. Schema drift in task registry. Phantom agents in squad definitions. Duplicate emoji identifiers. Missing sandbox role. Trusted senders list diverges from contacts. |
+| **Code Quality** | **D+** | 5+ files over 500 lines (one at 1055), massive DRY violations (3000+ duplicated lines), magic numbers throughout, 40+ silent exception swallows |
+| **Pattern Consistency** | **D** | Three competing error response patterns, inconsistent auth enforcement, inconsistent Supabase helper naming across services, mixed sync/async without clear rules, `sys.path.insert` in every file |
+| **Error Handling** | **D** | 40+ instances of `except Exception: pass`, fail-open patterns in auth and quota checks, Stripe operations silently fail leaving DB/payment state inconsistent, no error boundaries in frontend |
+| **Type Safety** | **C-** | 22 `catch (e: any)` in TypeScript, raw `dict` request bodies instead of Pydantic models, missing return types on most Python public functions, `callable` (lowercase) as type hint, 2 entire projects without TypeScript |
+| **Security** | **F** | ~70 plaintext credentials in source, 20+ unauthenticated write endpoints, path traversal vulnerabilities, SQL/PostgREST injection, shell injection, XSS via innerHTML, fail-open auth, unsigned webhook acceptance, plaintext credential storage in DB |
+| **Python Patterns** | **D+** | Blocking sync calls in async contexts (6 instances), `asyncio.get_event_loop()` (deprecated), subprocess-based vault access, per-request httpx clients, file-based stores without locking |
+| **Bash Patterns** | **D** | 16 scripts missing strict mode, hardcoded credentials in 4 scripts, shell injection in vault CLI, SQL injection in SQL runner, no trap cleanup on temp files, unsafe eval/export patterns |
 
-### Overall Grade: **D+**
+### Overall Grade: **D**
 
-The architecture and vision are ambitious and well-structured. The fundamental system design (agent orchestration, sandbox isolation, task routing) is sound. However, the **credential exposure alone** warrants an immediate security incident response. Beyond that, the error handling philosophy of "swallow and continue" creates a system where failures are invisible, making production debugging extremely difficult. Addressing the 8 critical credential findings and the 25+ silent error swallowing patterns would move this codebase to a solid C+/B- range.
+The architecture and ambition are impressive, but the codebase has accumulated critical security debt that must be addressed before any external exposure. The three highest-impact action items:
 
----
-
-## Recommended Priority Actions
-
-1. **TODAY**: Rotate all exposed credentials (Supabase PAT, service key, anon keys, ClickUp API key, Tailsync token). Move to environment variables or a secrets manager.
-2. **This week**: Add `trap 'rm -f "$temp"' EXIT` to all scripts using `mktemp`. Upgrade all scripts to `set -Eeuo pipefail`.
-3. **This week**: Replace all silent `catch {}`/`except: pass` with at minimum `log.warning()`/`console.error()`.
-4. **This sprint**: Add security headers to the Caddyfile (single change, protects 20+ services).
-5. **This sprint**: Fix async correctness violations (`time.sleep` → `asyncio.sleep`, sync `open` → `aiofiles`).
-6. **Next sprint**: Break discord-bridge `index.js` into modules. Define TypeScript interfaces for API responses. Add missing `cancelled`/`failed` status handling.
+1. **Rotate all credentials** in `migrate_credentials.py` and shell scripts, then delete the file
+2. **Add authentication** to all 20+ unprotected write endpoints
+3. **Extract duplicated Supabase helpers** into shared modules (eliminates ~3000 lines and inconsistency)

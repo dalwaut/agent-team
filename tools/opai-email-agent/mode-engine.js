@@ -18,9 +18,9 @@ const STATE_PATH = path.join(__dirname, 'data', 'agent-state.json');
 const VALID_MODES = ['suggestion', 'internal', 'auto'];
 
 const MODE_CAPABILITIES = {
-  suggestion: { classify: true, tag: true, organize: false, draft: false, send: false, moveEmails: false },
-  internal:   { classify: true, tag: true, organize: true,  draft: true,  send: false, moveEmails: true },
-  auto:       { classify: true, tag: true, organize: true,  draft: true,  send: true,  moveEmails: true },
+  suggestion: { classify: true, label: true, organize: false, draft: false, send: false, moveEmails: false },
+  internal:   { classify: true, label: true, organize: true,  draft: true,  send: false, moveEmails: true },
+  auto:       { classify: true, label: true, organize: true,  draft: true,  send: true,  moveEmails: true },
 };
 
 function loadConfig() {
@@ -67,7 +67,7 @@ function getActiveAccount() {
     email: config.account?.email || '',
     envPrefix: config.account?.envPrefix || 'AGENT',
     mode: config.mode || 'suggestion',
-    permissions: { classify: true, tag: true, organize: true, draft: true, send: true, moveEmails: true },
+    permissions: { classify: true, label: true, organize: true, draft: true, send: true, moveEmails: true },
     whitelist: config.whitelist || { domains: [], addresses: [] },
     voiceProfile: config.voiceProfile || '',
     imapFolders: config.imapFolders || ['INBOX'],
@@ -108,7 +108,7 @@ function addAccount(accountData) {
     mode: 'suggestion',
     permissions: {
       classify: true,
-      tag: true,
+      label: true,
       organize: false,
       draft: false,
       send: false,
@@ -220,7 +220,7 @@ function getCapabilitiesForAccount(account) {
   const perms = account.permissions || {};
   return {
     classify: modeCaps.classify && (perms.classify !== false),
-    tag: modeCaps.tag && (perms.tag !== false),
+    label: modeCaps.label && (perms.label !== false),
     organize: (modeCaps.organize || false) && (perms.organize !== false),
     draft: (modeCaps.draft || false) && (perms.draft !== false),
     send: (modeCaps.send || false) && (perms.send !== false),
@@ -269,7 +269,7 @@ function getCapabilities(mode) {
 
   return {
     classify: modeCaps.classify && (perms.classify !== false),
-    tag: modeCaps.tag && (perms.tag !== false),
+    label: modeCaps.label && (perms.label !== false),
     organize: (modeCaps.organize || false) && (perms.organize !== false),
     draft: (modeCaps.draft || false) && (perms.draft !== false),
     send: (modeCaps.send || false) && (perms.send !== false),

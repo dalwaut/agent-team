@@ -232,6 +232,18 @@ nc -zv ASPMX.L.GOOGLE.COM 25 -w 5  # should show "succeeded"
 
 ---
 
+## Auth redirect loop on remote access (Command Center)
+
+**Symptom**: Accessing `/tasks/` or `/engine/` via Tailscale (remote) causes infinite redirect loop to `/auth/login` then back to portal. Localhost access works fine.
+
+**Why**: `app.js` calls `loadCommandCenter()` → `fetchWithAuth()` before `opaiAuth.init()` has completed. On remote access, auth is enabled (not disabled), so `fetchWithAuth()` finds no token → redirects to login. On localhost, `auth_disabled: true` is returned by `/auth/config`, so a mock session is created synchronously.
+
+**Fix**: Wrap data-loading calls in `window.OPAI_AUTH_INIT.then(...)` so they wait for auth to initialize. Also add any missing method exports to `auth-v3.js` (e.g., `getSession()` was missing).
+
+**Pattern**: If adding a new frontend that uses `fetchWithAuth`, always await auth init before making API calls. See [Auth & Network](../core/auth-network.md) > "Auth Init Race Condition".
+
+---
+
 ## Related
 
 - `memory/troubleshooting.md` — condensed version for Claude Code session context

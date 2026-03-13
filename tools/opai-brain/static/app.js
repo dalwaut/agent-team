@@ -72,6 +72,15 @@ async function apiFetch(path, opts = {}) {
 async function init() {
   // Fetch Supabase config
   const cfg = await fetch('/brain/api/auth/config').then(r => r.json());
+
+  // Local access bypass
+  if (cfg.auth_disabled) {
+    _session = { access_token: null, user: { id: 'local', email: 'admin@localhost' } };
+    showApp();
+    initBlockEditor();
+    return;
+  }
+
   _supabase = supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
 
   const { data: { session } } = await _supabase.auth.getSession();
@@ -609,12 +618,15 @@ let _graphClickTimer = null;      // for distinguishing single vs double click
 
 function saveGraphPosition(nodeData) {
   // Debounced save — 600ms after last drag
+  const px = nodeData.fx != null ? nodeData.fx : nodeData.x;
+  const py = nodeData.fy != null ? nodeData.fy : nodeData.y;
+  if (px == null || py == null) return;
   if (_graphPositionTimers[nodeData.id]) clearTimeout(_graphPositionTimers[nodeData.id]);
   _graphPositionTimers[nodeData.id] = setTimeout(async () => {
     try {
       await apiFetch(`/api/graph/nodes/${nodeData.id}/position`, {
         method: 'PATCH',
-        body: JSON.stringify({ x: nodeData.fx, y: nodeData.fy }),
+        body: JSON.stringify({ x: px, y: py }),
       });
     } catch (e) {
       console.warn('Failed to save graph position:', e);
@@ -681,73 +693,364 @@ function graphClearFocus() {
 
 // ── Side panel (double-click preview) ────────────────────────────────────────
 
+// Cache for panel content (summary + original)
+let _graphPanelCache = {};  // { summary: html, original: html|null }
+let _graphPanelTags = [];   // current tags for the open node
+let _graphPanelFullNode = null; // full node data for editing
+
+const _linkTypeColor = {
+  related: '#60a5fa', supports: '#22c55e', contradicts: '#ef4444',
+  derived_from: '#a78bfa', suggested: '#f59e0b', blocks: '#f97316',
+  enables: '#06b6d4', canvas_edge: '#6b7280',
+};
+
 async function openGraphPanel(nodeData) {
   _graphPanelNodeId = nodeData.id;
+  _graphPanelCache = {};
+  _graphPanelTags = [];
+  _graphPanelFullNode = null;
   const panel = document.getElementById('graph-side-panel');
   if (!panel) return;
 
-  const typeColor = { note: '#60a5fa', concept: '#a78bfa', question: '#34d399' };
-  const linkTypeColor = {
-    related: '#60a5fa', supports: '#22c55e', contradicts: '#ef4444',
-    derived_from: '#a78bfa', suggested: '#f59e0b', blocks: '#f97316',
-    enables: '#06b6d4', canvas_edge: '#6b7280',
-  };
-
   // Title + meta
-  document.getElementById('graph-panel-title').textContent = nodeData.title || 'Untitled';
+  const titleEl = document.getElementById('graph-panel-title');
+  titleEl.textContent = nodeData.title || 'Untitled';
+  titleEl.style.display = '';
+  // Hide any leftover input
+  const existingInput = titleEl.parentElement.querySelector('.graph-panel-title-input');
+  if (existingInput) existingInput.remove();
+
   const typeBadge = '<span class="type-badge badge-' + nodeData.type + '">' + (nodeData.type || 'note') + '</span>';
   const degree = _graphDegreeMap[nodeData.id] || 0;
+  const grpLabel = nodeData.group || '';
   document.getElementById('graph-panel-meta').innerHTML = typeBadge +
-    ' <span>' + degree + ' connection' + (degree !== 1 ? 's' : '') + '</span>';
+    ' <span>' + degree + ' connection' + (degree !== 1 ? 's' : '') + '</span>' +
+    (grpLabel ? ' <span style="color:var(--text-muted);">· ' + esc(grpLabel) + '</span>' : '');
 
-  // Connections list
-  const neighborIds = _getNeighborIds(nodeData.id, _graphLinks || []);
-  const connEl = document.getElementById('graph-panel-connections');
-  if (neighborIds.size > 0) {
-    const connNodes = (_graphNodes || []).filter(n => neighborIds.has(n.id));
-    // Find link info for each connection
-    const connHtml = connNodes.map(cn => {
-      const connLink = (_graphLinks || []).find(l => {
-        const sid = typeof l.source === 'object' ? l.source.id : l.source;
-        const tid = typeof l.target === 'object' ? l.target.id : l.target;
-        return (sid === nodeData.id && tid === cn.id) || (tid === nodeData.id && sid === cn.id);
-      });
-      const lt = connLink ? (connLink.type || 'related') : 'related';
-      const color = linkTypeColor[lt] || '#6b7280';
-      return '<div class="graph-panel-conn-item" onclick="graphPanelFocusNode(\'' + cn.id + '\')">' +
-        '<span class="graph-panel-conn-dot" style="background:' + color + ';"></span>' +
-        '<span>' + esc(cn.title || 'Untitled') + '</span>' +
-        '<span class="graph-panel-conn-label">' + lt + '</span></div>';
-    }).join('');
-    connEl.innerHTML = '<h4>Connections</h4>' + connHtml;
-    connEl.style.display = '';
+  // Tags — loading placeholder
+  document.getElementById('graph-panel-tags').innerHTML =
+    '<span style="font-size:11px;color:var(--text-muted);">Loading tags...</span>';
+
+  // Source path
+  const srcPathEl = document.getElementById('graph-panel-source-path');
+  const meta = nodeData.metadata || {};
+  const srcPath = meta.sync_source_path || '';
+  if (srcPath) {
+    srcPathEl.textContent = srcPath;
+    srcPathEl.classList.remove('hidden');
   } else {
-    connEl.innerHTML = '<h4>Connections</h4><div style="font-size:12px;color:var(--text-muted);">No connections</div>';
-    connEl.style.display = '';
+    srcPathEl.classList.add('hidden');
   }
 
-  // Body — fetch full node content
+  // View toggle — reset to Summary
+  const toggleEl = document.getElementById('graph-panel-view-toggle');
+  document.getElementById('graph-btn-summary').classList.add('active');
+  document.getElementById('graph-btn-original').classList.remove('active');
+  if (srcPath) { toggleEl.classList.remove('hidden'); }
+  else { toggleEl.classList.add('hidden'); }
+
+  // Connections list
+  _graphPanelRenderConnections(nodeData.id);
+
+  // Body — fetch full node content (summary + tags)
   const bodyEl = document.getElementById('graph-panel-body');
   bodyEl.innerHTML = '<div style="color:var(--text-muted);">Loading...</div>';
   panel.classList.add('open');
 
   try {
     const fullNode = await apiFetch('/api/nodes/' + nodeData.id);
+    _graphPanelFullNode = fullNode;
+    _graphPanelTags = fullNode.tags || [];
+    _graphPanelRenderTags();
+
     const content = fullNode.content || '';
-    if (content) {
-      bodyEl.innerHTML = renderMarkdownSimple(content);
-    } else {
-      bodyEl.innerHTML = '<div style="color:var(--text-muted);font-style:italic;">No content</div>';
-    }
+    const summaryHtml = content ? renderMarkdownSimple(content)
+      : '<div style="color:var(--text-muted);font-style:italic;">No content</div>';
+    _graphPanelCache.summary = summaryHtml;
+    bodyEl.innerHTML = summaryHtml;
   } catch (e) {
     bodyEl.innerHTML = '<div style="color:var(--text-muted);">Failed to load content.</div>';
   }
 }
 
+// ── Render connections with delete buttons ──
+function _graphPanelRenderConnections(nodeId) {
+  const neighborIds = _getNeighborIds(nodeId, _graphLinks || []);
+  const connEl = document.getElementById('graph-panel-connections');
+  if (neighborIds.size > 0) {
+    const connNodes = (_graphNodes || []).filter(n => neighborIds.has(n.id));
+    const connHtml = connNodes.map(cn => {
+      const connLink = (_graphLinks || []).find(l => {
+        const sid = typeof l.source === 'object' ? l.source.id : l.source;
+        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+        return (sid === nodeId && tid === cn.id) || (tid === nodeId && sid === cn.id);
+      });
+      const linkId = connLink ? connLink.id : '';
+      const lt = connLink ? (connLink.type || 'related') : 'related';
+      const color = _linkTypeColor[lt] || '#6b7280';
+      return '<div class="graph-panel-conn-item">' +
+        '<span class="graph-panel-conn-dot" style="background:' + color + ';"></span>' +
+        '<span style="cursor:pointer;" onclick="graphPanelFocusNode(\'' + cn.id + '\')">' + esc(cn.title || 'Untitled') + '</span>' +
+        '<span class="graph-panel-conn-label">' + lt + '</span>' +
+        (linkId ? '<button class="graph-panel-conn-delete" onclick="event.stopPropagation(); graphPanelDeleteConn(\'' + linkId + '\')" title="Remove connection">&#x2715;</button>' : '') +
+        '</div>';
+    }).join('');
+    connEl.innerHTML = '<h4>Connections (' + connNodes.length + ')</h4>' + connHtml;
+  } else {
+    connEl.innerHTML = '<h4>Connections</h4><div style="font-size:12px;color:var(--text-muted);">No connections</div>';
+  }
+}
+
+// ── Title editing (double-click h3 to edit) ──
+function graphPanelEditTitle() {
+  if (!_graphPanelNodeId) return;
+  const titleEl = document.getElementById('graph-panel-title');
+  const currentTitle = titleEl.textContent;
+  titleEl.style.display = 'none';
+
+  const input = document.createElement('input');
+  input.className = 'graph-panel-title-input';
+  input.value = currentTitle;
+  titleEl.parentElement.insertBefore(input, titleEl);
+  input.focus();
+  input.select();
+
+  async function save() {
+    const newTitle = input.value.trim();
+    input.remove();
+    titleEl.style.display = '';
+    if (!newTitle || newTitle === currentTitle) return;
+    titleEl.textContent = newTitle;
+    try {
+      await apiFetch('/api/nodes/' + _graphPanelNodeId, {
+        method: 'PATCH',
+        body: JSON.stringify({ title: newTitle }),
+      });
+      // Update in-memory node data for graph
+      const nd = (_graphNodes || []).find(n => n.id === _graphPanelNodeId);
+      if (nd) nd.title = newTitle;
+      // Update the SVG label
+      if (_graphNodeSelection) {
+        _graphNodeSelection.filter(d => d.id === _graphPanelNodeId)
+          .select('text').text(newTitle.slice(0, 24));
+      }
+      toast('Title updated');
+    } catch (e) {
+      titleEl.textContent = currentTitle;
+      toast('Failed to update title: ' + e.message, 'err');
+    }
+  }
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    if (e.key === 'Escape') { input.remove(); titleEl.style.display = ''; }
+  });
+  input.addEventListener('blur', save);
+}
+
+// ── Tags management ──
+function _graphPanelRenderTags() {
+  const el = document.getElementById('graph-panel-tags');
+  if (!el) return;
+  const tagsHtml = _graphPanelTags.map(t =>
+    '<span class="graph-panel-tag">' + esc(t) +
+    '<button class="graph-panel-tag-remove" onclick="graphPanelRemoveTag(\'' + esc(t).replace(/'/g, "\\'") + '\')" title="Remove tag">&#x2715;</button></span>'
+  ).join('');
+  el.innerHTML = tagsHtml +
+    '<button class="graph-panel-tag-add" onclick="graphPanelAddTagInput()" title="Add tag">+ tag</button>';
+}
+
+function graphPanelAddTagInput() {
+  const el = document.getElementById('graph-panel-tags');
+  const addBtn = el.querySelector('.graph-panel-tag-add');
+  if (!addBtn) return;
+  addBtn.style.display = 'none';
+
+  const input = document.createElement('input');
+  input.className = 'graph-panel-tag-input';
+  input.placeholder = 'new tag';
+  el.appendChild(input);
+  input.focus();
+
+  async function commit() {
+    const tag = input.value.trim().toLowerCase();
+    input.remove();
+    if (addBtn) addBtn.style.display = '';
+    if (!tag || _graphPanelTags.includes(tag)) return;
+    _graphPanelTags.push(tag);
+    _graphPanelRenderTags();
+    try {
+      await apiFetch('/api/nodes/' + _graphPanelNodeId, {
+        method: 'PATCH',
+        body: JSON.stringify({ tags: _graphPanelTags }),
+      });
+      toast('Tag added');
+    } catch (e) {
+      _graphPanelTags = _graphPanelTags.filter(t => t !== tag);
+      _graphPanelRenderTags();
+      toast('Failed to add tag: ' + e.message, 'err');
+    }
+  }
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { input.remove(); if (addBtn) addBtn.style.display = ''; }
+  });
+  input.addEventListener('blur', commit);
+}
+
+async function graphPanelRemoveTag(tag) {
+  _graphPanelTags = _graphPanelTags.filter(t => t !== tag);
+  _graphPanelRenderTags();
+  try {
+    await apiFetch('/api/nodes/' + _graphPanelNodeId, {
+      method: 'PATCH',
+      body: JSON.stringify({ tags: _graphPanelTags }),
+    });
+    toast('Tag removed');
+  } catch (e) {
+    _graphPanelTags.push(tag);
+    _graphPanelRenderTags();
+    toast('Failed to remove tag: ' + e.message, 'err');
+  }
+}
+
+// ── Delete a connection ──
+async function graphPanelDeleteConn(linkId) {
+  if (!confirm('Remove this connection?')) return;
+  try {
+    await apiFetch('/api/canvas/links/' + linkId, { method: 'DELETE' });
+    // Remove from in-memory graph data
+    if (_graphLinks) {
+      const idx = _graphLinks.findIndex(l => l.id === linkId);
+      if (idx !== -1) _graphLinks.splice(idx, 1);
+    }
+    // Re-render connections
+    if (_graphPanelNodeId) _graphPanelRenderConnections(_graphPanelNodeId);
+    toast('Connection removed');
+  } catch (e) {
+    toast('Failed to remove connection: ' + e.message, 'err');
+  }
+}
+
+function graphPanelShowSummary() {
+  _graphPanelEditing = false;
+  document.getElementById('graph-btn-summary').classList.add('active');
+  document.getElementById('graph-btn-original').classList.remove('active');
+  document.getElementById('graph-btn-edit').classList.remove('active');
+  document.getElementById('graph-panel-edit-area').classList.add('hidden');
+  document.getElementById('graph-panel-body').classList.remove('hidden');
+  const bodyEl = document.getElementById('graph-panel-body');
+  if (_graphPanelCache.summary) {
+    bodyEl.innerHTML = _graphPanelCache.summary;
+  }
+}
+
+async function graphPanelShowOriginal() {
+  _graphPanelEditing = false;
+  document.getElementById('graph-btn-original').classList.add('active');
+  document.getElementById('graph-btn-summary').classList.remove('active');
+  document.getElementById('graph-btn-edit').classList.remove('active');
+  document.getElementById('graph-panel-edit-area').classList.add('hidden');
+  document.getElementById('graph-panel-body').classList.remove('hidden');
+  const bodyEl = document.getElementById('graph-panel-body');
+
+  if (_graphPanelCache.original) {
+    bodyEl.innerHTML = _graphPanelCache.original;
+    return;
+  }
+
+  bodyEl.innerHTML = '<div style="color:var(--text-muted);">Loading original file...</div>';
+  try {
+    const data = await apiFetch('/api/nodes/' + _graphPanelNodeId + '/original');
+    const html = renderMarkdownSimple(data.content || '');
+    _graphPanelCache.original = html;
+    bodyEl.innerHTML = html;
+  } catch (e) {
+    const errHtml = '<div style="color:var(--text-muted);font-style:italic;">Could not load original: ' + esc(e.message) + '</div>';
+    _graphPanelCache.original = errHtml;
+    bodyEl.innerHTML = errHtml;
+  }
+}
+
+// ── Content editing in side panel ──
+let _graphPanelEditing = false;
+
+function graphPanelStartEdit() {
+  if (!_graphPanelNodeId || !_graphPanelFullNode) return;
+  _graphPanelEditing = true;
+
+  // Toggle button states
+  document.getElementById('graph-btn-summary').classList.remove('active');
+  document.getElementById('graph-btn-original').classList.remove('active');
+  document.getElementById('graph-btn-edit').classList.add('active');
+
+  // Hide rendered body, show editor
+  document.getElementById('graph-panel-body').classList.add('hidden');
+  const editArea = document.getElementById('graph-panel-edit-area');
+  editArea.classList.remove('hidden');
+
+  // Fill textarea with raw markdown
+  const editor = document.getElementById('graph-panel-editor');
+  editor.value = _graphPanelFullNode.content || '';
+  editor.focus();
+}
+
+async function graphPanelSaveEdit() {
+  if (!_graphPanelNodeId) return;
+  const editor = document.getElementById('graph-panel-editor');
+  const newContent = editor.value;
+
+  try {
+    await apiFetch('/api/nodes/' + _graphPanelNodeId, {
+      method: 'PATCH',
+      body: JSON.stringify({ content: newContent }),
+    });
+
+    // Update in-memory data
+    if (_graphPanelFullNode) _graphPanelFullNode.content = newContent;
+    // Refresh the summary cache
+    const summaryHtml = newContent
+      ? renderMarkdownSimple(newContent)
+      : '<div style="color:var(--text-muted);font-style:italic;">No content</div>';
+    _graphPanelCache.summary = summaryHtml;
+    // Clear original cache since content changed
+    delete _graphPanelCache.original;
+
+    toast('Content saved');
+    graphPanelCancelEdit(); // switch back to rendered view
+  } catch (e) {
+    toast('Failed to save: ' + e.message, 'err');
+  }
+}
+
+function graphPanelCancelEdit() {
+  _graphPanelEditing = false;
+
+  // Hide editor, show rendered body
+  document.getElementById('graph-panel-edit-area').classList.add('hidden');
+  document.getElementById('graph-panel-body').classList.remove('hidden');
+
+  // Reset toggle buttons to Summary active
+  document.getElementById('graph-btn-edit').classList.remove('active');
+  document.getElementById('graph-btn-summary').classList.add('active');
+  document.getElementById('graph-btn-original').classList.remove('active');
+
+  // Re-render summary with latest content
+  const bodyEl = document.getElementById('graph-panel-body');
+  if (_graphPanelCache.summary) {
+    bodyEl.innerHTML = _graphPanelCache.summary;
+  }
+}
+
 function closeGraphPanel() {
   _graphPanelNodeId = null;
+  _graphPanelEditing = false;
   const panel = document.getElementById('graph-side-panel');
   if (panel) panel.classList.remove('open');
+  // Reset edit area if open
+  document.getElementById('graph-panel-edit-area').classList.add('hidden');
+  document.getElementById('graph-panel-body').classList.remove('hidden');
 }
 
 function graphPanelOpenInLibrary() {
@@ -765,6 +1068,50 @@ function graphPanelFocusNode(nodeId) {
   const nd = (_graphNodes || []).find(n => n.id === nodeId);
   if (nd) openGraphPanel(nd);
 }
+
+// ── Side panel resize (drag left edge to widen/narrow) ──────────────────────
+(function initPanelResize() {
+  let _resizing = false;
+  let _startX = 0;
+  let _startW = 0;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const handle = document.getElementById('graph-panel-resize-handle');
+    const panel = document.getElementById('graph-side-panel');
+    if (!handle || !panel) return;
+
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      _resizing = true;
+      _startX = e.clientX;
+      _startW = panel.offsetWidth;
+      panel.classList.add('resizing');
+      handle.classList.add('active');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!_resizing) return;
+      const container = panel.parentElement;
+      const maxW = container ? container.offsetWidth * 0.7 : 800;
+      const delta = _startX - e.clientX;  // dragging left = wider
+      const newW = Math.min(maxW, Math.max(280, _startW + delta));
+      panel.style.width = newW + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!_resizing) return;
+      _resizing = false;
+      const panel = document.getElementById('graph-side-panel');
+      if (panel) panel.classList.remove('resizing');
+      const handle = document.getElementById('graph-panel-resize-handle');
+      if (handle) handle.classList.remove('active');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+  });
+})();
 
 // Simple markdown renderer for side panel (reuse preview logic if available)
 function renderMarkdownSimple(md) {
@@ -1278,6 +1625,7 @@ async function graphResetLayout() {
     toast('Reset failed: ' + e.message, 'err');
   }
 }
+
 
 async function openNodeById(id) {
   // First ensure library has this node
@@ -1879,6 +2227,83 @@ function applyAiResult() {
   updateWordCount();
   closeAiModal();
   toast('Applied!');
+}
+
+// ── NotebookLM Deliverables ──────────────────────────────────────────────────
+
+const NLM_ARTIFACT_LABELS = {
+  audio: 'Podcast Overview',
+  study_guide: 'Study Guide',
+  quiz: 'Quiz',
+  flashcards: 'Flashcards',
+  slide_deck: 'Slide Deck',
+  mind_map: 'Mind Map',
+};
+
+async function nlmGenerate(artifactType) {
+  if (!_activeNodeId) { toast('Save the note first.', 'err'); return; }
+
+  const btn = document.querySelector(`.btn-nlm[data-type="${artifactType}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+
+  try {
+    const data = await apiFetch('/api/notebooklm/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        node_ids: [_activeNodeId],
+        artifact_type: artifactType,
+      }),
+    });
+
+    if (data.task_id) {
+      toast('Generation started — polling for results…');
+      _pollNlmTask(data.task_id, artifactType, btn);
+    }
+  } catch (e) {
+    toast('NotebookLM: ' + e.message, 'err');
+    if (btn) { btn.disabled = false; btn.textContent = NLM_ARTIFACT_LABELS[artifactType] || artifactType; }
+  }
+}
+
+async function _pollNlmTask(taskId, artifactType, btn) {
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    try {
+      const data = await apiFetch('/api/notebooklm/generate/' + taskId);
+      if (data.status === 'completed') {
+        showAiModal(NLM_ARTIFACT_LABELS[artifactType] || artifactType, data.result?.content || JSON.stringify(data.result));
+        if (btn) { btn.disabled = false; btn.textContent = NLM_ARTIFACT_LABELS[artifactType] || artifactType; }
+        return;
+      }
+      if (data.status === 'failed') {
+        toast('Generation failed: ' + (data.error || 'unknown'), 'err');
+        if (btn) { btn.disabled = false; btn.textContent = NLM_ARTIFACT_LABELS[artifactType] || artifactType; }
+        return;
+      }
+    } catch (e) { /* keep polling */ }
+  }
+  toast('Generation timed out', 'err');
+  if (btn) { btn.disabled = false; btn.textContent = NLM_ARTIFACT_LABELS[artifactType] || artifactType; }
+}
+
+async function nlmAsk() {
+  if (!_activeNodeId) { toast('Save the note first.', 'err'); return; }
+
+  const question = prompt('Ask a question about this note:');
+  if (!question) return;
+
+  try {
+    const data = await apiFetch('/api/notebooklm/ask', {
+      method: 'POST',
+      body: JSON.stringify({
+        node_ids: [_activeNodeId],
+        question: question,
+      }),
+    });
+    showAiModal('NotebookLM Q&A', data.answer || 'No answer returned.');
+  } catch (e) {
+    toast('NotebookLM Q&A failed: ' + e.message, 'err');
+  }
 }
 
 function showRelatedModal(nodes) {

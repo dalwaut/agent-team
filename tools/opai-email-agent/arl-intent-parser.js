@@ -19,11 +19,14 @@ const SKILLS_PATH = path.join(__dirname, 'arl-skills.json');
 
 // Skills that should be matched FIRST (high-priority, specific intent)
 const HIGH_PRIORITY_SKILLS = [
+  'prd-intake',
   'create-task',
   'system-change',
   'remember-context',
   'manage-files',
   'generate-report',
+  'process-transcript',
+  'approve-transcript',
 ];
 
 function loadSkills() {
@@ -43,6 +46,27 @@ const CONTEXT_EXTRACTORS = {
 const DOMAIN_PATTERN = /(?:domain|dns|mx|resolve|check)\s+(?:for\s+)?([a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z]{2,})+)/i;
 const URL_DOMAIN_PATTERN = /https?:\/\/([a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z]{2,})+)/i;
 
+// Pending transcript directory
+const PENDING_TRANSCRIPTS_DIR = path.join(__dirname, 'data', 'pending-transcripts');
+
+/**
+ * Check if sender has a pending transcript approval waiting.
+ * Returns the pending file path if found, null otherwise.
+ */
+function checkPendingTranscriptApproval(senderAddress) {
+  try {
+    if (!fs.existsSync(PENDING_TRANSCRIPTS_DIR)) return null;
+    const files = fs.readdirSync(PENDING_TRANSCRIPTS_DIR).filter(f => f.endsWith('.json'));
+    for (const file of files) {
+      const data = JSON.parse(fs.readFileSync(path.join(PENDING_TRANSCRIPTS_DIR, file), 'utf8'));
+      if (data.status === 'pending_approval' && data.sender?.toLowerCase() === senderAddress?.toLowerCase()) {
+        return file;
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
 /**
  * Parse email for ARL-actionable intent.
  * @param {object} email - { fromAddress, subject, body }
@@ -56,6 +80,21 @@ function parseIntent(email) {
 
   const text = `${email.subject || ''}\n${email.body || ''}`.toLowerCase();
   const fullText = `${email.subject || ''}\n${email.body || ''}`;
+
+  // ── Pre-check: pending transcript approval from this sender ──
+  const approvalPatterns = /\b(approve\s*(all|[\d,\s]+)|reject\b|edit\b)/i;
+  if (approvalPatterns.test(text)) {
+    const pendingFile = checkPendingTranscriptApproval(email.fromAddress);
+    if (pendingFile) {
+      return {
+        detected: true,
+        intents: ['approve-transcript'],
+        confidence: 0.95,
+        context: { pendingFile },
+        matchedSkills: ['approve-transcript'],
+      };
+    }
+  }
 
   const matchedIntents = [];
   const matchedSkillIds = [];

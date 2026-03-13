@@ -1,5 +1,5 @@
 # PRD Pipeline
-> Last updated: 2026-02-24 | Source: `tools/opai-prd/` | Agent: `scripts/prompt_prdgent.txt`
+> Last updated: 2026-03-02 | Source: `tools/opai-prd/` | Agent: `scripts/prompt_prdgent.txt`
 
 ## Overview
 
@@ -49,7 +49,7 @@ Admin Browser (/prd/*)                             │
 |------|---------|
 | `tools/opai-prd/app.py` | FastAPI entrypoint |
 | `tools/opai-prd/config.py` | Paths, env vars, PORT=8097 |
-| `tools/opai-prd/routes_api.py` | All API routes: CRUD, submit, evaluate, approve/reject, move-to-project, generate-prd. Uses shared Claude wrapper (`tools/shared/claude_api.py`) |
+| `tools/opai-prd/routes_api.py` | All API routes: CRUD, submit, evaluate, approve/reject, move-to-project, generate-prd, file browse/read. Uses shared Claude wrapper (`tools/shared/claude_api.py`) |
 | `tools/opai-prd/supabase_client.py` | Async Supabase REST helpers (get/create/update/delete ideas) |
 | `scripts/prompt_prdgent.txt` | PRDgent eval prompt — strict JSON, 5 criteria |
 | `scripts/prompt_prdgent_prd.txt` | PRDgent PRD prompt — full written PRD from eval + idea data |
@@ -197,6 +197,13 @@ pending → (PRDgent auto-eval on submit)
 | POST | `/api/ideas/{id}/reject` | Mark rejected |
 | POST | `/api/ideas/{id}/move-to-project` | Scaffold project folder. Body: `{"project_name": "...", "project_slug": "..."}` |
 
+### File Picker (admin)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/browse` | Directory listing. Params: `path` (relative, default `Research/PRD`), `mode` (`all` or `dirs`). Returns `{path, parent, items[], total}` |
+| GET | `/api/browse/read` | Read file content. Param: `path` (relative). Supports `.md`, `.txt`, `.json`, `.docx`. Returns `{path, name, content, size}` |
+
 ### Utility
 
 | Method | Path | Description |
@@ -297,6 +304,59 @@ The web admin at `/prd/` has these additions in v2.0:
 - "Generate PRD" button in detail modal for evaluated ideas without a full PRD
 - Move to Project uses the AI-generated PRD directly (no empty scaffold)
 
+## File Picker
+
+Inline collapsible file browser inside the Submit PRD modal. Lets admins browse the filesystem, preview a file, and load its content directly into the PRD editor. Pattern reused from Marq's file picker (`tools/opai-marq`).
+
+### How It Works
+
+1. Click **"Browse Files"** button in the Submit PRD modal
+2. Collapsible `fp-panel` expands with breadcrumb navigation and directory listing
+3. Directories sorted first, dot-files hidden, click to navigate
+4. Click a file to preview (first 3000 chars shown)
+5. Click **"Load into Editor"** to populate the PRD content textarea
+6. Title auto-fills from filename (extension stripped, hyphens/underscores converted to spaces) -- only if the title field is currently empty
+7. Picker collapses after loading
+
+### Browse Root & Path Resolution
+
+| User Role | Browse Root | Default Start |
+|-----------|-------------|---------------|
+| Admin | `OPAI_ROOT` (`/workspace/synced/opai`) | `Research/PRD/` |
+| Non-admin | User's `sandbox_path` (future NFS) | Root of sandbox |
+
+Path traversal attacks are blocked by `_resolve_safe()` -- resolves the requested path, then verifies it starts with the browse root. Returns HTTP 403 on violation.
+
+### Supported File Types
+
+| Extension | Handler |
+|-----------|---------|
+| `.md` | Read as UTF-8 text |
+| `.txt` | Read as UTF-8 text |
+| `.json` | Read + pretty-print (`json.dumps(indent=2)`) |
+| `.docx` | Extracted via `python-docx` (paragraph text only) |
+
+Unsupported extensions return HTTP 415. Maximum file size: **1 MB** (HTTP 413 if exceeded).
+
+### Key Files
+
+| File | What |
+|------|------|
+| `tools/opai-prd/routes_api.py` | `_browse_root()`, `_resolve_safe()`, `GET /api/browse`, `GET /api/browse/read` |
+| `tools/opai-prd/config.py` | `RESEARCH_DIR`, `DEFAULT_BROWSE_PATH` constants |
+| `tools/opai-prd/static/index.html` | `fp-panel` HTML structure (breadcrumb, list, preview, actions) |
+| `tools/opai-prd/static/app.js` | `fpToggle()`, `fpNavigate()`, `fpSelectFile()`, `fpLoadFile()`, `fpRenderBreadcrumb()` |
+| `tools/opai-prd/static/style.css` | `fp-*` CSS classes (panel, items, breadcrumb, preview) |
+
+### Config
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `RESEARCH_DIR` | `OPAI_ROOT / "Research"` | Parent directory for research files |
+| `DEFAULT_BROWSE_PATH` | `"Research/PRD"` | Landing directory when admin opens picker with no path |
+| `_BROWSE_SUPPORTED` | `{".md", ".txt", ".json"}` | Natively supported text extensions |
+| `_BROWSE_MAX_SIZE` | `1048576` (1 MB) | Maximum readable file size |
+
 ## Known Limitations / Gotchas
 
 - **Supabase service key required** — server needs `SUPABASE_SERVICE_KEY` env var or all DB ops fail
@@ -306,6 +366,8 @@ The web admin at `/prd/` has these additions in v2.0:
 - **Batch evaluation limits** — manual `/api/evaluate` with large batches (>15 ideas) may time out; evaluate in batches of 5–10.
 - **RLS get_my_role()** — admin policies use the shared `get_my_role()` security definer function. Ensure migration `017_fix_profiles_rls_recursion.sql` is applied first.
 - **Move requires approved/evaluated** — `reviewed` ideas (not_ready/poor) need manual approval before moving.
+- **File picker .docx** — requires `python-docx` package. If not installed, returns HTTP 500 with a clear message. Extracts paragraph text only (no tables, images, or formatting).
+- **File picker non-admin** — falls back to `sandbox_path` if set on the user object, otherwise defaults to `OPAI_ROOT`. Future: gated to user NFS sandbox only.
 
 ## Dependencies
 
@@ -317,6 +379,7 @@ The web admin at `/prd/` has these additions in v2.0:
 | `python-dotenv` | `.env` loading |
 | `python-jose` | JWT decoding |
 | `aiofiles` | Async file I/O |
+| `python-docx` | .docx file reading (optional, for file picker) |
 
 ## Cross-References
 
@@ -326,3 +389,4 @@ The web admin at `/prd/` has these additions in v2.0:
 - [Mobile App](mobile-app.md) — PRDSheet component in Command tab
 - [Team Hub](team-hub.md) — Projects created by Move to Project can become Team Hub workspaces
 - [MCP Infrastructure](mcp-infrastructure.md) — Shared Claude wrapper (`tools/shared/claude_api.py`) used for eval + PRD generation
+- [Marq](marq.md) — File picker pattern originated in Marq, reused here

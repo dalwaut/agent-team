@@ -9,6 +9,7 @@ ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-
 ExecStart=/home/dallas/.nvm/versions/node/v20.19.5/bin/node index.js
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=10
 EnvironmentFile=-/workspace/synced/opai/tools/opai-dev/.env
 MemoryMax=512M
 CPUQuota=50%

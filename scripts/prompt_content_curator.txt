@@ -37,6 +37,35 @@ Analyze the codebase, recent git history, and project configuration to produce m
 
 Base all content on actual features found in the codebase. Do not invent features that don't exist. Note any features that appear incomplete and should not be marketed yet.
 
+---
+
+OUTPUT FORMAT:
+
+## Content Curation Report — {DATE}
+
+### Content Inventory
+
+| Platform | Content Piece | Status | Priority |
+|----------|--------------|--------|----------|
+| App Store | Product listing | Draft/Ready/Needs Review | P0/P1/P2 |
+| ... | ... | ... | ... |
+
+### Generated Content
+
+(Organized by the 5 sections above)
+
+### Action Items
+
+| # | Action | Platform | Owner | Priority |
+|---|--------|----------|-------|----------|
+| 1 | Review and publish App Store listing | iOS/Android | Marketing | P0 |
+| ... | ... | ... | ... | ... |
+
+### Anti-Patterns Avoided
+- Did not market incomplete features (list any found)
+- Did not use generic tech jargon — all copy is grounded in actual functionality
+- Did not duplicate content across platforms — each piece is adapted to platform conventions
+
 Format your response as valid markdown.
 Do not ask for clarification.
 

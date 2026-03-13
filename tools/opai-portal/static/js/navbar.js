@@ -33,6 +33,8 @@
     marq:          { abbr: 'MQ', color: '#7c3aed', label: 'Marq',       path: '/marq/' },
     dam:           { abbr: 'DM', color: '#f59e0b', label: 'DAM Bot',   path: '/dam/' },
     vault:         { abbr: 'VT', color: '#22c55e', label: 'Vault',     path: '/vault/' },
+    studio:        { abbr: 'ST', color: '#ec4899', label: 'Studio',   path: '/studio/' },
+    'eliza-hub':   { abbr: 'EH', color: '#00d4aa', label: 'Eliza Hub', path: '/eliza-hub/' },
   };
 
   const MAX_RECENT = 4;
@@ -41,7 +43,7 @@
   const SS_TTL = 5 * 60 * 1000; // 5 min
 
   // Full-height tools that need flex layout adjustment
-  const FULL_HEIGHT_TOOLS = ['terminal', 'claude', 'chat', 'bx4', 'brain', 'bot-space', 'orchestra', 'helm', 'marq', 'dam', 'engine', 'files', 'vault'];
+  const FULL_HEIGHT_TOOLS = ['terminal', 'claude', 'chat', 'bx4', 'brain', 'bot-space', 'orchestra', 'helm', 'marq', 'dam', 'engine', 'files', 'vault', 'studio', 'eliza-hub'];
 
   // ── Detect current tool from URL ───────────────────────
   function detectCurrentTool() {

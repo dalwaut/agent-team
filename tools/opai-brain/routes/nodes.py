@@ -130,6 +130,45 @@ async def get_node(node_id: str, user: AuthUser = Depends(get_current_user)):
     return node
 
 
+@router.get("/api/nodes/{node_id}/original")
+async def get_node_original(node_id: str, user: AuthUser = Depends(get_current_user)):
+    """Read the original source file from disk using metadata.sync_source_path."""
+    rows = await _sb_get(
+        "brain_nodes",
+        f"id=eq.{node_id}&user_id=eq.{user.id}&select=id,metadata",
+    )
+    if not rows:
+        raise HTTPException(404, "Node not found")
+
+    meta = rows[0].get("metadata") or {}
+    source_path = meta.get("sync_source_path", "")
+    if not source_path:
+        raise HTTPException(404, "No source file linked to this node")
+
+    # Resolve against workspace root
+    workspace_root = Path(__file__).parent.parent.parent.parent
+    full_path = (workspace_root / source_path).resolve()
+
+    # Safety: ensure resolved path is under workspace
+    if not str(full_path).startswith(str(workspace_root.resolve())):
+        raise HTTPException(403, "Path traversal not allowed")
+
+    if not full_path.exists():
+        raise HTTPException(404, f"Source file not found: {source_path}")
+
+    try:
+        content = full_path.read_text(encoding="utf-8", errors="replace")
+    except Exception as e:
+        raise HTTPException(500, f"Failed to read file: {e}")
+
+    return {
+        "source_path": source_path,
+        "filename": full_path.name,
+        "content": content,
+        "size": len(content),
+    }
+
+
 @router.post("/api/nodes")
 async def create_node(body: NodeCreate, user: AuthUser = Depends(get_current_user)):
     """Create a new node."""

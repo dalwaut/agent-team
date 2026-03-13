@@ -1,3 +1,0 @@
-# Report: security
-
-The full security audit report has been output above. The audit identified **47 vulnerabilities** across the OPAI platform, with the most critical being the massive secret exposure (27+ `.env` files with live production credentials committed to git), service key authentication bypass, shell command injection in SSH provisioning, missing Stripe webhook verification in BoutaCare, and broken RLS policies. The top 5 prioritized recommendations are listed at the end of the report.

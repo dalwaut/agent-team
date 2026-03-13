@@ -1,0 +1,20 @@
+[Unit]
+Description=OPAI Engine — Unified core (tasks, monitor, heartbeat, fleet, NFS, workers)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/workspace/synced/opai/tools/opai-engine
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-engine
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 127.0.0.1 --port 8080
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+ExecStopPost=/bin/bash -c 'echo "[$(date +%%Y-%%m-%%dT%%H:%%M:%%S)] Engine stopped. Caller PID tree:" >> /tmp/opai-engine-stops.log; ps -eo pid,ppid,etimes,args --forest 2>/dev/null | grep -E "systemctl|opai-control|claude|restart" | grep -v grep >> /tmp/opai-engine-stops.log; echo "---" >> /tmp/opai-engine-stops.log'
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/home/dallas/.nvm/versions/node/v20.19.5/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/workspace/synced/opai/tools/opai-engine/.env
+EnvironmentFile=-%t/opai-vault/opai-engine.env
+
+[Install]
+WantedBy=default.target

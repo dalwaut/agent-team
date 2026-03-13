@@ -75,14 +75,32 @@ async def _check_membership(client, ws_id, user_id):
 async def list_statuses(ws_id: str, user: AuthUser = Depends(get_current_user)):
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         await _check_membership(client, ws_id, user.id)
-        resp = await client.get(
-            _sb_url("team_statuses"),
-            headers=_sb_headers(),
-            params={"workspace_id": f"eq.{ws_id}", "order": "orderindex.asc"},
+
+        # Check if workspace belongs to a hub
+        ws_resp = await client.get(
+            _sb_url("team_workspaces"), headers=_sb_headers(),
+            params={"id": f"eq.{ws_id}", "select": "hub_id"},
         )
+        hub_id = None
+        if ws_resp.status_code < 400 and ws_resp.json():
+            hub_id = ws_resp.json()[0].get("hub_id")
+
+        if hub_id:
+            # Return hub-level statuses (shared across all hub workspaces)
+            resp = await client.get(
+                _sb_url("team_statuses"), headers=_sb_headers(),
+                params={"hub_id": f"eq.{hub_id}", "workspace_id": "is.null", "order": "orderindex.asc"},
+            )
+        else:
+            # Fall back to workspace-level statuses
+            resp = await client.get(
+                _sb_url("team_statuses"), headers=_sb_headers(),
+                params={"workspace_id": f"eq.{ws_id}", "order": "orderindex.asc"},
+            )
+
         if resp.status_code >= 400:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
-        return {"statuses": resp.json()}
+        return {"statuses": resp.json(), "hub_id": hub_id}
 
 
 class CreateStatus(BaseModel):
@@ -162,6 +180,42 @@ async def delete_status(status_id: str, user: AuthUser = Depends(get_current_use
 # ══════════════════════════════════════════════════════════════
 # Calendar
 # ══════════════════════════════════════════════════════════════
+
+
+@router.get("/workspaces/{ws_id}/gantt")
+async def gantt_data(ws_id: str, user: AuthUser = Depends(get_current_user)):
+    """Return items with date ranges + dependencies for Gantt rendering."""
+    headers = _sb_headers()
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        await _check_membership(client, ws_id, user.id)
+        # Items with at least a due_date or start_date
+        items_resp = await client.get(
+            _sb_url("team_items"), headers=headers,
+            params={
+                "workspace_id": f"eq.{ws_id}",
+                "parent_id": "is.null",
+                "select": "id,title,status,priority,start_date,due_date,time_estimate,time_logged,list_id,custom_id",
+                "order": "start_date.asc.nullslast,due_date.asc.nullslast",
+                "limit": "500",
+            },
+        )
+        items = items_resp.json() if items_resp.status_code < 400 else []
+        # Dependencies for this workspace's items
+        item_ids = [i["id"] for i in items]
+        deps = []
+        if item_ids:
+            deps_resp = await client.get(
+                _sb_url("team_item_dependencies"), headers=headers,
+                params={"source_id": f"in.({','.join(item_ids)})"},
+            )
+            deps = deps_resp.json() if deps_resp.status_code < 400 else []
+        # Statuses for coloring
+        st_resp = await client.get(
+            _sb_url("team_statuses"), headers=headers,
+            params={"workspace_id": f"eq.{ws_id}", "order": "orderindex.asc"},
+        )
+        statuses = st_resp.json() if st_resp.status_code < 400 else []
+        return {"items": items, "dependencies": deps, "statuses": statuses}
 
 
 @router.get("/workspaces/{ws_id}/calendar")
@@ -451,6 +505,7 @@ class UpdateList(BaseModel):
     name: Optional[str] = None
     folder_id: Optional[str] = None
     workspace_id: Optional[str] = None
+    id_prefix: Optional[str] = None
 
 
 @router.post("/workspaces/{ws_id}/lists")
@@ -470,10 +525,12 @@ async def create_list(ws_id: str, req: CreateList, user: AuthUser = Depends(get_
 async def list_items_by_list(
     list_id: str,
     status: Optional[str] = None,
+    include_subtasks: bool = Query(default=False),
     limit: int = Query(default=200, le=500),
     user: AuthUser = Depends(get_current_user),
 ):
     """Get all items in a specific list (or uncategorized items)."""
+    item_select = "id,type,title,description,status,priority,due_date,follow_up_date,created_by,source,list_id,folder_id,workspace_id,parent_id,custom_id,created_at,updated_at"
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         # Handle virtual "uncategorized" list (items with no list_id)
         is_uncategorized = list_id.startswith("__uncategorized__")
@@ -483,7 +540,7 @@ async def list_items_by_list(
             params = {
                 "workspace_id": f"eq.{ws_id}",
                 "list_id": "is.null",
-                "select": "id,type,title,description,status,priority,due_date,follow_up_date,created_by,source,list_id,folder_id,workspace_id,created_at,updated_at",
+                "select": item_select,
                 "order": "created_at.desc",
                 "limit": str(limit),
             }
@@ -497,10 +554,14 @@ async def list_items_by_list(
             await _check_membership(client, ws_id, user.id)
             params = {
                 "list_id": f"eq.{list_id}",
-                "select": "id,type,title,description,status,priority,due_date,follow_up_date,created_by,source,list_id,folder_id,workspace_id,created_at,updated_at",
+                "select": item_select,
                 "order": "created_at.desc",
                 "limit": str(limit),
             }
+
+        # By default, only show top-level items (not subtasks)
+        if not include_subtasks:
+            params["parent_id"] = "is.null"
 
         if status:
             params["status"] = f"eq.{status}"
@@ -543,10 +604,28 @@ async def list_items_by_list(
                 for tg in (tg_resp.json() if tg_resp.status_code < 400 else []):
                     tag_map[tg["id"]] = tg
 
+            # Fetch subtask counts
+            sub_resp = await client.get(
+                _sb_url("team_items"), headers=_sb_headers(),
+                params={
+                    "parent_id": f"in.({','.join(item_ids)})",
+                    "select": "parent_id,status",
+                },
+            )
+            sub_counts = {}
+            sub_done = {}
+            for s in (sub_resp.json() if sub_resp.status_code < 400 else []):
+                pid = s["parent_id"]
+                sub_counts[pid] = sub_counts.get(pid, 0) + 1
+                if s.get("status") in ("done", "closed"):
+                    sub_done[pid] = sub_done.get(pid, 0) + 1
+
             # Enrich items
             for item in items:
                 item["assignees"] = assign_map.get(item["id"], [])
                 item["tags"] = [tag_map[tid] for tid in item_tag_ids.get(item["id"], []) if tid in tag_map]
+                item["subtask_count"] = sub_counts.get(item["id"], 0)
+                item["subtask_done"] = sub_done.get(item["id"], 0)
 
         # Fetch statuses for this workspace
         st_resp = await client.get(
@@ -570,6 +649,8 @@ async def update_list(list_id: str, req: UpdateList, user: AuthUser = Depends(ge
         update = {}
         if req.name is not None:
             update["name"] = req.name
+        if req.id_prefix is not None:
+            update["id_prefix"] = req.id_prefix if req.id_prefix else None
         if req.folder_id is not None:
             update["folder_id"] = req.folder_id if req.folder_id else None
         if req.workspace_id is not None:
@@ -616,6 +697,7 @@ class CreateItemInList(BaseModel):
     status: str = "open"
     priority: str = "medium"
     due_date: Optional[str] = None
+    parent_id: Optional[str] = None
 
 
 @router.post("/lists/{list_id}/items")
@@ -642,11 +724,37 @@ async def create_item_in_list(list_id: str, req: CreateItemInList, user: AuthUse
         }
         if req.due_date:
             item_data["due_date"] = req.due_date
+        if req.parent_id:
+            item_data["parent_id"] = req.parent_id
+
+        # Auto-generate custom_id if list has id_prefix
+        if lst_data.get("id_prefix"):
+            prefix = lst_data["id_prefix"]
+            new_counter = (lst_data.get("id_counter") or 0) + 1
+            item_data["custom_id"] = f"{prefix}-{new_counter:03d}"
+            await client.patch(
+                _sb_url("team_lists"), headers=_sb_headers(),
+                params={"id": f"eq.{list_id}"},
+                json={"id_counter": new_counter},
+            )
 
         resp = await client.post(_sb_url("team_items"), headers=_sb_headers(), json=item_data)
         if resp.status_code >= 400:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
-        return resp.json()[0]
+        item = resp.json()[0]
+
+        # Auto-assign creator so the item appears in their dashboard tiles
+        try:
+            await client.post(_sb_url("team_assignments"), headers=_sb_headers(), json={
+                "item_id": item["id"],
+                "assignee_type": "user",
+                "assignee_id": user.id,
+                "assigned_by": user.id,
+            })
+        except Exception:
+            pass  # non-critical — item still created
+
+        return item
 
 
 # ══════════════════════════════════════════════════════════════
@@ -809,6 +917,11 @@ async def get_dashboard(ws_id: str, user: AuthUser = Depends(get_current_user)):
                     due_soon.append(item)
         due_soon.sort(key=lambda x: x.get("due_date", ""))
 
+        # Open tasks (not done/closed/Complete)
+        closed_statuses = {"done", "closed", "Complete", "Approved"}
+        open_tasks = [i for i in items if i.get("status") not in closed_statuses]
+        open_tasks.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+
         # Recent activity
         activity_resp = await client.get(
             _sb_url("team_activity"), headers=_sb_headers(),
@@ -828,9 +941,11 @@ async def get_dashboard(ws_id: str, user: AuthUser = Depends(get_current_user)):
             "data": {
                 "status_counts": status_counts,
                 "priority_counts": priority_counts,
+                "open_tasks": open_tasks[:20],
                 "due_soon": due_soon[:10],
                 "activity": activity,
                 "total_items": len(items),
+                "open_count": len(open_tasks),
                 "statuses": statuses,
             },
         }

@@ -1,29 +1,33 @@
-# Squad Run Summary: auto_safe
+# Squad Run Summary: evolve
 
 | Field | Value |
 |-------|-------|
-| Squad | `auto_safe` |
-| Description | Mode 1: Audit then auto-apply safe-only fixes. Use: run_auto.ps1 -Mode safe |
-| Date | 2026-02-23 |
-| Duration | 948s |
-| Run at | 2026-02-24T05:54:16Z |
+| Squad | `evolve` |
+| Description | Self-improvement: assess team gaps and propose new agents |
+| Date | 2026-03-04 |
+| Duration | 423s |
+| Run at | 2026-03-04T09:47:51Z |
 
 ## Agent Results
 
 | Agent | Status |
 |-------|--------|
-| `health` | ✅ success |
-| `reviewer` | ⏭ skipped (cached) |
-| `security` | ✅ success |
-| `executor_safe` | ✅ success |
-| `accuracy` | ✅ success |
+| `self_assessment` | ✅ success |
 
-**Total:** 5 agents — 4 succeeded, 0 failed, 1 skipped
+**Total:** 1 agents — 1 succeeded, 0 failed, 0 skipped
+
+## Dynamic Composition
+
+| Field | Value |
+|-------|-------|
+| Mode | static |
 
 ## Report Files
 
-- `accuracy.md` (31097B)
-- `executor_safe.md` (485B)
-- `health.md` (531B)
-- `reviewer.md` (18572B)
-- `security.md` (500B)
+- `accuracy.md` (24895B)
+- `executor_safe.md` (10906B)
+- `executor_safe_result.md` (68B)
+- `health.md` (14406B)
+- `reviewer.md` (27982B)
+- `security.md` (384B)
+- `self_assessment.md` (24591B)

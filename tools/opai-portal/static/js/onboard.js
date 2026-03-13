@@ -210,7 +210,7 @@
             // Phase 1: Save profile answers
             setProvIcon('prov-sandbox-icon', 'running');
 
-            await fetch(`/tasks/api/monitor/users/${user.id}/profile-setup`, {
+            await fetch(`/tasks/api/users/${user.id}/profile-setup`, {
                 method: 'PUT',
                 headers: authHeaders,
                 body: JSON.stringify(profileData),
@@ -220,7 +220,7 @@
             setProvIcon('prov-agents-icon', 'running');
 
             // Phase 2: Trigger sandbox provisioning
-            const provResp = await fetch(`/tasks/api/monitor/users/${user.id}/provision-sandbox`, {
+            const provResp = await fetch(`/tasks/api/users/${user.id}/provision-sandbox`, {
                 method: 'POST',
                 headers: authHeaders,
             });
@@ -242,7 +242,7 @@
                 attempts++;
 
                 try {
-                    const statusResp = await fetch(`/tasks/api/monitor/users/${user.id}/sandbox-status`, {
+                    const statusResp = await fetch(`/tasks/api/users/${user.id}/sandbox-status`, {
                         headers: authHeaders,
                     });
                     const statusData = await statusResp.json();
@@ -267,7 +267,7 @@
             let completionSaved = false;
             for (let retry = 0; retry < 3; retry++) {
                 try {
-                    const saveResp = await fetch(`/tasks/api/monitor/users/${user.id}/profile-setup`, {
+                    const saveResp = await fetch(`/tasks/api/users/${user.id}/profile-setup`, {
                         method: 'PUT',
                         headers: authHeaders,
                         body: JSON.stringify({

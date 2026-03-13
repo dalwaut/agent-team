@@ -1,7 +1,9 @@
 # Feedback System
-> Last updated: 2026-02-25 (v2 engine dashboard interactivity) | Source: `tools/feedback-processor/index.js`, `tools/feedback-processor/feedback-actor.js`, `tools/opai-portal/app.py`, `tools/opai-portal/static/js/navbar.js`, `tools/opai-engine/services/task_processor.py`, `tools/opai-engine/static/js/app.js`
+> Last updated: 2026-03-05 (pipeline consolidation — attachments aligned, historical data merged) | Source: `tools/feedback-processor/index.js`, `tools/feedback-processor/feedback-actor.js`, `tools/opai-portal/app.py`, `tools/opai-portal/static/js/navbar.js`, `tools/opai-engine/services/task_processor.py`, `tools/opai-engine/static/js/app.js`
 
 In-app feedback collection, classification, improvement pipeline, agent-first execution, and self-healing loop for all OPAI tools.
+
+> **Not to be confused with [Agent Feedback Loops](agent-feedback-loops.md)** — that system handles *agent-to-agent* learning (inter-run knowledge transfer via `engine_agent_feedback` table). This system handles *user* feedback (UI button clicks, feature requests, bug reports via `feedback-queue.json`).
 
 ## Overview
 
@@ -56,6 +58,7 @@ Navbar Feedback Button → POST /api/feedback → feedback-queue.json
 | `notes/Improvements/feedback-queue.json` | Feedback intake queue (JSON) |
 | `notes/Improvements/FEEDBACK-IMPROVEMENTS-LOG.md` | Append-only rolling changelog |
 | `notes/Improvements/Feedback-{Tool}.md` | Per-tool feedback files (created dynamically) |
+| `notes/Improvements/attachments/` | Image attachments from feedback submissions (up to 5 per item, 5MB each) |
 | `tools/feedback-processor/index.js` | Classification + wiki-check + file management |
 | `tools/feedback-processor/feedback-actor.js` | Scans HIGH/MEDIUM items, creates registry tasks |
 | `config/orchestrator.json` | Schedules: `feedback_process: "*/5 * * * *"`, `feedback_act: "*/15 * * * *"` |
@@ -70,10 +73,12 @@ Navbar Feedback Button → POST /api/feedback → feedback-queue.json
 ### Feedback Submission
 1. User clicks feedback button (message-bubble icon, right side of navbar)
 2. Modal opens with tool name auto-detected from URL
-3. User types feedback text and submits
-4. `POST /api/feedback` validates, rate-limits (5/min per IP), appends to `feedback-queue.json`
+3. User types feedback text, optionally attaches images (button or clipboard paste, max 5 images, 5MB each)
+4. `POST /api/feedback` validates, rate-limits (5/min per IP), saves attachments to `notes/Improvements/attachments/`, appends to `feedback-queue.json`
 5. **Instant write**: Portal also writes the entry directly to `Feedback-{Tool}.md` (severity defaults to MEDIUM, category to "uncategorized") — makes it visible in the Task Control Panel immediately
 6. User sees "Thanks!" flash confirmation
+
+> **Note (2026-03-05)**: All feedback data (text, queue, log, and attachments) is consolidated under `notes/Improvements/`. Historical feedback from the legacy `notes/feedback/` directory was merged into `notes/Improvements/` on 2026-03-05. The old directory is retained as archive only — the pipeline no longer writes there.
 
 ### Feedback Processing (every 5 min via orchestrator)
 1. Reads `feedback-queue.json` for items with `status: "new"`

@@ -319,6 +319,21 @@ async def check_site_updates(site: dict) -> dict:
                          pinned, site.get("name"))
                 await _update_capabilities(site["id"], {"data_method": None})
 
+        # If pinned to rest_api but it found 0 plugin+theme updates and the
+        # site has the connector, the REST API transients are likely stale.
+        # Clear the pin and retry the connector chain for better data.
+        if (
+            success_method == "rest_api"
+            and site.get("connector_installed")
+            and not updates["plugins"]
+            and not updates["themes"]
+        ):
+            log.info("REST API returned 0 updates for %s but connector is installed — retrying connector",
+                     site.get("name"))
+            success_method = None
+            updates = {"plugins": [], "themes": [], "core_update": updates.get("core_update", False)}
+            await _update_capabilities(site["id"], {"data_method": None})
+
         # Try full chain if pinned didn't work
         if not success_method:
             for method_name, strategy_fn in strategies:

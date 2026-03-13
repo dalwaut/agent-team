@@ -8,6 +8,7 @@ ExecStart=/usr/bin/caddy run --config /workspace/synced/opai/config/Caddyfile
 ExecReload=/usr/bin/caddy reload --config /workspace/synced/opai/config/Caddyfile
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=10
 Environment=PYTHONUNBUFFERED=1
 
 EnvironmentFile=-%t/opai-vault/.env

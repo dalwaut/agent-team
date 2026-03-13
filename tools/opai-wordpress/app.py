@@ -5,6 +5,7 @@ import logging
 import resource
 import sys
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO)
@@ -26,15 +27,44 @@ from routes_management import router as management_router
 from routes_ai import router as ai_router
 from routes_automation import router as automation_router
 from routes_avada import router as avada_router
+from routes_agents import router as agents_router
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup and shutdown lifecycle for OP WordPress."""
+    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Start background tasks
+    from services.update_checker import background_checker
+    from services.scheduler import scheduler_loop
+    from services.connection_agent import connection_agent_loop
+    from services.agent_scheduler import agent_scheduler_loop
+
+    bg_tasks = [
+        asyncio.create_task(background_checker()),
+        asyncio.create_task(scheduler_loop()),
+        asyncio.create_task(connection_agent_loop()),
+        asyncio.create_task(agent_scheduler_loop()),
+    ]
+
+    yield
+
+    # Graceful shutdown — cancel background tasks
+    for task in bg_tasks:
+        task.cancel()
+    await asyncio.gather(*bg_tasks, return_exceptions=True)
+
+
 app = FastAPI(
     title="OP WordPress",
     version="1.5.0",
     description="Multi-site WordPress management — ManageWP replacement",
+    lifespan=lifespan,
 )
 
 
@@ -58,6 +88,7 @@ app.include_router(management_router)
 app.include_router(ai_router)
 app.include_router(automation_router)
 app.include_router(avada_router)
+app.include_router(agents_router)
 
 app.mount("/static", StaticFiles(directory=str(config.STATIC_DIR)), name="static")
 
@@ -65,23 +96,6 @@ app.mount("/static", StaticFiles(directory=str(config.STATIC_DIR)), name="static
 @app.get("/")
 async def index():
     return FileResponse(str(config.STATIC_DIR / "index.html"))
-
-
-@app.on_event("startup")
-async def startup():
-    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Start background update checker
-    from services.update_checker import background_checker
-    asyncio.create_task(background_checker())
-
-    # Start automation scheduler
-    from services.scheduler import scheduler_loop
-    asyncio.create_task(scheduler_loop())
-
-    # Start connection retry agent
-    from services.connection_agent import connection_agent_loop
-    asyncio.create_task(connection_agent_loop())
 
 
 if __name__ == "__main__":

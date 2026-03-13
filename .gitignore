@@ -1,18 +1,55 @@
 # ============================================
-# Agent Team Framework — OPAI Branch .gitignore
+# OPAI Workspace .gitignore
 # ============================================
+# Only track: tools/, config/, scripts/, Library/, Templates/, tasks/, workflows/
+# Everything personal, generated, or runtime stays out.
 
-# ── Personal / Workspace Content (not part of agent system) ──
+# ══════════════════════════════════════════════
+# Personal / Workspace Content
+# ══════════════════════════════════════════════
+Projects/
+Research/
 Clients/
 Documents/
+notes/
+logs/
+memory/
 gemini-scribe/
 Cursor/
 .obsidian/
 
-# ── Generated Output ──
+# ══════════════════════════════════════════════
+# Secrets & Credentials
+# ══════════════════════════════════════════════
+.env
+.env.*
+!.env.example
+Credentials.md
+tools/opai-vault/migrate_credentials.py
+
+# ══════════════════════════════════════════════
+# Runtime Data & State
+# ══════════════════════════════════════════════
+**/data/
+**/venv/
+*.db
+*.sqlite
+
+# ══════════════════════════════════════════════
+# Generated Output
+# ══════════════════════════════════════════════
+reports/
 !reports/.gitkeep
 
-# ── Temp & OS Files ──
+# ══════════════════════════════════════════════
+# Dependencies (install fresh)
+# ══════════════════════════════════════════════
+node_modules/
+package-lock.json
+
+# ══════════════════════════════════════════════
+# Temp & OS Files
+# ══════════════════════════════════════════════
 claude_prompt_*.txt
 temp_workflows.json
 nul
@@ -22,21 +59,35 @@ Notes.md
 Thumbs.db
 desktop.ini
 
-# ── Node Modules (install fresh on target) ──
-node_modules/
-mcps/stitch-skills/
-
-# ── Files with broken cloud-sync attributes (copy manually to server) ──
-# mcps/Hostinger/
-
-# ── IDE / Editor ──
+# ══════════════════════════════════════════════
+# IDE / Editor / Tools
+# ══════════════════════════════════════════════
 .vscode/
 .idea/
 *.swp
 *.swo
+.playwright-mcp/
 
-# ── Project Structure Templates (cloud-synced, contain placeholder files with broken attributes) ──
-# Only the markdown docs from templates-projects/ are tracked; Codebase/ scaffold dirs are excluded
+# ══════════════════════════════════════════════
+# Python
+# ══════════════════════════════════════════════
+__pycache__/
+*.pyc
+.venv/
+
+# ══════════════════════════════════════════════
+# n8n Workflows (large JSON files, sync separately)
+# ══════════════════════════════════════════════
+Library/n8n/Workflows/
+
+# ══════════════════════════════════════════════
+# Library — Reference files (personal, not system docs)
+# ══════════════════════════════════════════════
+Library/References/
+
+# ══════════════════════════════════════════════
+# Project Structure Templates (cloud-synced scaffolds)
+# ══════════════════════════════════════════════
 Templates/templates-projects/*/Codebase/
 Templates/templates-projects/*/Ag-Build-Tasks/
 Templates/templates-projects/*/Agent-Tasks/
@@ -46,25 +97,29 @@ Templates/templates-projects/*/Notes/
 Templates/templates-projects/*/Research/
 Templates/templates-projects/*/Review-log/
 
-# ── Python ──
-__pycache__/
-*.pyc
-.venv/
+# ══════════════════════════════════════════════
+# MCP servers (have their own repos or are installed)
+# ══════════════════════════════════════════════
+mcps/stitch-skills/
 
-# ── n8n Workflows (100+ large JSON files, sync separately) ──
-Library/n8n/Workflows/
-
-# ── Credentials Guide (never committed, even on internal branch) ──
-Credentials.md
-
-# ── Migration Backups ──
+# ══════════════════════════════════════════════
+# Migration Backups
+# ══════════════════════════════════════════════
 _backup_*/
 
-# ── Synology Drive Working Directory ──
+# ══════════════════════════════════════════════
+# Synology Drive Working Directory
+# ══════════════════════════════════════════════
 .SynologyWorkingDirectory/
 
-# ── Claude Code ──
+# ══════════════════════════════════════════════
+# Claude Code
+# ══════════════════════════════════════════════
 .claude/
 
-# ── Standalone Projects (have their own repos) ──
+# ══════════════════════════════════════════════
+# Standalone Projects (have their own repos)
+# ══════════════════════════════════════════════
 tools/opai-agent/
+tools/scc-ide/
+tools/opai-dev/

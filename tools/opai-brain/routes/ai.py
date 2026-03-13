@@ -83,6 +83,24 @@ async def ai_action(
         )
 
     elif body.action == "summarize":
+        # Try NotebookLM for summarization (free, grounded Q&A)
+        try:
+            from nlm import is_available, get_client, ensure_notebook, add_source_text, ask_notebook
+            if is_available():
+                client = await get_client()
+                async with client:
+                    nb_id = await ensure_notebook(client, "Brain Summarize")
+                    await add_source_text(client, nb_id, node.get("title", "Note"), target[:50000])
+                    nlm_result = await ask_notebook(
+                        client, nb_id,
+                        "Summarize this note concisely in 2-4 bullet points. Return only Markdown bullet points."
+                    )
+                    nlm_answer = nlm_result.get("answer", "")
+                    if len(nlm_answer) > 20:
+                        return {"action": "summarize", "result": nlm_answer, "source": "notebooklm"}
+        except Exception as nlm_err:
+            log.debug("[ai] NotebookLM summarize fallback: %s", nlm_err)
+
         prompt = (
             f"Summarize the following note concisely in 2–4 bullet points. "
             f"Return only the bullet points in Markdown, no preamble.\n\n"

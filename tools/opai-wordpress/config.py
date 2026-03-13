@@ -33,3 +33,14 @@ BACKUP_STORAGE_DIR = Path(os.getenv("BACKUP_STORAGE_DIR", "/home/dallas/WautersE
 # Connection retry agent
 CONNECTION_AGENT_INTERVAL = 10 * 60  # 10 minutes
 CONNECTION_AGENT_BATCH_SIZE = 5      # attempts before HITL report
+
+# Agent system
+AGENT_LINK_CHECK_CONCURRENCY = int(os.getenv("AGENT_LINK_CHECK_CONCURRENCY", "10"))
+AGENT_LINK_CHECK_TIMEOUT = int(os.getenv("AGENT_LINK_CHECK_TIMEOUT", "15"))
+AGENT_SCHEDULER_INTERVAL = int(os.getenv("AGENT_SCHEDULER_INTERVAL", "60"))
+
+# Performance auditor
+PAGESPEED_API_KEY = os.getenv("PAGESPEED_API_KEY", "")  # optional, free tier works without
+PERF_AUDIT_TIMEOUT = int(os.getenv("PERF_AUDIT_TIMEOUT", "60"))  # per-page PSI timeout
+PERF_AUDIT_CONCURRENCY = int(os.getenv("PERF_AUDIT_CONCURRENCY", "3"))  # concurrent PSI calls
+PERF_AUDIT_MAX_PAGES = int(os.getenv("PERF_AUDIT_MAX_PAGES", "20"))  # max pages per audit

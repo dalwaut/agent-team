@@ -70,6 +70,18 @@
       "notes": "In-house MCP. No API key needed. Replaces @emit-ia and @kimtaeyoon83 third-party packages."
     },
 
+    "instagram-scraper": {
+      "description": "OPAI Instagram scraper MCP — wraps tools/shared/instagram.py. Reel transcripts, metadata, frame extraction, search.",
+      "command": "python3",
+      "args": ["/workspace/synced/opai/mcps/instagram-scraper/server.py"],
+      "tools_count": 4,
+      "tools": [
+        "get_reel_transcript", "get_reel_metadata", "get_reel_frames", "search_reel_transcript"
+      ],
+      "used_by": ["claude-code-global"],
+      "notes": "In-house MCP. Uses yt-dlp + Bright Data (optional) + Supadata (shared pool with YouTube). Two modes: build (tutorial extraction) and intel (content strategy)."
+    },
+
     "godaddy": {
       "description": "GoDaddy domain management — search, availability, registration",
       "type": "http",
@@ -115,6 +127,15 @@
       "notes": "Requires WP site credentials. Site-specific — one instance per WordPress site."
     },
 
+    "gws-cli": {
+      "description": "Google Workspace CLI (gws) — Drive, Gmail, Calendar, Sheets, Docs, Chat, and more for agent@paradisewebfl.com",
+      "type": "cli",
+      "command": "gws",
+      "services": ["drive", "gmail", "calendar", "sheets", "docs", "slides", "tasks", "chat"],
+      "used_by": ["claude-code-global", "opai-helm"],
+      "notes": "Installed via npm: @googleworkspace/cli. Auth: ~/.config/gws/credentials.json (refresh token from opai-vault). Replaces custom google-workspace MCP (archived to mcps/_archived/). Background tasks still use tools/shared/google_workspace.py directly."
+    },
+
     "boutabyte": {
       "description": "BoutaByte platform — publish/manage web apps via Supabase + file API",
       "command": "node",
@@ -129,6 +150,44 @@
       "tools": ["publish_webapp", "list_projects"],
       "used_by": ["antigravity-agent"],
       "notes": "Phase 1 MVP. Low tool count — not a tool-search candidate."
+    },
+
+    "supabase-local": {
+      "description": "OPAI Supabase Local MCP — vault-backed multi-project SQL, tables, migrations, logs via Management API",
+      "command": "python3",
+      "args": ["/workspace/synced/opai/mcps/supabase-local/server.py"],
+      "tools_count": 8,
+      "tools": [
+        "supabase_execute_sql", "supabase_list_tables", "supabase_describe_table",
+        "supabase_apply_migration", "supabase_list_projects", "supabase_get_project_info",
+        "supabase_list_migrations", "supabase_get_logs"
+      ],
+      "used_by": ["claude-code-global"],
+      "notes": "In-house MCP. PATs loaded from opai-vault. Multi-project via projects.json aliases. Replaces Anthropic-hosted Supabase MCP for OPAI project access."
+    },
+
+    "pencil": {
+      "description": "Pencil.dev — agent-driven visual design tool. Designs dashboards, landing pages, UIs via prompt. MCP auto-starts when desktop app is running.",
+      "type": "local-app",
+      "command": "/opt/pencil/Pencil.AppImage",
+      "tools_count": 7,
+      "tools": [
+        "batch_design", "batch_get", "get_screenshot",
+        "snapshot_layout", "get_editor_state",
+        "get_variables", "set_variables"
+      ],
+      "used_by": ["claude-code-manual"],
+      "notes": "On-demand. MCP server auto-starts when Pencil desktop app is running — Claude Code auto-detects it. Launch: ./scripts/pencil.sh. CLI (experimental): File → Install pencil into PATH, then: pencil --agent-config config.json. UI kits: Shadcn, Lunaris, Halo, Nitro. Files: .pen (pure JSON)."
+    },
+
+    "react-grab": {
+      "description": "React Grab MCP — hover any React element to get component source context for agents",
+      "command": "npx",
+      "args": ["-y", "grab@latest", "mcp"],
+      "tools_count": 0,
+      "tools": [],
+      "used_by": ["claude-code-manual"],
+      "notes": "On-demand. Only useful during active React dev sessions. Hover element + Ctrl+C to grab context."
     },
 
     "supabase": {
@@ -181,29 +240,29 @@
     "_doc": "Pre-built server subsets. Claude Code profiles use config/mcp-profiles/*.json launched via scripts/claude-*.sh. Internal services reference profiles here.",
 
     "slim": {
-      "description": "Minimal — YouTube only. Best for coding sessions.",
-      "servers": ["youtube-transcript"],
+      "description": "Minimal — YouTube + Instagram. Best for coding sessions.",
+      "servers": ["youtube-transcript", "instagram-scraper"],
       "config_file": "config/mcp-profiles/slim.json",
       "launch": "scripts/claude-slim.sh"
     },
 
     "browser": {
-      "description": "Default — YouTube + Playwright. Same as .mcp.json.",
-      "servers": ["youtube-transcript", "playwright"],
+      "description": "Default — YouTube + Instagram + Playwright. Same as .mcp.json.",
+      "servers": ["youtube-transcript", "instagram-scraper", "playwright", "supabase-local"],
       "config_file": "config/mcp-profiles/browser.json",
       "launch": "scripts/claude-browser.sh"
     },
 
     "wordpress": {
-      "description": "WordPress automation — YouTube + Playwright + WP-VEC",
-      "servers": ["youtube-transcript", "playwright", "wordpress-vec"],
+      "description": "WordPress automation — YouTube + Instagram + Playwright + WP-VEC",
+      "servers": ["youtube-transcript", "instagram-scraper", "playwright", "wordpress-vec"],
       "config_file": "config/mcp-profiles/wordpress.json",
       "launch": "scripts/claude-wordpress.sh"
     },
 
     "full": {
-      "description": "All local MCPs — YouTube, Playwright, ClickUp, GoDaddy",
-      "servers": ["youtube-transcript", "playwright", "clickup", "godaddy"],
+      "description": "All local MCPs — YouTube, Instagram, Playwright, ClickUp, GoDaddy",
+      "servers": ["youtube-transcript", "instagram-scraper", "playwright", "clickup", "godaddy", "supabase-local"],
       "config_file": "config/mcp-profiles/full.json",
       "launch": "scripts/claude-full.sh"
     },
@@ -216,7 +275,14 @@
 
     "helm": {
       "description": "HELM business runner — WP, Netlify, Supabase, Team Hub",
-      "servers": ["wordpress-vec", "netlify", "supabase", "teamhub", "playwright"]
+      "servers": ["wordpress-vec", "netlify", "supabase", "supabase-local", "teamhub", "playwright"],
+      "notes": "GWS CLI available system-wide (not an MCP server — invoked via shell)"
+    },
+
+    "workspace": {
+      "description": "Google Workspace — GWS CLI for interactive Drive/Gmail/Calendar/Sheets",
+      "servers": ["youtube-transcript", "instagram-scraper", "playwright"],
+      "notes": "GWS CLI available system-wide (not an MCP server — invoked via shell)"
     },
 
     "benchmark": {
@@ -228,7 +294,7 @@
 
   "tool_search_notes": {
     "threshold": "Auto-enables when MCP tools exceed ~10% of context window",
-    "current_tool_count": "Combined 116 tools across all servers",
+    "current_tool_count": "Combined 123 tools across 15 servers (7 removed with google-workspace MCP → GWS CLI, 7 added with Pencil.dev)",
     "high_impact_combos": [
       "admin profile (64+ tools) — tool search critical",
       "helm profile (51+ tools) — tool search critical",

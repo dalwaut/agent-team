@@ -18,6 +18,7 @@ EnvironmentFile=-%t/opai-vault/open-claw.env
 ExecStart=/workspace/synced/opai/tools/open-claw/broker/venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8106
 Restart=on-failure
 RestartSec=10
+TimeoutStopSec=10
 StandardOutput=journal
 StandardError=journal
 

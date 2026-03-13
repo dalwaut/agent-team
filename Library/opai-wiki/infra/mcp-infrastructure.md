@@ -1,12 +1,12 @@
 # MCP Infrastructure & Profile System
 
-> Last updated: 2026-02-28 | Catalog: `config/mcp-all.json` | Profiles: `config/mcp-profiles/` | Benchmark: `tools/opai-benchmark/`
+> Last updated: 2026-03-10 | Catalog: `config/mcp-all.json` | Profiles: `config/mcp-profiles/`
 
 ## Overview
 
 MCP (Model Context Protocol) is the standard for connecting Claude to external tool servers. OPAI uses MCP servers to give Claude access to Team Hub, WordPress, YouTube transcripts, Playwright browser automation, and more — both in interactive Claude Code sessions and programmatic `claude -p` invocations from services.
 
-This doc covers the **profile-based launch system**, **master catalog**, **subagent workers**, **tool optimization**, the **shared Claude wrapper**, and the **benchmark harness**.
+This doc covers the **profile-based launch system**, **master catalog**, **subagent workers**, **tool optimization**, and the **shared Claude wrapper**.
 
 ---
 
@@ -28,11 +28,11 @@ This flag loads MCP servers from the specified JSON file instead of (or in addit
 
 | Profile | Config File | MCPs Loaded | Est. Tokens | Launch Script |
 |---------|-------------|-------------|-------------|---------------|
-| **Slim** | `config/mcp-profiles/slim.json` | YouTube | ~650 | `scripts/claude-slim.sh` |
-| **Browser** | `config/mcp-profiles/browser.json` | YouTube, Playwright | ~4,950 | `scripts/claude-browser.sh` |
-| **WordPress** | `config/mcp-profiles/wordpress.json` | YouTube, Playwright, WP-VEC | ~8,550 | `scripts/claude-wordpress.sh` |
-| **Full** | `config/mcp-profiles/full.json` | YouTube, Playwright, ClickUp, GoDaddy | ~7,330 | `scripts/claude-full.sh` |
-| **Default** | `.mcp.json` (root) | YouTube, Playwright | ~4,950 | `claude` (no script) |
+| **Slim** | `config/mcp-profiles/slim.json` | YouTube, Instagram | ~1,300 | `scripts/claude-slim.sh` |
+| **Browser** | `config/mcp-profiles/browser.json` | YouTube, Instagram, Playwright | ~5,600 | `scripts/claude-browser.sh` |
+| **WordPress** | `config/mcp-profiles/wordpress.json` | YouTube, Instagram, Playwright, WP-VEC | ~9,200 | `scripts/claude-wordpress.sh` |
+| **Full** | `config/mcp-profiles/full.json` | YouTube, Instagram, Playwright, ClickUp, GoDaddy | ~8,000 | `scripts/claude-full.sh` |
+| **Default** | `.mcp.json` (root) | YouTube, Instagram, Playwright | ~5,600 | `claude` (no script) |
 
 ### Launch Scripts
 
@@ -62,12 +62,14 @@ All in `scripts/`:
 
 ### Default `.mcp.json`
 
-The root `.mcp.json` loads **YouTube + Playwright** for standard interactive sessions. ClickUp and GoDaddy were removed from the default (rarely used, available via the `full` profile).
+The root `.mcp.json` loads **YouTube + Instagram + Supabase Local + Playwright** for standard interactive sessions. ClickUp and GoDaddy were removed from the default (rarely used, available via the `full` profile).
 
 ```json
 {
   "mcpServers": {
     "youtube-transcript": { "type": "stdio", "command": "python3", "args": ["..."] },
+    "instagram-scraper": { "type": "stdio", "command": "python3", "args": ["..."] },
+    "supabase-local": { "type": "stdio", "command": "python3", "args": ["mcps/supabase-local/server.py"] },
     "playwright": { "type": "stdio", "command": "npx", "args": ["@playwright/mcp@latest", ...] }
   }
 }
@@ -77,20 +79,22 @@ The root `.mcp.json` loads **YouTube + Playwright** for standard interactive ses
 
 | Type | Controllable via `--mcp-config`? | How to Manage |
 |------|----------------------------------|---------------|
-| **Local** (YouTube, Playwright, ClickUp, GoDaddy, WP-VEC, TeamHub) | Yes | Profile JSONs control which load |
-| **Remote/Anthropic-hosted** (Supabase, Gmail, Netlify, n8n) | No | Always load at account level. Disconnect from Claude account settings to remove |
+| **Local** (YouTube, Instagram, Supabase Local, Playwright, ClickUp, GoDaddy, WP-VEC, TeamHub, Google Workspace) | Yes | Profile JSONs control which load |
+| **Remote/Anthropic-hosted** (Gmail, Netlify, n8n) | No | Always load at account level. Disconnect from Claude account settings to remove |
 
-The `--strict-mcp-config` flag blocks remote MCPs too, but also removes Supabase and Gmail access — usually not desired.
+The Anthropic-hosted Supabase MCP was **dropped in v3.5** — it was OAuth-locked to the WautersEdge org and could not see the OPAI project. Replaced by `supabase-local` (see below).
+
+The `--strict-mcp-config` flag blocks remote MCPs too, but also removes Gmail access — usually not desired.
 
 ### Token Savings
 
 | Configuration | Local MCP Tokens | Savings vs Full |
 |---------------|-----------------|-----------------|
-| Full (all local) | ~7,330 | Baseline |
-| Default (YouTube + Playwright) | ~4,950 | ~2,380 saved |
-| Slim (YouTube only) | ~650 | ~6,680 saved |
+| Full (all local) | ~8,000 | Baseline |
+| Default (YouTube + Instagram + Playwright) | ~5,600 | ~2,400 saved |
+| Slim (YouTube + Instagram) | ~1,300 | ~6,700 saved |
 
-Remote MCPs add ~9,080 tokens regardless (Supabase ~5,400, Gmail ~1,080, Netlify ~1,950, n8n ~650).
+Remote MCPs add ~3,680 tokens regardless (Gmail ~1,080, Netlify ~1,950, n8n ~650). Previously included Anthropic-hosted Supabase (~5,400 tokens) — dropped in favor of `supabase-local`.
 
 ---
 
@@ -125,6 +129,82 @@ Each worker carries its own system prompt with domain knowledge (project IDs, go
 
 ---
 
+## Supabase Local MCP (`mcps/supabase-local/`)
+
+### Why Local?
+
+The Anthropic-hosted Supabase MCP uses OAuth and is locked to the WautersEdge org. It cannot see the OPAI project (`idorgloobxkmlnwnxbej`), which lives in a different Supabase account. The local MCP solves this by loading PATs from the vault at runtime, supporting **any** Supabase project.
+
+### How It Works
+
+```
+tool call (project="bb2") → resolve alias via projects.json
+  → get vault_pat_key + project_ref
+  → _load_vault() → store.get_secret(vault_pat_key)
+  → cache PAT in memory (1hr TTL)
+  → POST https://api.supabase.com/v1/projects/{ref}/database/query
+```
+
+PATs are per-Supabase-account (not per-project), so multiple projects in the same account share one PAT.
+
+### Tools (8)
+
+| Tool | Description |
+|------|-------------|
+| `supabase_execute_sql` | Run any SQL (SELECT, INSERT, UPDATE, DELETE, DDL) |
+| `supabase_list_tables` | List tables in a schema with estimated row counts |
+| `supabase_describe_table` | Column details, types, constraints, primary keys |
+| `supabase_apply_migration` | Execute DDL + log migration name |
+| `supabase_list_projects` | Show all configured aliases (reads local config) |
+| `supabase_get_project_info` | Project status/health from Management API |
+| `supabase_list_migrations` | Applied migrations with timestamps |
+| `supabase_get_logs` | Recent logs by service type (postgres, auth, storage, etc.) |
+
+Every tool (except `list_projects`) accepts an optional `project` param — empty string defaults to the default project from `projects.json`.
+
+### Project Configuration (`mcps/supabase-local/projects.json`)
+
+```json
+{
+  "default_project": "opai",
+  "projects": {
+    "opai":          { "project_ref": "idorgloobxkmlnwnxbej", "vault_pat_key": "supabasemaster/PAT" },
+    "bb2":           { "project_ref": "aggxspqzerfimqzkjgct", "vault_pat_key": "supabase-wautersedge/PAT" },
+    "apps-internal": { "project_ref": "ehrzhdzmbbuizsobmddq", "vault_pat_key": "supabase-wautersedge/PAT" }
+  }
+}
+```
+
+To add a new project: add an entry to `projects.json` with its `project_ref` and the vault key holding the account's PAT. If the PAT isn't in the vault yet, store it:
+
+```bash
+python3 tools/opai-vault/scripts/import-env.py --credential <vault-key-name> --value 'sbp_...'
+```
+
+### Patterns Reused
+
+| Pattern | Source |
+|---------|--------|
+| FastMCP server structure | `mcps/youtube-transcript/server.py` |
+| `_load_vault()` with sys.modules swap | `tools/shared/google_auth.py` |
+| `get_secret()` API | `tools/opai-vault/store.py` |
+| Management API endpoint + PAT auth | `scripts/supabase-sql.sh` |
+
+### vs Anthropic-Hosted Supabase MCP
+
+The Anthropic-hosted MCP had 28 tools. Our local MCP covers the 8 we actually use. The 20 dropped tools fall into categories we don't need:
+
+- **Edge functions** (list/get/deploy) — not part of OPAI's stack
+- **Preview branches** (create/list/delete/merge/reset/rebase) — not used
+- **Org management** (list_organizations, get_organization) — single org, no need
+- **Billing** (get_cost, confirm_cost) — not programmatic
+- **Project lifecycle** (create_project, pause_project, restore_project) — rare, use dashboard
+- **Dev tooling** (generate_typescript_types, list_extensions, get_advisors, search_docs) — nice-to-have, can add later
+
+If any dropped tool is needed later, it's trivial to add — the Management API pattern is identical for all endpoints.
+
+---
+
 ## Master MCP Catalog (`config/mcp-all.json`)
 
 Central reference listing all MCP servers available across OPAI, with profile definitions that map to the `config/mcp-profiles/` JSON files.
@@ -134,18 +214,22 @@ Central reference listing all MCP servers available across OPAI, with profile de
 | Server | Type | Tools | Description |
 |--------|------|-------|-------------|
 | `youtube-transcript` | stdio (local) | 3 | YouTube transcript extraction, metadata, search |
+| `instagram-scraper` | stdio (local) | 4 | Instagram reel transcripts, metadata, frame extraction, search |
 | `playwright` | stdio (npx) | 20+ | Headless browser automation via accessibility tree |
 | `teamhub` | stdio (local) | 15 | Team Hub workspace CRUD, search, collaboration |
 | `clickup` | stdio (local) | 9 | ClickUp project management |
 | `godaddy` | http | 2 | Domain search + availability |
 | `hostinger` | stdio (npm) | 10 | Hostinger hosting API (on-demand only) |
 | `wordpress-vec` | stdio (local) | 16 | WordPress + WooCommerce REST API |
+| `google-workspace` | stdio (local) | 7 | Google Drive + Gmail for agent@paradisewebfl.com |
 | `boutabyte` | stdio (local) | 2 | BoutaByte web app publishing |
-| `supabase` | hosted (Anthropic) | 25 | Supabase management (DB, auth, edge functions) |
-| `netlify` | hosted (Anthropic) | 9 | Netlify deployment + project management |
+| `supabase-local` | stdio (local) | 8 | Vault-backed multi-project Supabase (SQL, tables, migrations, logs) |
+| `pencil` | stdio (local-app) | 7 | Agent-driven visual design (Figma-like), UI kit layouts, design iteration. On-demand — auto-MCP when desktop app running |
+| `react-grab` | stdio (npx) | 0 | AI context selection — hover React element + Ctrl+C for component source. On-demand |
+| `netlify` | hosted (Anthropic) | 8 | Netlify deployment + project management |
 | `n8n` | hosted (Anthropic) | 3 | n8n workflow automation (internal only) |
 
-**Total: ~114 tools across 11 servers.**
+**Total: ~113 tools across 15 servers.** (Dropped Anthropic-hosted Supabase MCP — 25 tools replaced by 8 local tools. Added Pencil.dev — 7 design tools.)
 
 ### Internal Profiles (in `mcp-all.json`)
 
@@ -154,7 +238,8 @@ Beyond the Claude Code launch profiles, `mcp-all.json` defines profiles for inte
 | Profile | Servers | Use Case |
 |---------|---------|----------|
 | `discord-teamhub` | teamhub | Discord bot guild channels |
-| `helm` | wordpress-vec, netlify, supabase, teamhub, playwright | HELM business runner |
+| `helm` | wordpress-vec, netlify, supabase-local, teamhub, playwright, google-workspace | HELM business runner |
+| `workspace` | youtube-transcript, instagram-scraper, playwright, google-workspace | Google Workspace agent collaboration |
 | `benchmark` | teamhub | Performance testing scenarios |
 
 ### How Services Consume the Catalog
@@ -316,8 +401,8 @@ Estimated values are displayed with a `~` prefix in reports (e.g., `~2,150`).
 
 | File | Purpose |
 |------|---------|
-| `.mcp.json` | Root default — YouTube + Playwright |
-| `config/mcp-all.json` | Master catalog — all 11 servers, profiles, tool counts |
+| `.mcp.json` | Root default — YouTube + Instagram + Supabase Local + Playwright |
+| `config/mcp-all.json` | Master catalog — all 14 servers, profiles, tool counts |
 | `config/mcp-profiles/slim.json` | Profile: YouTube only |
 | `config/mcp-profiles/browser.json` | Profile: YouTube + Playwright |
 | `config/mcp-profiles/full.json` | Profile: all local MCPs |
@@ -330,6 +415,8 @@ Estimated values are displayed with a `~` prefix in reports (e.g., `~2,150`).
 | `.claude/agents/supabase-worker.md` | Subagent: Supabase specialist |
 | `.claude/agents/browser-worker.md` | Subagent: Playwright specialist |
 | `tools/shared/claude_api.py` | Shared Claude wrapper (CLI/API dual-mode) |
+| `mcps/supabase-local/server.py` | Supabase Local MCP — vault-backed multi-project |
+| `mcps/supabase-local/projects.json` | Project aliases → refs + vault PAT keys |
 | `tools/opai-benchmark/` | Benchmark harness + scenarios |
 
 ---
@@ -344,6 +431,7 @@ Estimated values are displayed with a `~` prefix in reports (e.g., `~2,150`).
 6. **Catalog is reference, not runtime** — Services build their own MCP configs dynamically.
 7. **Tool search over experimental flags** — `ENABLE_TOOL_SEARCH=auto` (stable, default) preferred over `ENABLE_EXPERIMENTAL_MCP_CLI` (buggy).
 8. **input_examples on all high-use MCP tools** — Validated -35% cost improvement. Apply this pattern to any new MCP server.
+9. **Local Supabase over Anthropic-hosted** — The hosted MCP is OAuth-locked to one org. Our local MCP uses vault-backed PATs and can hit any project in any Supabase account. Dropped 25 hosted tools, replaced with 8 focused local tools we actually use.
 
 ---
 

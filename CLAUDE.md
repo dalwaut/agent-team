@@ -4,28 +4,77 @@
 
 ## What Is OPAI
 
-OPAI (Orchestrated Projects + Agent Intelligence) is the **master agentic workspace**. It is NOT a deployable application. It manages other projects via a multi-agent orchestration framework (v1.3.0), an Obsidian vault with 30+ active projects, n8n workflows, MCP configs, and research archives.
+OPAI (Orchestrated Projects + Agent Intelligence) is an **autonomous, self-managing agentic workspace** running on a dedicated VPS. It consolidates 22 tools under a unified **Engine** (port 8080) with a 13-worker Claude Code fleet, proactive heartbeat, memory consolidation, fleet coordination, and NFS-based external worker dispatch. It manages 38+ projects, business operations via HELM, and all internal infrastructure. Currently at **v3.5 "Felix"** — autonomous operations with internal workforce. Next: v4 "Open Doors" (revenue).
 
 ---
 
-## Directory Map (compact)
+## Directory Map
 
 | Path | Purpose |
 |------|---------|
-| `scripts/` | Agent runners + 25 prompt files (`.txt`) |
-| `tools/` | OPAI Server tools (orchestrator, monitor, tasks, portal, etc.) |
-| `Library/opai-wiki/` | **System wiki** — architecture docs for all internal tools |
-| `Projects/` | 30+ active project folders (diamond workflow) |
+| `tools/` | 22 active OPAI tools + shared libraries (see Active Tools below) |
+| `scripts/` | Agent runners, prompt files (80+), service control, utilities |
+| `config/` | `orchestrator.json`, `workers.json`, `Caddyfile`, MCP profiles, service templates |
+| `Library/opai-wiki/` | **System wiki** — 72 docs across core/tools/agents/integrations/infra/plans |
+| `Library/knowledge/` | Reference library — **index at `Library/knowledge/REFERENCE-INDEX.md`** |
+| `Library/helm-playbooks/` | Business playbook library for HELM autonomous operation |
+| `Projects/` | 38 active project folders |
 | `Templates/` | Project, agent, and stack templates |
-| `tasks/` | Global task registry + `queue.json` deferred ops |
+| `tasks/` | Task registry + `queue.json` deferred ops + audit logs |
 | `reports/` | Agent reports: `<date>/`, `latest/`, `HITL/`, `Archive/` |
-| `config/` | Global config (`orchestrator.json`, etc.) |
-| `notes/` | Organized notes: `daily/`, `ideas/`, `plans/`, `feedback/`, `personal/`, `drafts/`, `Archive/` |
-| `Library/knowledge/` | Structured reference — **index at `Library/knowledge/REFERENCE-INDEX.md`** (read on demand, not upfront) |
-| `Library/helm-playbooks/` | **Business playbook library** — validated revenue models HELM can autonomously research, plan, build, and operate |
+| `notes/` | `daily/`, `ideas/`, `plans/`, `feedback/`, `personal/`, `drafts/`, `Archive/` |
 | `logs/` | System-wide logs |
 
-Other: `workflows/`, `Cursor/`, `mcps/`, `gemini-scribe/`, `Clients/`, `Research/`, `Documents/`
+Other: `workflows/`, `mcps/`, `Clients/`, `Research/`, `Documents/`
+
+---
+
+## Active Tools
+
+### Core Services
+
+| Tool | Port | Purpose |
+|------|------|---------|
+| `opai-engine` | 8080 | **Unified Engine** — tasks, monitor, orchestrator, heartbeat, fleet, NFS, workers |
+| `opai-portal` | 8090 | Public portal + dashboard + Pages Manager |
+| `opai-team-hub` | 8082 | Task/project management (ClickUp-style, v3.5 backbone) |
+| `opai-telegram` | 8110 | Primary comms — Telegram bridge + assistant mode |
+| `opai-vault` | 8105 | Encrypted credential management |
+
+### Tools & Agents
+
+| Tool | Port | Purpose |
+|------|------|---------|
+| `opai-brain` | 8101 | 2nd Brain — knowledge graph + research |
+| `opai-helm` | 8102 | Autonomous business runner |
+| `opai-marq` | 8103 | App store publisher agent |
+| `opai-dam` | 8104 | Do Anything Mode — meta-orchestrator |
+| `opai-bx4` | 8100 | Business intelligence bot |
+| `opai-prd` | — | PRD Pipeline — idea evaluation (PRDgent) |
+| `opai-studio` | 8108 | AI image generation + editing suite |
+| `opai-billing` | — | Stripe billing (v4 target) |
+| `opai-users` | — | User management service |
+
+### Integrations
+
+| Tool | Port | Purpose |
+|------|------|---------|
+| `opai-wordpress` | 8096 | Multi-site WordPress management |
+| `opai-email-agent` | 8093 | Multi-account email agent |
+| `opai-browser` | 8107 | Browser automation via Playwright |
+| `opai-files` | — | Sandboxed file manager |
+| `opai-forumbot` | — | AI content generation for forums |
+| `discord-bridge` | — | Discord bot → Claude CLI |
+| `open-claw` | — | ClawBot container system (broker + runtime) |
+
+### Other
+
+| Tool | Purpose |
+|------|---------|
+| `opai-agent` | Standalone Claude Code desktop wrapper |
+| `opai-dev` / `scc-ide` | OP IDE — browser-based + native desktop IDE |
+| `opai-arl-tui` | TUI dashboard |
+| `shared/` | Shared Python/JS libraries (`claude_api.py`, `auth.py`, etc.) |
 
 ---
 
@@ -33,39 +82,33 @@ Other: `workflows/`, `Cursor/`, `mcps/`, `gemini-scribe/`, `Clients/`, `Research
 
 | Topic | Wiki File |
 |-------|-----------|
-| Agent Framework (42 roles, 26 squads, execution model) | `Library/opai-wiki/agents/agent-framework.md` |
-| Agent Orchestra | `Library/opai-wiki/agents/agent-orchestra.md` |
-| Agent Studio | `Library/opai-wiki/agents/agent-studio.md` |
-| Discord Bot | `Library/opai-wiki/integrations/discord-bridge.md` |
-| Telegram Bridge | `Library/opai-wiki/integrations/telegram-bridge.md` |
-| Services (systemd) | `Library/opai-wiki/core/services-systemd.md` |
-| Orchestrator | `Library/opai-wiki/core/orchestrator.md` |
-| Auth & Network | `Library/opai-wiki/core/auth-network.md` |
+| **Wiki index (all 72 docs)** | `Library/opai-wiki/README.md` |
+| Strategic roadmap (v2→v3→v4) | `Library/opai-wiki/plans/opai-evolution.md` |
+| Engine (unified core) | `Library/opai-wiki/core/orchestrator.md` |
 | Portal / Dashboard | `Library/opai-wiki/core/portal.md` |
-| Monitor | `Library/opai-wiki/infra/monitor.md` |
-| Feedback System | `Library/opai-wiki/infra/feedback-system.md` |
-| Sandbox System | `Library/opai-wiki/infra/sandbox-system.md` |
-| Usage Throttling | `Library/opai-wiki/infra/usage-throttling.md` |
-| User Controls | `Library/opai-wiki/infra/user-controls.md` |
+| Auth & Network | `Library/opai-wiki/core/auth-network.md` |
+| Services (systemd) | `Library/opai-wiki/core/services-systemd.md` |
+| Team Hub | `Library/opai-wiki/tools/team-hub.md` |
+| HELM | `Library/opai-wiki/tools/helm.md` |
+| 2nd Brain | `Library/opai-wiki/tools/brain.md` |
+| Studio | `Library/opai-wiki/tools/studio.md` |
 | Vault | `Library/opai-wiki/infra/vault.md` |
+| Heartbeat + Proactive Intelligence | `Library/opai-wiki/infra/heartbeat.md` |
+| Fleet Coordinator & Action Items | `Library/opai-wiki/infra/fleet-action-items.md` |
+| NFS Dispatcher (external workers) | `Library/opai-wiki/infra/nfs-dispatcher.md` |
+| Meta-Assessment (2nd-order loop) | `Library/opai-wiki/infra/meta-assessment.md` |
+| Scheduling Architecture | `Library/opai-wiki/infra/scheduling-architecture.md` |
+| Agent Framework (43 roles, 27 squads) | `Library/opai-wiki/agents/agent-framework.md` |
+| Telegram Bridge | `Library/opai-wiki/integrations/telegram-bridge.md` |
+| Discord Bot | `Library/opai-wiki/integrations/discord-bridge.md` |
+| Email Agent | `Library/opai-wiki/integrations/email-agent.md` |
+| OP WordPress | `Library/opai-wiki/integrations/op-wordpress.md` |
 | Browser Automation | `Library/opai-wiki/infra/browser-automation.md` |
-| Heartbeat (v3.5) + Proactive Intelligence | `Library/opai-wiki/infra/heartbeat.md` |
-| Fleet Coordinator & Action Items (v3.5) | `Library/opai-wiki/infra/fleet-action-items.md` |
-| NFS Drop-Folder Dispatcher (v3.5) | `Library/opai-wiki/infra/nfs-dispatcher.md` |
-| Headless Display | `Library/opai-wiki/infra/headless-display.md` |
-| Task Control Panel | `Library/opai-wiki/tools/task-control-panel.md` |
+| Feedback System | `Library/opai-wiki/infra/feedback-system.md` |
+| Agent Feedback Loops | `Library/opai-wiki/infra/agent-feedback-loops.md` |
+| Sandbox System | `Library/opai-wiki/infra/sandbox-system.md` |
 | Billing / Stripe | `Library/opai-wiki/tools/billing.md` |
 | Dev IDE (OP IDE) | `Library/opai-wiki/infra/dev-ide.md` |
-| Marketplace | `Library/opai-wiki/tools/marketplace.md` |
-| Team Hub | `Library/opai-wiki/tools/team-hub.md` |
-| 2nd Brain | `Library/opai-wiki/tools/brain.md` |
-| HELM | `Library/opai-wiki/tools/helm.md` |
-| Docs Portal | `Library/opai-wiki/tools/docs.md` |
-| Forum Bot | `Library/opai-wiki/integrations/forumbot.md` |
-| OP WordPress | `Library/opai-wiki/integrations/op-wordpress.md` |
-| Email Agent | `Library/opai-wiki/integrations/email-agent.md` |
-| TUI Dashboard | `Library/opai-wiki/tools/tui-dashboard.md` |
-| Wiki index (all topics) | `Library/opai-wiki/README.md` |
 
 ---
 
@@ -79,7 +122,7 @@ Other: `workflows/`, `Cursor/`, `mcps/`, `gemini-scribe/`, `Clients/`, `Research
 ./scripts/run_squad.sh -s "audit"
 
 # Builder: implement from inline task
-./scripts/run_builder.sh -t "Add dark mode to Monitor" --context tools/opai-monitor
+./scripts/run_builder.sh -t "Add dark mode to Brain" --context tools/opai-brain
 
 # Supabase SQL
 ./scripts/supabase-sql.sh "SELECT count(*) FROM profiles"
@@ -91,7 +134,7 @@ Full squad/agent command reference: `Library/opai-wiki/agents/agent-framework.md
 
 ## Tech Stack
 
-Expo (React Native), Vite, Supabase, Stripe, n8n, WordPress + Avada, Hostinger, PowerShell, TypeScript
+Python (Flask), Node.js, Supabase, Stripe, Caddy, systemd, Claude Code CLI, MCP, n8n (internal-only), Expo (React Native), Vite, WordPress + Avada
 
 ---
 
@@ -137,14 +180,33 @@ Observe patterns in our sessions and act on them — but be selective. Only auto
 
 ---
 
+## Anti-Slop Engineering
+
+**Core belief:** Bad agent output is an engineering problem, not an LLM problem. The models are capable — quality comes from the guardrails, specs, and structure around them.
+
+### Rules
+
+1. **Never fix bad output** — If an agent produces slop, don't patch it. Diagnose the root cause (bad prompt? missing context? wrong scope?), fix the cause, and rerun from scratch. Dead code and band-aids compound.
+2. **One agent, one task, one prompt** — A focused agent is a correct agent. Give each agent a single clear task with a single prompt. Don't overload scope.
+3. **Specs leave no ambiguity** — Agent specs should include exact file paths, line numbers, code snippets, and explicit boundaries. Never let an agent infer your intent — spell it out.
+4. **Blueprint before code** — For anything visual (UIs, dashboards, pages), create an ASCII wireframe first and iterate on it before writing implementation code. See `/blueprint` skill.
+5. **Pit of success** — High-quality code in the codebase produces higher-quality agent output. Input tokens are effectively fine-tuning. Keep the codebase clean and agents will follow suit.
+6. **Anti-mock testing** — Never mock what you can use for real. LLMs default to mocking everything — resist this. Tests should exercise actual code paths.
+7. **Quality gates before handoff** — Before any agent hands work to the next agent (or to a human), all tests must pass, linting must pass, and the output must be verified. No slop propagation up the chain.
+8. **Traceability** — Every agent action should be traceable: what agent, what changes, when, where. Reports and audit logs exist for this reason — use them.
+9. **Hard blocks** — Agents should never `git push`, never write outside their scope, and scout/research agents should be read-only. Enforce via hooks and tool restrictions.
+10. **An isolated agent is a safe agent** — Use worktrees or scoped file access to prevent agents from overwriting each other's work, especially in multi-agent runs.
+
+---
+
 ## Quick Reference Files
 
 | What | Where |
 |------|-------|
 | Conventions | `CONVENTIONS.md` |
-| Framework docs | `README.md` |
 | Agent roster + squads | `team.json` |
-| **Reference library index** | **`Library/knowledge/REFERENCE-INDEX.md`** — lookup for all how-tos, guides, API refs, external tool docs. Read this FIRST when asked about a reference topic. |
-| Cursor IDE rules | `Cursor/1_RULES.txt` |
-| Tech stack reference | `Cursor/QUICK_REFERENCE.txt` |
-| Useful commands | `Useful Commands.md` |
+| **Reference library index** | **`Library/knowledge/REFERENCE-INDEX.md`** |
+| Worker registry | `config/workers.json` |
+| Orchestrator config | `config/orchestrator.json` |
+| MCP catalog | `config/mcp-all.json` (11 servers, 4 profiles) |
+| v2 progress log | `notes/v2/PROGRESS-LOG.md` |

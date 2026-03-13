@@ -44,8 +44,6 @@ OPAI_REPORTS_DIR = OPAI_ROOT / "reports"
 OPAI_REPORTS_LATEST = OPAI_ROOT / "reports" / "latest"
 
 # ── Tool-specific paths ──────────────────────────────────
-ORCHESTRATOR_DIR = TOOLS_DIR / "opai-orchestrator"
-ORCHESTRATOR_STATE = ORCHESTRATOR_DIR / "data" / "orchestrator-state.json"
 DISCORD_BRIDGE_DIR = TOOLS_DIR / "discord-bridge"
 DISCORD_BOT_LOG = DISCORD_BRIDGE_DIR / "data" / "bot.log"
 
@@ -72,7 +70,53 @@ BOTTLENECK_SUGGESTIONS_FILE = ENGINE_DIR / "data" / "bottleneck-suggestions.json
 
 # Fleet coordinator (v3.5)
 FLEET_STATE_FILE = ENGINE_DIR / "data" / "fleet-state.json"
+
+# Worker mail (v3.6 — swarm messaging)
+MAIL_DB_PATH = ENGINE_DIR / "data" / "mail.db"
 AGENT_WORKSPACE_BASE = Path("/workspace/local/agent-workspaces")
+
+# Proactive intelligence (v3.5)
+PROACTIVE_STATE_FILE = ENGINE_DIR / "data" / "proactive-state.json"
+
+# Personal notifications (v3.5)
+PERSONAL_NOTIFICATIONS_FILE = ENGINE_DIR / "data" / "personal-notifications.json"
+
+# Context harvester journal (v3.5)
+JOURNAL_DIR = ENGINE_DIR / "data" / "journal"
+JOURNAL_LATEST = ENGINE_DIR / "data" / "journal-latest.json"
+
+# Assembly Line (v3.7 — end-to-end build pipeline)
+ASSEMBLY_RUNS_FILE = ENGINE_DIR / "data" / "assembly-runs.json"
+
+# Vercel Demo Platform (ephemeral demo deploys)
+VERCEL_DEMOS_FILE = ENGINE_DIR / "data" / "vercel-demos.json"
+
+# Knowledge refresher (v3.6 — nightly business context for chat agent)
+KNOWLEDGE_REFRESHER_STATE_FILE = ENGINE_DIR / "data" / "knowledge-refresher-state.json"
+
+# NFS dispatcher (v3.5 — external ClaudeClaw workers)
+NFS_CLAWBOTS_BASE = Path(os.getenv("NFS_CLAWBOTS_BASE", "/workspace/users/_clawbots"))
+NFS_ADMIN_HITL = Path(os.getenv("NFS_ADMIN_HITL", "/workspace/users/_admin/hitl"))
+NFS_DISPATCHER_STATE_FILE = ENGINE_DIR / "data" / "nfs-dispatcher-state.json"
+
+# Team Hub integration (v3.5 — Workers workspace)
+TEAMHUB_INTERNAL = os.getenv("TEAMHUB_INTERNAL_URL", "http://127.0.0.1:8089/api/internal")
+WORKERS_WORKSPACE_ID = os.getenv(
+    "WORKERS_WORKSPACE_ID", "d27944f3-8079-4e40-9e5d-c323d6cf7b0f"
+)
+HITL_QUEUE_LIST_ID = os.getenv(
+    "HITL_QUEUE_LIST_ID", "ac6071d1-c86b-4c09-b379-cae8e4f5bd63"
+)
+ACTIVE_WORK_LIST_ID = os.getenv(
+    "ACTIVE_WORK_LIST_ID", "0e074890-a10f-4f7f-9155-9bf0094f9559"
+)
+# System user ID for creating items when no real user context
+SYSTEM_USER_ID = os.getenv(
+    "SYSTEM_USER_ID", "1c93c5fe-d304-40f2-9169-765d0d2b7638"
+)
+
+# Newsletter / feature announcements
+ANNOUNCEMENTS_FILE = ENGINE_DIR / "data" / "feature-announcements.json"
 
 # ── Log sources (all locations the dashboard tails) ───────
 LOG_SOURCES = [
@@ -145,6 +189,9 @@ HEALTH_SERVICES = {
     "vault": 8105,
     "browser": 8107,
     "brain": 8101,
+    "studio": 8108,
+    "eliza-hub": 8083,
+    "eliza": 8085,
 }
 
 # systemd-only services (no HTTP endpoint, checked via systemctl)
@@ -236,6 +283,15 @@ def load_orchestrator_config() -> dict:
             "interval_hours": 6,
             "approval_threshold": 10,
             "lookback_days": 7,
+        },
+        "process_sweeper": {
+            "enabled": True,
+            "interval_seconds": 300,
+            "min_age_seconds": 600,
+            "max_kills_per_cycle": 10,
+            "sigterm_wait_seconds": 5,
+            "dry_run": False,
+            "notify_on_kill": True,
         },
     }
     try:

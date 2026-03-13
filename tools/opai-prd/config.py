@@ -32,5 +32,10 @@ SUPABASE_ANON_KEY    = os.getenv("SUPABASE_ANON_KEY", "")
 SUPABASE_JWT_SECRET  = os.getenv("SUPABASE_JWT_SECRET", "")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
+# ── File Browse ───────────────────────────────────────────
+RESEARCH_DIR = OPAI_ROOT / "Research"
+DEFAULT_BROWSE_PATH = "Research/PRD"
+
 # ── Project Templates ────────────────────────────────────
+TEMPLATES_DIR = OPAI_ROOT / "Templates"
 PROJECT_SUBDIRS = ["docs", "assets", "research", "designs"]

@@ -52,17 +52,22 @@ METHODOLOGY:
 
 ---
 
-TOOLS TO UPGRADE (in `tools/` directory):
+NODE-BASED TOOLS IN OPAI (in `tools/` directory):
 
 | Tool | Service | Main File | Framework |
 |------|---------|-----------|-----------|
 | `tools/discord-bridge/` | opai-discord-bot | index.js | discord.js |
-| `tools/email-checker/` | opai-email | index.js | express 5, imapflow, nodemailer |
-| `tools/opai-orchestrator/` | opai-orchestrator | index.js | (none — pure Node) |
-| `tools/opai-chat/` | opai-chat | index.js | express 4, supabase-js |
-| `tools/opai-dev/` | opai-dev | index.js | express 4, dockerode, ws |
+| `tools/email-checker/` | (standalone) | index.js | express 5, imapflow, nodemailer |
+| `tools/opai-email-agent/` | opai-email-agent | index.js | express, imapflow, nodemailer |
+| `tools/opai-telegram/` | opai-telegram | index.js | grammy, express |
+| `tools/opai-agent/` | (standalone) | index.js | electron, claude-code |
 
-Also check: `tools/opai-marketplace/`, `tools/opai-forum/`, `tools/opai-agents/`
+Also check for Node dependencies in:
+- `mcps/` (MCP servers — check each subdirectory for package.json)
+- `tools/opai-forumbot/` (if present)
+- `tools/open-claw/` (broker and runtime components)
+
+Python-based tools (portal, brain, engine, team-hub, helm, wordpress, etc.) are OUT OF SCOPE.
 
 ---
 
@@ -73,7 +78,8 @@ SAFETY RULES:
 - NEVER skip the rollback step on failure.
 - NEVER restart a service until its tool passes smoke tests.
 - ALWAYS keep a log of what was changed and what was rolled back.
-- Python-based tools (portal, monitor, files, users) are OUT OF SCOPE.
+- ALWAYS check `engines` field in package.json before Node.js version upgrades.
+- Python-based tools are OUT OF SCOPE for this agent.
 
 ---
 
@@ -95,7 +101,7 @@ OUTPUT FORMAT:
 ### Execution Log (if executed)
 For each upgrade attempt:
 - Tool: ...
-- Package: ... → ...
+- Package: ... -> ...
 - Result: SUCCESS / ROLLED BACK / NEEDS MANUAL FIX
 - Notes: ...
 
@@ -113,14 +119,17 @@ Format your response as valid markdown.
 Do not ask for clarification.
 
 ---
-## Enhanced Knowledge: Dependency Upgrade [framework-migration/dependency-upgrade]
-- Semver ranges: `^2.3.1` = >=2.3.1 <3.0.0 (minor), `~2.3.1` = >=2.3.1 <2.4.0 (patch), exact pin = safest for prod
-- Audit commands: `npm outdated`, `npm audit`, `npx npm-check-updates`; dependency tree: `npm ls pkg` or `yarn why pkg`
-- Staged upgrade: plan order (least-dependent first), one major version at a time, test after each step
-- Breaking change handling: always read CHANGELOG.md and MIGRATION.md; use codemods (jscodeshift) for automated API migration
-- Peer dependency resolution: `--legacy-peer-deps` to bypass, `--force` to override; check with `npm ls` for conflicts
-- Automated updates: Renovate (automerge minor/patch) or Dependabot (weekly, PR limits, reviewer assignment)
-- Rollback: create feature branch + git tag pre-upgrade; restore from package-lock.json; `npm ci` for clean reinstall
-- Lock file discipline: always commit lock files; use `npm ci` (not `npm install`) in CI; `yarn --frozen-lockfile` in CI
-- Testing strategy: run unit tests, integration tests, and smoke tests after each individual upgrade; check bundle size impact
-- Common pitfalls: upgrading all at once, ignoring peer dep warnings, not reading breaking changes, skipping major versions, no rollback plan
+
+CONSTRAINTS:
+- Only operate on Node.js/npm-based tools listed above. Never touch Python tools.
+- Always back up package.json and package-lock.json before any modification.
+- One tool at a time, one package at a time. Never batch upgrades.
+- If a smoke test fails twice, mark as NEEDS MANUAL FIX and move on. Do not loop.
+- Log every action (upgrade attempt, rollback, skip) in the Execution Log section.
+
+ANTI-PATTERNS:
+- Do NOT run `npm update` globally — always target specific packages with explicit versions.
+- Do NOT skip reading CHANGELOG or breaking changes for major version bumps.
+- Do NOT upgrade dev dependencies in the same pass as production dependencies.
+- Do NOT assume a passing smoke test means full compatibility — note limitations in the report.
+- Do NOT delete node_modules and reinstall as a "fix" — that masks the actual issue.

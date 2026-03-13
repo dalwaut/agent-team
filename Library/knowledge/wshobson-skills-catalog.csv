@@ -1,0 +1,147 @@
+plugin_name,skill_name,summary
+accessibility-compliance,screen-reader-testing,Test web applications with screen readers including VoiceOver
+accessibility-compliance,wcag-audit-patterns,Conduct WCAG 2.2 accessibility audits with automated testing
+agent-teams,multi-reviewer-patterns,Coordinate parallel code reviews across multiple reviewers
+agent-teams,parallel-debugging,Debug complex issues using competing hypotheses with parallel agents
+agent-teams,parallel-feature-development,Coordinate parallel feature development with dependency management
+agent-teams,task-coordination-strategies,Decompose complex tasks and design dependency graphs
+agent-teams,team-communication-protocols,Structured messaging protocols for agent team coordination
+agent-teams,team-composition-patterns,Design optimal agent team compositions with sizing strategies
+api-scaffolding,fastapi-templates,Create production-ready FastAPI projects with async patterns
+backend-development,api-design-principles,Master REST and GraphQL API design principles
+backend-development,architecture-patterns,Implement proven backend architecture patterns
+backend-development,cqrs-implementation,Implement Command Query Responsibility Segregation
+backend-development,event-store-design,Design and implement event stores for event-sourced systems
+backend-development,microservices-patterns,Design microservices architectures with service boundaries
+backend-development,projection-patterns,Build read models and projections from event streams
+backend-development,saga-orchestration,Implement saga patterns for distributed transactions
+backend-development,temporal-python-testing,Test Temporal workflows with pytest and time-skipping
+backend-development,workflow-orchestration-patterns,Design durable workflows with Temporal
+blockchain-web3,defi-protocol-templates,Implement DeFi protocols with production-ready templates
+blockchain-web3,nft-standards,Implement NFT standards (ERC-721, ERC-1155) with proper metadata
+blockchain-web3,solidity-security,Master smart contract security best practices
+blockchain-web3,web3-testing,Test smart contracts with Hardhat and Foundry
+business-analytics,data-storytelling,Transform data into compelling narratives using visualization
+business-analytics,kpi-dashboard-design,Design effective KPI dashboards with metrics selection
+cicd-automation,deployment-pipeline-design,Design multi-stage CI/CD pipelines with approval gates
+cicd-automation,github-actions-templates,Create production-ready GitHub Actions workflows
+cicd-automation,gitlab-ci-patterns,Build GitLab CI/CD pipelines with multi-stage workflows
+cicd-automation,secrets-management,Implement secure secrets management for CI/CD pipelines
+cloud-infrastructure,cost-optimization,Optimize cloud costs through resource rightsizing
+cloud-infrastructure,hybrid-cloud-networking,Configure secure connectivity between on-prem and cloud
+cloud-infrastructure,istio-traffic-management,Configure Istio traffic management and routing
+cloud-infrastructure,linkerd-patterns,Implement Linkerd service mesh patterns
+cloud-infrastructure,mtls-configuration,Configure mutual TLS (mTLS) for zero-trust service-to-service
+cloud-infrastructure,multi-cloud-architecture,Design multi-cloud architectures using decision frameworks
+cloud-infrastructure,service-mesh-observability,Implement comprehensive observability for service mesh
+cloud-infrastructure,terraform-module-library,Build reusable Terraform modules for AWS, Azure, GCP
+conductor,context-driven-development,Use Conductor context-driven development patterns
+conductor,track-management,Create and manage Conductor tracks and workflows
+conductor,workflow-patterns,Implement tasks according to Conductor workflow patterns
+database-design,postgresql,Design PostgreSQL-specific schema with best practices
+data-engineering,airflow-dag-patterns,Build production Apache Airflow DAGs with best practices
+data-engineering,data-quality-frameworks,Implement data quality validation with Great Expectations
+data-engineering,dbt-transformation-patterns,Master dbt for analytics engineering and transformations
+data-engineering,spark-optimization,Optimize Apache Spark jobs with partitioning and caching
+developer-essentials,auth-implementation-patterns,Master authentication and authorization patterns
+developer-essentials,bazel-build-optimization,Optimize Bazel builds for large-scale monorepos
+developer-essentials,code-review-excellence,Master effective code review practices
+developer-essentials,debugging-strategies,Master systematic debugging techniques and profiling
+developer-essentials,e2e-testing-patterns,Master end-to-end testing with Playwright and Cypress
+developer-essentials,error-handling-patterns,Master error handling patterns across languages
+developer-essentials,git-advanced-workflows,Master advanced Git workflows including rebasing
+developer-essentials,monorepo-management,Master monorepo management with Turborepo and Nx
+developer-essentials,nx-workspace-patterns,Configure and optimize Nx monorepo workspaces
+developer-essentials,sql-optimization-patterns,Master SQL query optimization and indexing strategies
+developer-essentials,turborepo-caching,Configure Turborepo for efficient monorepo builds
+documentation-generation,architecture-decision-records,Write and maintain Architecture Decision Records
+documentation-generation,changelog-automation,Automate changelog generation from commits and PRs
+documentation-generation,openapi-spec-generation,Generate and maintain OpenAPI 3.1 specifications
+dotnet-contribution,dotnet-backend-patterns,Master C#/.NET backend development patterns
+framework-migration,angular-migration,Migrate from AngularJS to Angular using hybrid mode
+framework-migration,database-migration,Execute database migrations across ORMs and platforms
+framework-migration,dependency-upgrade,Manage major dependency version upgrades
+framework-migration,react-modernization,Upgrade React applications to latest versions
+frontend-mobile-development,nextjs-app-router-patterns,Master Next.js 14+ App Router with Server Components
+frontend-mobile-development,react-native-architecture,Build production React Native apps with Expo
+frontend-mobile-development,react-state-management,Master modern React state management with Redux
+frontend-mobile-development,tailwind-design-system,Build scalable design systems with Tailwind CSS v4
+game-development,godot-gdscript-patterns,Master Godot 4 GDScript patterns including signals
+game-development,unity-ecs-patterns,Master Unity ECS (Entity Component System) with DOTS
+hr-legal-compliance,employment-contract-templates,Create employment contracts and offer letters
+hr-legal-compliance,gdpr-data-handling,Implement GDPR-compliant data handling with consent
+incident-response,incident-runbook-templates,Create structured incident response runbooks
+incident-response,on-call-handoff-patterns,Master on-call shift handoffs with context transfer
+incident-response,postmortem-writing,Write effective blameless postmortems with root cause analysis
+javascript-typescript,javascript-testing-patterns,Implement comprehensive testing with Jest and Vitest
+javascript-typescript,modern-javascript-patterns,Master ES6+ features including async/await
+javascript-typescript,nodejs-backend-patterns,Build production-ready Node.js backend services
+javascript-typescript,typescript-advanced-types,Master TypeScript's advanced type system
+kubernetes-operations,gitops-workflow,Implement GitOps workflows with ArgoCD and Flux
+kubernetes-operations,helm-chart-scaffolding,Design and manage Helm charts for templating
+kubernetes-operations,k8s-manifest-generator,Create production-ready Kubernetes manifests
+kubernetes-operations,k8s-security-policies,Implement Kubernetes security policies and Network Policies
+llm-application-dev,embedding-strategies,Select and optimize embedding models for semantic search
+llm-application-dev,hybrid-search-implementation,Combine vector and keyword search for improved results
+llm-application-dev,langchain-architecture,Design LLM applications using LangChain 1.x
+llm-application-dev,llm-evaluation,Implement comprehensive evaluation strategies for LLM apps
+llm-application-dev,prompt-engineering-patterns,Master advanced prompt engineering techniques
+llm-application-dev,rag-implementation,Build Retrieval-Augmented Generation (RAG) systems
+llm-application-dev,similarity-search-patterns,Implement efficient similarity search with vector DBs
+llm-application-dev,vector-index-tuning,Optimize vector index performance for latency and recall
+machine-learning-ops,ml-pipeline-workflow,Build end-to-end MLOps pipelines from data to model
+observability-monitoring,distributed-tracing,Implement distributed tracing with Jaeger and Tempo
+observability-monitoring,grafana-dashboards,Create and manage production Grafana dashboards
+observability-monitoring,prometheus-configuration,Set up Prometheus for comprehensive metric collection
+observability-monitoring,slo-implementation,Define and implement Service Level Indicators (SLIs)
+payment-processing,billing-automation,Build automated billing systems for recurring payments
+payment-processing,paypal-integration,Integrate PayPal payment processing with express checkout
+payment-processing,pci-compliance,Implement PCI DSS compliance requirements
+payment-processing,stripe-integration,Implement Stripe payment processing for PCI compliance
+python-development,async-python-patterns,Master Python asyncio and concurrent programming
+python-development,python-anti-patterns,Common Python anti-patterns to avoid
+python-development,python-background-jobs,Python background job patterns including task queues
+python-development,python-code-style,Python code style, linting, formatting, naming conventions
+python-development,python-configuration,Python configuration management via environment variables
+python-development,python-design-patterns,Python design patterns including KISS and Separation of Concerns
+python-development,python-error-handling,Python error handling patterns including input validation
+python-development,python-observability,Python observability patterns including structured logging
+python-development,python-packaging,Create distributable Python packages with proper structure
+python-development,python-performance-optimization,Profile and optimize Python code using cProfile
+python-development,python-project-structure,Python project organization and module architecture
+python-development,python-resilience,Python resilience patterns including automatic retries
+python-development,python-resource-management,Python resource management with context managers
+python-development,python-testing-patterns,Implement comprehensive testing with pytest
+python-development,python-type-safety,Python type safety with type hints, generics, protocols
+python-development,uv-package-manager,Master the uv package manager for fast Python dependencies
+quantitative-trading,backtesting-frameworks,Build robust backtesting systems for trading strategies
+quantitative-trading,risk-metrics-calculation,Calculate portfolio risk metrics including VaR and CVaR
+reverse-engineering,anti-reversing-techniques,Understand anti-reversing, obfuscation, and protection
+reverse-engineering,binary-analysis-patterns,Master binary analysis patterns including disassembly
+reverse-engineering,memory-forensics,Master memory forensics techniques including memory acquisition
+reverse-engineering,protocol-reverse-engineering,Master network protocol reverse engineering
+security-scanning,attack-tree-construction,Build comprehensive attack trees to visualize threats
+security-scanning,sast-configuration,Configure Static Application Security Testing (SAST) tools
+security-scanning,security-requirement-extraction,Derive security requirements from threat models
+security-scanning,stride-analysis-patterns,Apply STRIDE methodology to identify security threats
+security-scanning,threat-mitigation-mapping,Map identified threats to appropriate security controls
+shell-scripting,bash-defensive-patterns,Master defensive Bash programming techniques
+shell-scripting,bats-testing-patterns,Master Bash Automated Testing System (Bats)
+shell-scripting,shellcheck-configuration,Master ShellCheck static analysis configuration
+startup-business-analyst,competitive-landscape,Analyze competitive landscape and market positions
+startup-business-analyst,market-sizing-analysis,Calculate market sizing and TAM/SAM/SOM
+startup-business-analyst,startup-financial-modeling,Create financial models and projections
+startup-business-analyst,startup-metrics-framework,Implement startup metrics and KPI tracking
+startup-business-analyst,team-composition-analysis,Plan optimal team composition and roles
+systems-programming,go-concurrency-patterns,Master Go concurrency with goroutines and channels
+systems-programming,memory-safety-patterns,Implement memory-safe programming with RAII
+systems-programming,rust-async-patterns,Master Rust async programming with Tokio
+ui-design,accessibility-compliance,Implement WCAG 2.2 compliant interfaces
+ui-design,design-system-patterns,Build scalable design systems with design tokens
+ui-design,interaction-design,Design microinteractions, motion design, transitions
+ui-design,mobile-android-design,Master Material Design 3 and Jetpack Compose patterns
+ui-design,mobile-ios-design,Master iOS Human Interface Guidelines and SwiftUI
+ui-design,react-native-design,Master React Native styling, navigation, Reanimated
+ui-design,responsive-design,Implement modern responsive layouts with container queries
+ui-design,visual-design-foundations,Apply typography, color theory, spacing systems
+ui-design,web-component-design,Master React, Vue, Svelte component patterns

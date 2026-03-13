@@ -237,6 +237,27 @@ class MemoryConsolidator:
             except OSError:
                 pass
 
+        # Context harvester journal (if fresh — <8h old)
+        if config.JOURNAL_LATEST.is_file():
+            try:
+                journal = json.loads(config.JOURNAL_LATEST.read_text())
+                ts = journal.get("timestamp", "")
+                if ts:
+                    journal_dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    age_hours = (datetime.now(timezone.utc) - journal_dt).total_seconds() / 3600
+                    if age_hours < 8:
+                        # Read the actual journal report content
+                        journal_path = journal.get("output_path", "")
+                        if journal_path and Path(journal_path).is_file():
+                            data["context_journal"] = Path(journal_path).read_text()[:4000]
+                        else:
+                            data["context_journal"] = f"Journal entry from {ts} (output not found)"
+            except (json.JSONDecodeError, OSError, ValueError) as e:
+                logger.debug("Failed to read context journal: %s", e)
+
+        # Git activity (source of truth for all file changes)
+        data["git_activity"] = self._collect_git_activity(date_str)
+
         # Detect corrections
         data["corrections_detected"] = self._detect_corrections(data["audit_entries"])
 
@@ -322,7 +343,93 @@ class MemoryConsolidator:
 
         return corrections
 
-    # ── AI Extraction ─────────────────────────────────────────
+    def _collect_git_activity(self, date_str: str) -> dict:
+        """Collect git commit log and changed files for the given date.
+
+        This is the primary source of truth for what actually happened —
+        wiki edits, code changes, config updates all show up here regardless
+        of whether they were done in Claude Code sessions, manual edits, or agents.
+        """
+        import subprocess
+
+        result = {"commits": [], "files_changed": [], "summary": ""}
+
+        try:
+            # Get commit log for the date (and day before, since consolidator runs at 01:00)
+            log_output = subprocess.run(
+                [
+                    "git", "log",
+                    f"--since={date_str} 00:00",
+                    f"--until={date_str} 23:59",
+                    "--format=%H|%s|%an|%ai",
+                    "--no-merges",
+                ],
+                capture_output=True, text=True, timeout=10,
+                cwd=str(config.OPAI_ROOT),
+            )
+
+            if log_output.returncode == 0 and log_output.stdout.strip():
+                for line in log_output.stdout.strip().split("\n")[:30]:
+                    parts = line.split("|", 3)
+                    if len(parts) >= 2:
+                        result["commits"].append({
+                            "hash": parts[0][:8],
+                            "message": parts[1],
+                            "author": parts[2] if len(parts) > 2 else "",
+                            "date": parts[3] if len(parts) > 3 else "",
+                        })
+
+            # Get changed files with stats (diffstat)
+            diff_output = subprocess.run(
+                [
+                    "git", "log",
+                    f"--since={date_str} 00:00",
+                    f"--until={date_str} 23:59",
+                    "--no-merges",
+                    "--stat", "--stat-width=120",
+                    "--format=",
+                ],
+                capture_output=True, text=True, timeout=10,
+                cwd=str(config.OPAI_ROOT),
+            )
+
+            if diff_output.returncode == 0 and diff_output.stdout.strip():
+                # Parse unique file paths from stat output
+                seen = set()
+                for line in diff_output.stdout.strip().split("\n"):
+                    line = line.strip()
+                    if "|" in line and not line.startswith(" "):
+                        fname = line.split("|")[0].strip()
+                        if fname and fname not in seen:
+                            seen.add(fname)
+                            result["files_changed"].append(fname)
+
+            # Build human-readable summary
+            n_commits = len(result["commits"])
+            n_files = len(result["files_changed"])
+
+            if n_commits:
+                # Group changed files by top-level directory
+                dirs = {}
+                for f in result["files_changed"]:
+                    top = f.split("/")[0] if "/" in f else f
+                    dirs[top] = dirs.get(top, 0) + 1
+
+                dir_summary = ", ".join(
+                    f"{d} ({c})" for d, c in sorted(dirs.items(), key=lambda x: -x[1])[:8]
+                )
+                result["summary"] = (
+                    f"{n_commits} commits, {n_files} files changed. "
+                    f"Areas: {dir_summary}"
+                )
+            else:
+                result["summary"] = "No commits found for this date."
+
+        except (subprocess.TimeoutExpired, OSError) as e:
+            logger.warning("Git activity collection failed: %s", e)
+            result["summary"] = f"Git collection failed: {e}"
+
+        return result
 
     async def _extract_insights(self, input_data: dict, date_str: str) -> dict | None:
         """Call Claude (haiku) to extract structured insights from collected data."""
@@ -339,9 +446,16 @@ class MemoryConsolidator:
             "You are OPAI's Memory Consolidator. Your job is to extract stable facts, "
             "wiki update recommendations, learned preferences, corrections, and MEMORY.md "
             "pruning candidates from today's activity data.\n\n"
+            "Your PRIMARY input is Git Activity — this shows every file change made today, "
+            "including wiki updates, code changes, and config edits. Use commit messages and "
+            "file paths to understand what was worked on. Pay special attention to:\n"
+            "- Wiki changes (Library/opai-wiki/) — note what docs were created/updated\n"
+            "- Tool changes (tools/) — note new features, bug fixes, refactors\n"
+            "- Config changes — note infrastructure or workflow changes\n\n"
             "Return ONLY a JSON object with exactly 5 keys:\n"
-            "- stable_facts: [{fact, confidence, source}] — things confirmed by repeated observation\n"
-            "- wiki_updates: [{file, section, action, content, reason}] — recommended wiki changes\n"
+            "- stable_facts: [{fact, confidence, source}] — things confirmed by activity or repeated observation\n"
+            "- wiki_updates: [{file, section, action, content, reason}] — recommended wiki changes "
+            "(note: if wiki files were already edited today per git, record them as facts, not recommendations)\n"
             "- learned_preferences: [{preference, evidence, confidence}] — user behavioral patterns\n"
             "- corrections: [{original, correction, lesson}] — mistakes detected and corrected\n"
             "- pruning_candidates: [{memory_entry, reason, safe}] — MEMORY.md entries safe to remove\n\n"
@@ -357,6 +471,42 @@ class MemoryConsolidator:
             prompt_parts.append("### Daily Note")
             prompt_parts.append(input_data["daily_note"][:4000])
             prompt_parts.append("")
+
+        # Git activity — primary source of truth for what was worked on
+        git_data = input_data.get("git_activity", {})
+        if git_data.get("commits"):
+            prompt_parts.append("### Git Activity (actual work done today)")
+            prompt_parts.append(git_data.get("summary", ""))
+            prompt_parts.append("")
+            prompt_parts.append("Commits:")
+            for c in git_data["commits"][:20]:
+                prompt_parts.append(f"- `{c['hash']}` {c['message']}")
+            prompt_parts.append("")
+            files = git_data.get("files_changed", [])
+            if files:
+                # Group by area for readability
+                wiki_files = [f for f in files if "opai-wiki" in f or "wiki" in f.lower()]
+                tool_files = [f for f in files if f.startswith("tools/")]
+                config_files = [f for f in files if f.startswith("config/") or f.startswith("scripts/")]
+                other_files = [f for f in files if f not in wiki_files + tool_files + config_files]
+
+                if wiki_files:
+                    prompt_parts.append(f"Wiki changes ({len(wiki_files)}):")
+                    for f in wiki_files[:15]:
+                        prompt_parts.append(f"  - {f}")
+                if tool_files:
+                    prompt_parts.append(f"Tool changes ({len(tool_files)}):")
+                    for f in tool_files[:15]:
+                        prompt_parts.append(f"  - {f}")
+                if config_files:
+                    prompt_parts.append(f"Config/script changes ({len(config_files)}):")
+                    for f in config_files[:10]:
+                        prompt_parts.append(f"  - {f}")
+                if other_files:
+                    prompt_parts.append(f"Other changes ({len(other_files)}):")
+                    for f in other_files[:10]:
+                        prompt_parts.append(f"  - {f}")
+                prompt_parts.append("")
 
         # Audit summary (execution tier only, summarized)
         exec_entries = [

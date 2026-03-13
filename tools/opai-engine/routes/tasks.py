@@ -128,6 +128,22 @@ def create_task(data: dict = Body(...)):
 
     registry["tasks"][task_id] = task
     tp.write_registry(registry)
+
+    # Notify via Telegram when a task needs human decision
+    if task.get("status") == "pending" and task.get("assignee") == "human":
+        try:
+            from background.notifier import notify_hitl_briefing
+            import asyncio
+            asyncio.ensure_future(notify_hitl_briefing(
+                task_id=task_id,
+                filename=task_id,
+                title=task.get("title", "Untitled"),
+                priority=task.get("priority", "normal"),
+                source=task.get("source", ""),
+            ))
+        except Exception:
+            pass  # Notification is best-effort
+
     return {"success": True, "task": task}
 
 
@@ -190,6 +206,18 @@ def complete_task(task_id: str):
     task["updatedAt"] = now
     task["completedAt"] = now
     tp.write_registry(registry)
+
+    # Check personal notification watches
+    try:
+        from background.notifier import check_and_fire_personal_notifications
+        check_and_fire_personal_notifications(
+            task_id=task_id,
+            status="completed",
+            title=task.get("title", ""),
+        )
+    except Exception:
+        pass
+
     return {"success": True, "task_id": task_id}
 
 
@@ -391,7 +419,7 @@ def read_hitl(filename: str):
     return {"filename": filename, "content": content}
 
 
-@router.post("/hitl/{filename}/respond", dependencies=[Depends(require_admin)])
+@router.post("/hitl/{filename}/respond")
 def respond_hitl(filename: str, data: dict = Body(...)):
     action = data.get("action")
     if not action:
@@ -404,15 +432,17 @@ def respond_hitl(filename: str, data: dict = Body(...)):
     elif action == "approve":
         return approve_task(task_id)
     elif action == "dismiss":
-        tp.archive_hitl(filename)
-        return {"success": True, "action": "dismissed"}
+        # Try archiving HITL briefing file; if none exists, cancel the task
+        if tp.archive_hitl(filename):
+            return {"success": True, "action": "dismissed"}
+        return cancel_task(task_id, {"reason": "Dismissed via HITL"})
     elif action == "reject":
         return cancel_task(task_id, {"reason": data.get("reason", "Rejected via HITL")})
     else:
         raise HTTPException(400, f"Unknown HITL action: {action}")
 
 
-@router.post("/hitl/{filename}/archive", dependencies=[Depends(require_admin)])
+@router.post("/hitl/{filename}/archive")
 def archive_hitl(filename: str):
     if tp.archive_hitl(filename):
         return {"success": True}

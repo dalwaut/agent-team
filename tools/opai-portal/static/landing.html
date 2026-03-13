@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OPAI — Orchestrated Projects + Agent Intelligence</title>
-    <meta name="description" content="OPAI is an AI-orchestrated workspace platform. 25 specialist agents, 17 squads, and Mozart — the conductor that turns your intent into results. Join the beta.">
+    <link rel="icon" type="image/svg+xml" href="/static/opai-icon.svg">
+    <meta name="description"
+        content="OPAI is an AI-orchestrated workspace platform. 25 specialist agents, 17 squads, and Mozart — the conductor that turns your intent into results. Join the beta.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <style>
         :root {
             --bg: #0a0a0f;
@@ -23,7 +27,11 @@
             --radius: 12px;
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -33,8 +41,14 @@
             overflow-x: hidden;
         }
 
-        a { color: var(--accent); text-decoration: none; }
-        a:hover { text-decoration: underline; }
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
 
         .container {
             max-width: 1100px;
@@ -61,11 +75,16 @@
         }
 
         .nav-logo {
-            width: 38px; height: 38px;
+            width: 38px;
+            height: 38px;
             background: linear-gradient(135deg, var(--accent), var(--accent-blue));
             border-radius: 10px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 15px; font-weight: 700; color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            font-weight: 700;
+            color: white;
             box-shadow: 0 4px 16px var(--accent-glow);
         }
 
@@ -88,9 +107,16 @@
             transition: color 0.2s;
         }
 
-        .nav-link:hover { color: var(--text); text-decoration: none; }
+        .nav-link:hover {
+            color: var(--text);
+            text-decoration: none;
+        }
 
-        .nav-right { display: flex; gap: 0.75rem; align-items: center; }
+        .nav-right {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
 
         .btn {
             padding: 0.55rem 1.25rem;
@@ -108,13 +134,42 @@
             gap: 0.4rem;
         }
 
-        .btn:hover { border-color: var(--accent); background: var(--bg-hover); text-decoration: none; }
-        .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
-        .btn-primary:hover { opacity: 0.9; text-decoration: none; }
-        .btn-lg { padding: 0.75rem 2rem; font-size: 1rem; font-weight: 600; }
-        .btn-sm { padding: 0.4rem 1rem; font-size: 0.85rem; }
-        .btn-outline-accent { border-color: var(--accent); color: var(--accent); }
-        .btn-outline-accent:hover { background: rgba(168,85,247,0.1); }
+        .btn:hover {
+            border-color: var(--accent);
+            background: var(--bg-hover);
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            text-decoration: none;
+        }
+
+        .btn-lg {
+            padding: 0.75rem 2rem;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .btn-sm {
+            padding: 0.4rem 1rem;
+            font-size: 0.85rem;
+        }
+
+        .btn-outline-accent {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .btn-outline-accent:hover {
+            background: rgba(168, 85, 247, 0.1);
+        }
 
         /* ═══════════════════════════════════════════
            HERO
@@ -122,7 +177,7 @@
         .hero {
             text-align: center;
             padding: 5rem 2rem 4rem;
-            background: radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.12) 0%, transparent 60%);
+            background: radial-gradient(ellipse at 50% 0%, rgba(99, 102, 241, 0.12) 0%, transparent 60%);
         }
 
         .hero-badge {
@@ -131,8 +186,8 @@
             gap: 0.5rem;
             padding: 0.35rem 1.1rem;
             border-radius: 20px;
-            border: 1px solid rgba(168,85,247,0.3);
-            background: rgba(168,85,247,0.08);
+            border: 1px solid rgba(168, 85, 247, 0.3);
+            background: rgba(168, 85, 247, 0.08);
             font-size: 0.8rem;
             font-weight: 500;
             color: var(--accent);
@@ -140,15 +195,25 @@
         }
 
         .hero-badge .pulse {
-            width: 8px; height: 8px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             background: var(--success);
             animation: pulse 2s ease-in-out infinite;
         }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(0.8); }
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.5;
+                transform: scale(0.8);
+            }
         }
 
         .hero h1 {
@@ -189,7 +254,9 @@
             flex-wrap: wrap;
         }
 
-        .hero-stat { text-align: center; }
+        .hero-stat {
+            text-align: center;
+        }
 
         .hero-stat-value {
             font-size: 2rem;
@@ -238,8 +305,8 @@
             gap: 0.5rem;
             padding: 0.5rem 1.25rem;
             border-radius: 20px;
-            background: linear-gradient(135deg, rgba(168,85,247,0.15), rgba(99,102,241,0.15));
-            border: 1px solid rgba(168,85,247,0.3);
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(99, 102, 241, 0.15));
+            border: 1px solid rgba(168, 85, 247, 0.3);
             color: var(--accent);
             font-size: 0.85rem;
             font-weight: 600;
@@ -266,12 +333,12 @@
         .price-card:hover {
             border-color: var(--accent);
             transform: translateY(-4px);
-            box-shadow: 0 12px 36px rgba(0,0,0,0.4);
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
         }
 
         .price-card.featured {
             border-color: var(--accent);
-            background: linear-gradient(180deg, rgba(168,85,247,0.08) 0%, var(--bg-card) 40%);
+            background: linear-gradient(180deg, rgba(168, 85, 247, 0.08) 0%, var(--bg-card) 40%);
             box-shadow: 0 8px 32px var(--accent-glow);
         }
 
@@ -396,7 +463,9 @@
             color: var(--text-muted);
         }
 
-        .pricing-note strong { color: var(--text); }
+        .pricing-note strong {
+            color: var(--text);
+        }
 
         /* ═══════════════════════════════════════════
            MOZART — THE ORCHESTRA
@@ -455,19 +524,37 @@
         .flow-step:hover {
             border-color: var(--accent);
             transform: translateY(-3px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         }
 
         .step-highlight {
-            background: linear-gradient(135deg, rgba(168,85,247,0.12), rgba(99,102,241,0.12));
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.12), rgba(99, 102, 241, 0.12));
             border-color: var(--accent);
             box-shadow: 0 4px 20px var(--accent-glow);
         }
 
-        .flow-icon { font-size: 2rem; margin-bottom: 0.5rem; }
-        .flow-label { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.2rem; }
-        .flow-detail { font-size: 0.75rem; color: var(--text-muted); }
-        .flow-arrow { font-size: 1.5rem; color: var(--accent); opacity: 0.5; flex-shrink: 0; }
+        .flow-icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .flow-label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.2rem;
+        }
+
+        .flow-detail {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .flow-arrow {
+            font-size: 1.5rem;
+            color: var(--accent);
+            opacity: 0.5;
+            flex-shrink: 0;
+        }
 
         .orch-grid {
             display: grid;
@@ -488,14 +575,29 @@
             transform: translateY(-2px);
         }
 
-        .orch-card-icon { font-size: 1.75rem; margin-bottom: 0.75rem; }
-        .orch-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.4rem; }
-        .orch-card p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; }
+        .orch-card-icon {
+            font-size: 1.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .orch-card h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+
+        .orch-card p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
 
         /* ═══════════════════════════════════════════
            FEATURES
            ═══════════════════════════════════════════ */
-        .features { padding: 4rem 0; }
+        .features {
+            padding: 4rem 0;
+        }
 
         .section-label {
             font-size: 0.75rem;
@@ -540,25 +642,73 @@
             border-color: var(--accent);
             border-left-color: var(--accent);
             transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         }
 
-        .feature-icon { font-size: 1.75rem; margin-bottom: 0.75rem; }
-        .feature-card h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.4rem; }
-        .feature-card p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; }
+        .feature-icon {
+            font-size: 1.75rem;
+            margin-bottom: 0.75rem;
+        }
 
-        .fc-chat { border-left-color: var(--accent); }
-        .fc-claude { border-left-color: #a855f7; }
-        .fc-agents { border-left-color: #6366f1; }
-        .fc-email { border-left-color: #f97316; }
-        .fc-ide { border-left-color: #22d3ee; }
-        .fc-files { border-left-color: #8b5cf6; }
-        .fc-messenger { border-left-color: var(--accent); }
-        .fc-forum { border-left-color: #f59e0b; }
-        .fc-teamhub { border-left-color: var(--success); }
-        .fc-monitor { border-left-color: #3b82f6; }
-        .fc-docs { border-left-color: #22d3ee; }
-        .fc-marketplace { border-left-color: #ec4899; }
+        .feature-card h3 {
+            font-size: 1.05rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+
+        .feature-card p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .fc-chat {
+            border-left-color: var(--accent);
+        }
+
+        .fc-claude {
+            border-left-color: #a855f7;
+        }
+
+        .fc-agents {
+            border-left-color: #6366f1;
+        }
+
+        .fc-email {
+            border-left-color: #f97316;
+        }
+
+        .fc-ide {
+            border-left-color: #22d3ee;
+        }
+
+        .fc-files {
+            border-left-color: #8b5cf6;
+        }
+
+        .fc-messenger {
+            border-left-color: var(--accent);
+        }
+
+        .fc-forum {
+            border-left-color: #f59e0b;
+        }
+
+        .fc-teamhub {
+            border-left-color: var(--success);
+        }
+
+        .fc-monitor {
+            border-left-color: #3b82f6;
+        }
+
+        .fc-docs {
+            border-left-color: #22d3ee;
+        }
+
+        .fc-marketplace {
+            border-left-color: #ec4899;
+        }
 
 
         /* ═══════════════════════════════════════════
@@ -569,8 +719,8 @@
         }
 
         .beta-card {
-            background: linear-gradient(135deg, rgba(99,102,241,0.1) 0%, rgba(168,85,247,0.1) 100%);
-            border: 1px solid rgba(168,85,247,0.25);
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%);
+            border: 1px solid rgba(168, 85, 247, 0.25);
             border-radius: 16px;
             padding: 3.5rem;
             text-align: center;
@@ -581,15 +731,24 @@
         .beta-card::before {
             content: '';
             position: absolute;
-            top: -50%; left: -50%;
-            width: 200%; height: 200%;
-            background: radial-gradient(circle at 50% 50%, rgba(168,85,247,0.06) 0%, transparent 50%);
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 50% 50%, rgba(168, 85, 247, 0.06) 0%, transparent 50%);
             animation: float 8s ease-in-out infinite;
         }
 
         @keyframes float {
-            0%, 100% { transform: translateY(0) rotate(0deg); }
-            50% { transform: translateY(-10px) rotate(2deg); }
+
+            0%,
+            100% {
+                transform: translateY(0) rotate(0deg);
+            }
+
+            50% {
+                transform: translateY(-10px) rotate(2deg);
+            }
         }
 
         .beta-badge-big {
@@ -613,7 +772,9 @@
             position: relative;
         }
 
-        .beta-card .highlight { color: var(--accent); }
+        .beta-card .highlight {
+            color: var(--accent);
+        }
 
         .beta-desc {
             font-size: 1.05rem;
@@ -662,15 +823,28 @@
             display: flex;
             align-items: center;
             gap: 1.25rem;
-            background: rgba(16,185,129,0.06);
-            border: 1px solid rgba(16,185,129,0.2);
+            background: rgba(16, 185, 129, 0.06);
+            border: 1px solid rgba(16, 185, 129, 0.2);
             border-radius: var(--radius);
             padding: 1.25rem 1.75rem;
         }
 
-        .workspace-card-icon { font-size: 1.75rem; flex-shrink: 0; }
-        .workspace-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.25rem; }
-        .workspace-card p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; }
+        .workspace-card-icon {
+            font-size: 1.75rem;
+            flex-shrink: 0;
+        }
+
+        .workspace-card h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .workspace-card p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
 
         /* ═══════════════════════════════════════════
            FOOTER
@@ -683,8 +857,13 @@
             color: var(--text-muted);
         }
 
-        .footer a { color: var(--text-muted); }
-        .footer a:hover { color: var(--accent); }
+        .footer a {
+            color: var(--text-muted);
+        }
+
+        .footer a:hover {
+            color: var(--accent);
+        }
 
         /* ═══════════════════════════════════════════
            TOAST
@@ -700,47 +879,99 @@
             padding: 0.75rem 1.5rem;
             font-size: 0.9rem;
             color: var(--text);
-            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
             transition: transform 0.3s ease;
             z-index: 100;
         }
 
-        .toast.show { transform: translateX(-50%) translateY(0); }
-        .toast.error { border-color: #ef4444; }
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .toast.error {
+            border-color: #ef4444;
+        }
 
         /* ═══════════════════════════════════════════
            RESPONSIVE
            ═══════════════════════════════════════════ */
         @media (max-width: 900px) {
-            .pricing-grid { grid-template-columns: 1fr; max-width: 400px; margin-left: auto; margin-right: auto; }
-            .price-card.featured { order: -1; }
-            .nav-center { display: none; }
+            .pricing-grid {
+                grid-template-columns: 1fr;
+                max-width: 400px;
+                margin-left: auto;
+                margin-right: auto;
+            }
+
+            .price-card.featured {
+                order: -1;
+            }
+
+            .nav-center {
+                display: none;
+            }
         }
 
         @media (max-width: 768px) {
-            .hero { padding: 3rem 1.5rem 2.5rem; }
-            .hero-stats { gap: 1.5rem; }
-            .orchestra-flow { flex-direction: column; gap: 0.4rem; }
-            .flow-arrow { transform: rotate(90deg); }
-            .flow-step { min-width: 0; width: 100%; max-width: 280px; }
-            .beta-card { padding: 2rem 1.5rem; }
-            .beta-perks { gap: 1rem; }
-            .workspace-card { flex-direction: column; text-align: center; }
+            .hero {
+                padding: 3rem 1.5rem 2.5rem;
+            }
+
+            .hero-stats {
+                gap: 1.5rem;
+            }
+
+            .orchestra-flow {
+                flex-direction: column;
+                gap: 0.4rem;
+            }
+
+            .flow-arrow {
+                transform: rotate(90deg);
+            }
+
+            .flow-step {
+                min-width: 0;
+                width: 100%;
+                max-width: 280px;
+            }
+
+            .beta-card {
+                padding: 2rem 1.5rem;
+            }
+
+            .beta-perks {
+                gap: 1rem;
+            }
+
+            .workspace-card {
+                flex-direction: column;
+                text-align: center;
+            }
         }
 
         @media (max-width: 480px) {
-            .nav { padding: 1rem; }
-            .nav-brand { font-size: 1rem; }
-            .hero h1 { font-size: 2rem; }
+            .nav {
+                padding: 1rem;
+            }
+
+            .nav-brand {
+                font-size: 1rem;
+            }
+
+            .hero h1 {
+                font-size: 2rem;
+            }
         }
     </style>
 </head>
+
 <body>
 
     <!-- ═══ NAV ═══════════════════════════════════════ -->
     <nav class="nav">
         <div class="nav-left">
-            <div class="nav-logo">OP</div>
+            <img src="/static/opai-icon.svg" alt="OPAI" style="width:38px;height:38px;border-radius:10px;">
             <span class="nav-brand">OPAI</span>
         </div>
         <div class="nav-center">
@@ -839,22 +1070,26 @@
             <div class="orch-card">
                 <div class="orch-card-icon">&#127932;</div>
                 <h3>17 Pre-Composed Squads</h3>
-                <p>Ready-made ensembles for common workflows &mdash; audit, ship, review, plan, evolve, and more. From a string quartet to a full symphony.</p>
+                <p>Ready-made ensembles for common workflows &mdash; audit, ship, review, plan, evolve, and more. From a
+                    string quartet to a full symphony.</p>
             </div>
             <div class="orch-card">
                 <div class="orch-card-icon">&#128161;</div>
                 <h3>Resource-Aware Scheduling</h3>
-                <p>Mozart monitors CPU, memory, and disk in real time. When the system is under load, it defers non-critical work automatically. No dropped notes.</p>
+                <p>Mozart monitors CPU, memory, and disk in real time. When the system is under load, it defers
+                    non-critical work automatically. No dropped notes.</p>
             </div>
             <div class="orch-card">
                 <div class="orch-card-icon">&#9878;</div>
                 <h3>Human-in-the-Loop</h3>
-                <p>The composer always has final say. Non-trivial decisions surface to you for approval before execution. Rehearsal before opening night.</p>
+                <p>The composer always has final say. Non-trivial decisions surface to you for approval before
+                    execution. Rehearsal before opening night.</p>
             </div>
             <div class="orch-card">
                 <div class="orch-card-icon">&#128260;</div>
                 <h3>Self-Evolving System</h3>
-                <p>The orchestra assesses its own gaps and proposes new specialist agents. It doesn't just execute &mdash; it improves with every performance.</p>
+                <p>The orchestra assesses its own gaps and proposes new specialist agents. It doesn't just execute
+                    &mdash; it improves with every performance.</p>
             </div>
         </div>
     </section>
@@ -865,88 +1100,104 @@
         <!-- AI & Intelligence -->
         <div class="section-label">AI &amp; Intelligence</div>
         <h2 class="section-title">Conversational AI &amp; Autonomous Agents</h2>
-        <p class="section-desc">AI assistants, coding agents, and intelligent teams that work while you sleep &mdash; all powered by Claude and orchestrated by Mozart.</p>
+        <p class="section-desc">AI assistants, coding agents, and intelligent teams that work while you sleep &mdash;
+            all powered by Claude and orchestrated by Mozart.</p>
         <div class="feature-grid">
             <div class="feature-card fc-chat">
                 <div class="feature-icon">&#128172;</div>
                 <h3>OPAI Chat</h3>
-                <p>Your AI-powered assistant. Ask questions, generate code, analyze data, and brainstorm &mdash; natural conversation powered by Claude.</p>
+                <p>Your AI-powered assistant. Ask questions, generate code, analyze data, and brainstorm &mdash; natural
+                    conversation powered by Claude.</p>
             </div>
             <div class="feature-card fc-claude">
                 <div class="feature-icon">&#129302;</div>
                 <h3>Claude Code</h3>
-                <p>Advanced AI coding agent with full codebase awareness. Write, refactor, debug, and deploy code through an interactive CLI.</p>
+                <p>Advanced AI coding agent with full codebase awareness. Write, refactor, debug, and deploy code
+                    through an interactive CLI.</p>
             </div>
             <div class="feature-card fc-agents">
                 <div class="feature-icon">&#129516;</div>
                 <h3>Agent Studio</h3>
-                <p>Design, configure, and deploy custom AI agent teams. Build specialized squads for any workflow &mdash; from code review to full release pipelines.</p>
+                <p>Design, configure, and deploy custom AI agent teams. Build specialized squads for any workflow
+                    &mdash; from code review to full release pipelines.</p>
             </div>
             <div class="feature-card fc-email">
                 <div class="feature-icon">&#128231;</div>
                 <h3>Email Agent</h3>
-                <p>Autonomous email intelligence. Monitors inboxes, drafts responses, extracts action items, and manages follow-ups without lifting a finger.</p>
+                <p>Autonomous email intelligence. Monitors inboxes, drafts responses, extracts action items, and manages
+                    follow-ups without lifting a finger.</p>
             </div>
         </div>
 
         <!-- Development & Workspace -->
         <div class="section-label">Development &amp; Workspace</div>
         <h2 class="section-title">A Complete Cloud Environment</h2>
-        <p class="section-desc">Edit code, manage files, and track work &mdash; entirely from your browser. No local setup required.</p>
+        <p class="section-desc">Edit code, manage files, and track work &mdash; entirely from your browser. No local
+            setup required.</p>
         <div class="feature-grid">
             <div class="feature-card fc-ide">
                 <div class="feature-icon">&#128187;</div>
                 <h3>OP IDE</h3>
-                <p>Full-featured browser-based code editor with integrated terminal, extension library, and AI assistance. Your entire workspace, accessible from anywhere.</p>
+                <p>Full-featured browser-based code editor with integrated terminal, extension library, and AI
+                    assistance. Your entire workspace, accessible from anywhere.</p>
             </div>
             <div class="feature-card fc-files">
                 <div class="feature-icon">&#128193;</div>
                 <h3>OPAI Files</h3>
-                <p>Browse, edit, and manage workspace files through an intuitive explorer. Upload, download, and organize &mdash; with Obsidian-like knowledge features built in.</p>
+                <p>Browse, edit, and manage workspace files through an intuitive explorer. Upload, download, and
+                    organize &mdash; with Obsidian-like knowledge features built in.</p>
             </div>
         </div>
 
         <!-- Collaboration & Community -->
         <div class="section-label">Collaboration &amp; Community</div>
         <h2 class="section-title">Build Together</h2>
-        <p class="section-desc">Connect with your team and the OPAI community. Share work, exchange ideas, and collaborate in real time.</p>
+        <p class="section-desc">Connect with your team and the OPAI community. Share work, exchange ideas, and
+            collaborate in real time.</p>
         <div class="feature-grid">
             <div class="feature-card fc-messenger">
                 <div class="feature-icon">&#9993;</div>
                 <h3>Messenger</h3>
-                <p>Real-time team messaging. Direct messages, group conversations, and file sharing &mdash; built into your workspace.</p>
+                <p>Real-time team messaging. Direct messages, group conversations, and file sharing &mdash; built into
+                    your workspace.</p>
             </div>
             <div class="feature-card fc-forum">
                 <div class="feature-icon">&#128227;</div>
                 <h3>Forum</h3>
-                <p>Developer community hub. Share posts, start discussions, run polls, and drop code snippets. A living knowledge base.</p>
+                <p>Developer community hub. Share posts, start discussions, run polls, and drop code snippets. A living
+                    knowledge base.</p>
             </div>
             <div class="feature-card fc-teamhub">
                 <div class="feature-icon">&#128101;</div>
                 <h3>Team Hub</h3>
-                <p>Collaborative workspace sharing. Invite other OPAI members, coordinate tasks, and manage team workflows from one central hub.</p>
+                <p>Collaborative workspace sharing. Invite other OPAI members, coordinate tasks, and manage team
+                    workflows from one central hub.</p>
             </div>
         </div>
 
         <!-- Platform & Operations -->
         <div class="section-label">Platform &amp; Operations</div>
         <h2 class="section-title">Everything You Need to Run</h2>
-        <p class="section-desc">System health, documentation, automations, and the marketplace &mdash; the operational backbone of your workspace.</p>
+        <p class="section-desc">System health, documentation, automations, and the marketplace &mdash; the operational
+            backbone of your workspace.</p>
         <div class="feature-grid">
             <div class="feature-card fc-monitor">
                 <div class="feature-icon">&#128200;</div>
                 <h3>System Monitor</h3>
-                <p>Live system health dashboard. Track services, review agent reports, monitor performance metrics, and tail logs in real time.</p>
+                <p>Live system health dashboard. Track services, review agent reports, monitor performance metrics, and
+                    tail logs in real time.</p>
             </div>
             <div class="feature-card fc-docs">
                 <div class="feature-icon">&#128214;</div>
                 <h3>Docs</h3>
-                <p>Auto-generated platform documentation. Always current, always comprehensive &mdash; updated automatically as the system evolves.</p>
+                <p>Auto-generated platform documentation. Always current, always comprehensive &mdash; updated
+                    automatically as the system evolves.</p>
             </div>
             <div class="feature-card fc-marketplace">
                 <div class="feature-icon">&#128722;</div>
                 <h3>Marketplace</h3>
-                <p>Browse and deploy apps, workflow automation templates, WordPress plugins, and integrations from the growing BoutaByte ecosystem.</p>
+                <p>Browse and deploy apps, workflow automation templates, WordPress plugins, and integrations from the
+                    growing BoutaByte ecosystem.</p>
             </div>
         </div>
     </section>
@@ -957,7 +1208,9 @@
             <div class="workspace-card-icon">&#128274;</div>
             <div>
                 <h3>1 Dedicated Workspace Per Account</h3>
-                <p>Every account gets a fully isolated environment with its own files, agents, and configuration. Need to collaborate? Invite other OPAI members through <strong>Team Hub</strong> &mdash; share projects, coordinate tasks, and work together without mixing environments.</p>
+                <p>Every account gets a fully isolated environment with its own files, agents, and configuration. Need
+                    to collaborate? Invite other OPAI members through <strong>Team Hub</strong> &mdash; share projects,
+                    coordinate tasks, and work together without mixing environments.</p>
             </div>
         </div>
     </section>
@@ -966,9 +1219,11 @@
     <section class="pricing container" id="pricing">
         <div class="pricing-header">
             <h2>Simple, transparent pricing</h2>
-            <p>Lock in founding member rates during beta. These prices go up at launch &mdash; early adopters keep their rate forever.</p>
+            <p>Lock in founding member rates during beta. These prices go up at launch &mdash; early adopters keep their
+                rate forever.</p>
             <div class="beta-ribbon">
-                <span class="pulse" style="width:8px;height:8px;border-radius:50%;background:var(--success);animation:pulse 2s ease-in-out infinite;"></span>
+                <span class="pulse"
+                    style="width:8px;height:8px;border-radius:50%;background:var(--success);animation:pulse 2s ease-in-out infinite;"></span>
                 Beta pricing &mdash; Limited spots available
             </div>
         </div>
@@ -1040,7 +1295,8 @@
             </div>
         </div>
 
-        <p class="pricing-note">All plans include a <strong>dedicated workspace</strong>, <strong>personal onboarding</strong>, and access to the full OPAI platform during beta. Cancel anytime.</p>
+        <p class="pricing-note">All plans include a <strong>dedicated workspace</strong>, <strong>personal
+                onboarding</strong>, and access to the full OPAI platform during beta. Cancel anytime.</p>
     </section>
 
     <!-- ═══ BETA CTA ═════════════════════════════════ -->
@@ -1049,8 +1305,10 @@
             <div class="beta-badge-big">Founding Members</div>
             <h2>Early access. <span class="highlight">1:1 support.</span></h2>
             <p class="beta-desc">
-                OPAI is in active beta. Every beta member gets direct, hands-on support from the team building the platform.
-                Personal onboarding, priority feature requests, and a direct line to the developers &mdash; included with every plan.
+                OPAI is in active beta. Every beta member gets direct, hands-on support from the team building the
+                platform.
+                Personal onboarding, priority feature requests, and a direct line to the developers &mdash; included
+                with every plan.
             </p>
             <div class="beta-perks">
                 <div class="beta-perk">
@@ -1078,7 +1336,8 @@
 
     <!-- ═══ FOOTER ═══════════════════════════════════ -->
     <footer class="footer">
-        <p>&copy; 2026 OPAI &mdash; Orchestrated Projects + Agent Intelligence. A <a href="https://boutabyte.com">BoutaByte</a> product.</p>
+        <p>&copy; 2026 OPAI &mdash; Orchestrated Projects + Agent Intelligence. A <a
+                href="https://boutabyte.com">BoutaByte</a> product.</p>
     </footer>
 
     <!-- ═══ TOAST ═══════════════════════════════════ -->
@@ -1176,4 +1435,5 @@
     </script>
 
 </body>
+
 </html>

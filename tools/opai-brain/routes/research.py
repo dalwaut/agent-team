@@ -68,7 +68,13 @@ class ResearchCreate(BaseModel):
 # ── Background researcher ──────────────────────────────────────────────────────
 
 async def _run_research(session_id: str, user_id: str, query: str, scope: Optional[str]):
-    """Background task: call Claude, synthesize a research note, create brain_node."""
+    """Background task: call Claude, synthesize a research note, create brain_node.
+
+    Uses NotebookLM for pre-research when available (free, grounded Q&A),
+    then optionally refines with Claude. Falls back to Claude-only if unavailable.
+    """
+    analysis_source = "claude"
+
     try:
         # Mark as running
         await _sb_patch(
@@ -77,24 +83,70 @@ async def _run_research(session_id: str, user_id: str, query: str, scope: Option
             {"status": "running"},
         )
 
-        scope_line = f"\nFocus area: {scope}" if scope else ""
-        prompt = (
-            f"You are a research assistant creating a structured knowledge note.\n"
-            f"Research topic: {query}{scope_line}\n\n"
-            f"Write a comprehensive, well-structured research note in Markdown. Include:\n"
-            f"1. An executive summary (2–3 sentences)\n"
-            f"2. Key concepts and definitions\n"
-            f"3. Core findings or facts (bullet points)\n"
-            f"4. Practical implications or applications\n"
-            f"5. Related topics worth exploring\n"
-            f"6. Open questions\n\n"
-            f"Use clear headings (## for sections). Be thorough but concise. "
-            f"Mark speculative claims with '(speculative)'. "
-            f"Do not include a sources section — focus on synthesized knowledge.\n\n"
-            f"Return only the Markdown note, no preamble."
-        )
+        content = None
 
-        content = await call_claude(prompt, model=config.CLAUDE_MODEL, timeout=180)
+        # Try NotebookLM pre-research (free Gemini-powered RAG)
+        # Step 1: Check organized RAG notebooks first (curated knowledge, no cost)
+        # Step 2: Fall back to ephemeral notebook with web research if RAG miss
+        try:
+            from nlm import (
+                is_available, get_client, ensure_notebook,
+                research_topic, ask_notebook, ask_rag,
+            )
+
+            if is_available():
+                client = await get_client()
+                async with client:
+                    scope_line = f" Focus area: {scope}." if scope else ""
+                    structured_prompt = (
+                        f"Research topic: {query}.{scope_line} "
+                        f"Provide a comprehensive research note with: "
+                        f"1) Executive summary, 2) Key concepts, 3) Core findings, "
+                        f"4) Practical implications, 5) Related topics, 6) Open questions. "
+                        f"Use Markdown with ## headings. Be thorough but concise."
+                    )
+
+                    # Try organized RAG notebooks first (grounded in curated knowledge)
+                    rag_result = await ask_rag(client, structured_prompt, topic_hint=query)
+                    if rag_result and len(rag_result.get("answer", "")) > 200:
+                        content = rag_result["answer"]
+                        analysis_source = "notebooklm_rag"
+                        log.info("[research] RAG notebook hit for session %s", session_id)
+                    else:
+                        # No RAG match — use ephemeral notebook with web research
+                        nb_id = await ensure_notebook(client, "OPAI Research")
+                        await research_topic(client, nb_id, query)
+                        nlm_result = await ask_notebook(client, nb_id, structured_prompt)
+                        nlm_answer = nlm_result.get("answer", "")
+
+                        if len(nlm_answer) > 200:
+                            content = nlm_answer
+                            analysis_source = "notebooklm"
+                            log.info("[research] NLM web research succeeded for session %s", session_id)
+
+        except Exception as nlm_err:
+            log.warning("[research] NotebookLM unavailable, falling back to Claude: %s", nlm_err)
+
+        # Fall back to Claude (or refine NotebookLM output)
+        if not content:
+            scope_line = f"\nFocus area: {scope}" if scope else ""
+            prompt = (
+                f"You are a research assistant creating a structured knowledge note.\n"
+                f"Research topic: {query}{scope_line}\n\n"
+                f"Write a comprehensive, well-structured research note in Markdown. Include:\n"
+                f"1. An executive summary (2–3 sentences)\n"
+                f"2. Key concepts and definitions\n"
+                f"3. Core findings or facts (bullet points)\n"
+                f"4. Practical implications or applications\n"
+                f"5. Related topics worth exploring\n"
+                f"6. Open questions\n\n"
+                f"Use clear headings (## for sections). Be thorough but concise. "
+                f"Mark speculative claims with '(speculative)'. "
+                f"Do not include a sources section — focus on synthesized knowledge.\n\n"
+                f"Return only the Markdown note, no preamble."
+            )
+            content = await call_claude(prompt, model=config.CLAUDE_MODEL, timeout=180)
+            analysis_source = "claude"
 
         # Create brain_node with the result
         now = datetime.now(timezone.utc).isoformat()
@@ -103,7 +155,7 @@ async def _run_research(session_id: str, user_id: str, query: str, scope: Option
             "type": "note",
             "title": f"Research: {query[:80]}",
             "content": content,
-            "metadata": {"source": "brain_researcher", "research_id": session_id},
+            "metadata": {"source": "brain_researcher", "research_id": session_id, "analysis_source": analysis_source},
         })
         node_id = node.get("id")
 

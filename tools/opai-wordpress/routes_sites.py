@@ -1,15 +1,21 @@
 """OP WordPress — Site CRUD routes."""
 
 import base64
+import hashlib
+import hmac
+import html as _html
 import io
 import logging
 import re as _re
+import time
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
 
@@ -141,10 +147,30 @@ async def connect_site(body: ConnectSite, user: AuthUser = Depends(get_current_u
         return sites[0] if sites else row
 
 
+async def _get_shared_site_owner_ids(client: httpx.AsyncClient, user_id: str) -> list:
+    """Get owner IDs who shared OP WordPress access with this user via TeamHub."""
+    try:
+        resp = await client.get(
+            _sb_url("team_app_sharing"),
+            headers=_sb_headers_service(),
+            params={
+                "user_id": f"eq.{user_id}",
+                "app_name": "eq.op-wordpress",
+                "select": "shared_by,access_level,config",
+            },
+        )
+        if resp.status_code < 400 and resp.json():
+            return resp.json()
+    except Exception:
+        pass
+    return []
+
+
 @router.get("/sites")
 async def list_sites(user: AuthUser = Depends(get_current_user)):
-    """List user's connected WordPress sites."""
+    """List user's connected WordPress sites, including shared sites from TeamHub."""
     async with httpx.AsyncClient(timeout=30) as client:
+        # 1. Get user's own sites
         params = "?select=*&order=name.asc"
         if not user.is_admin:
             params += f"&user_id=eq.{user.id}"
@@ -154,13 +180,36 @@ async def list_sites(user: AuthUser = Depends(get_current_user)):
         )
         if resp.status_code != 200:
             raise HTTPException(500, "Failed to fetch sites")
-        return resp.json()
+        own_sites = resp.json()
+
+        # 2. Get sites shared via TeamHub app sharing (non-admin only)
+        if not user.is_admin:
+            shared_entries = await _get_shared_site_owner_ids(client, user.id)
+            for entry in shared_entries:
+                owner_id = entry.get("shared_by")
+                if not owner_id or owner_id == user.id:
+                    continue
+                owner_resp = await client.get(
+                    f"{_sb_url('wp_sites')}?user_id=eq.{owner_id}&select=*&order=name.asc",
+                    headers=_sb_headers_service(),
+                )
+                if owner_resp.status_code == 200:
+                    for site in owner_resp.json():
+                        # Don't duplicate sites the user already owns
+                        if not any(s["id"] == site["id"] for s in own_sites):
+                            site["_shared"] = True
+                            site["_shared_by"] = owner_id
+                            site["_access_level"] = entry.get("access_level", "full")
+                            own_sites.append(site)
+
+        return own_sites
 
 
 @router.get("/sites/{site_id}")
 async def get_site(site_id: str, user: AuthUser = Depends(get_current_user)):
-    """Get a single site's details."""
+    """Get a single site's details. Supports shared sites via TeamHub."""
     async with httpx.AsyncClient(timeout=30) as client:
+        # 1. Try direct ownership (or admin sees all)
         url = f"{_sb_url('wp_sites')}?id=eq.{site_id}&select=*"
         if not user.is_admin:
             url += f"&user_id=eq.{user.id}"
@@ -168,9 +217,26 @@ async def get_site(site_id: str, user: AuthUser = Depends(get_current_user)):
         if resp.status_code != 200:
             raise HTTPException(500, "Failed to fetch site")
         sites = resp.json()
-        if not sites:
-            raise HTTPException(404, "Site not found")
-        return sites[0]
+        if sites:
+            return sites[0]
+
+        # 2. Check if site is shared with this user via TeamHub
+        if not user.is_admin:
+            shared_entries = await _get_shared_site_owner_ids(client, user.id)
+            if shared_entries:
+                for entry in shared_entries:
+                    owner_id = entry.get("shared_by")
+                    if not owner_id:
+                        continue
+                    url2 = f"{_sb_url('wp_sites')}?id=eq.{site_id}&user_id=eq.{owner_id}&select=*"
+                    resp2 = await client.get(url2, headers=_sb_headers_service())
+                    if resp2.status_code == 200 and resp2.json():
+                        site = resp2.json()[0]
+                        site["_shared"] = True
+                        site["_shared_by"] = owner_id
+                        return site
+
+        raise HTTPException(404, "Site not found")
 
 
 @router.get("/sites/{site_id}/credentials")
@@ -184,10 +250,96 @@ async def get_credentials(site_id: str, user: AuthUser = Depends(get_current_use
     }
 
 
+@router.get("/sites/{site_id}/wp-login")
+async def wp_login_redirect(site_id: str,
+                            redirect: str = Query("/wp-admin/"),
+                            token: str = Query("")):
+    """Auto-login to WordPress via OPAI Connector's /auto-login endpoint.
+
+    Generates a time-limited HMAC-signed token using the connector key,
+    then redirects the browser directly to the WP site's auto-login URL.
+    The connector sets the WP auth cookie server-side and redirects to
+    the target admin page. No cross-origin cookies, no iframes.
+
+    Auth via query-param Supabase JWT (this is opened as a new browser tab).
+    """
+    from auth import decode_token, _enrich_user
+
+    if not token:
+        log.warning("wp-login: no token provided")
+        raise HTTPException(401, "Authentication required")
+
+    # Validate the Supabase JWT
+    try:
+        user = await decode_token(token)
+        user = await _enrich_user(user)
+        log.info("wp-login: user=%s site=%s redirect=%s", user.email, site_id, redirect)
+    except Exception as e:
+        log.warning("wp-login: token validation failed: %s", e)
+        raise HTTPException(401, f"Invalid token: {e}")
+
+    # Fetch site
+    try:
+        site = await get_site(site_id, user)
+    except Exception as e:
+        log.error("wp-login: failed to fetch site %s: %s", site_id, e)
+        raise
+
+    site_url = site["url"].rstrip("/")
+    site_name = site.get("name") or site_url
+    username = site.get("username") or ""
+    connector_secret = site.get("connector_secret") or ""
+
+    # Keep redirect as a path (connector rebuilds full URL via home_url() to avoid
+    # www/non-www cookie domain mismatches)
+    redirect_path = redirect if redirect.startswith("/") else "/" + redirect
+
+    log.info("wp-login: site=%s (%s) wp_user=%s has_connector_key=%s redirect=%s",
+             site_name, site_url, username,
+             bool(connector_secret), redirect_path)
+
+    if not username:
+        log.warning("wp-login: no username for site %s", site_name)
+        raise HTTPException(400, "No WordPress username configured for this site")
+
+    if not connector_secret:
+        log.warning("wp-login: no connector key for site %s — falling back to login page",
+                     site_name)
+        # Fallback: just open the WP login page
+        return RedirectResponse(
+            site_url + "/wp-login.php?redirect_to=" + site_url + redirect_path,
+            status_code=302,
+        )
+
+    # Generate HMAC-signed auto-login token
+    ts = str(int(time.time()))
+    payload = f"autologin:{ts}:{username}"
+    sig = hmac.new(connector_secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+
+    # Build the auto-login URL on the WP site (query-var, not REST)
+    # Pass redirect as path only — connector rebuilds canonical URL via home_url()
+    params = urlencode({
+        "opai_autologin": "1",
+        "t": ts,
+        "u": username,
+        "sig": sig,
+        "r": redirect_path,
+    })
+    auto_login_url = f"{site_url}/?{params}"
+
+    log.info("wp-login: redirecting to connector auto-login for %s (token valid 60s)",
+             site_name)
+
+    return RedirectResponse(auto_login_url, status_code=302)
+
+
 @router.put("/sites/{site_id}")
 async def update_site(site_id: str, body: UpdateSite,
                       user: AuthUser = Depends(get_current_user)):
-    """Update a site's configuration."""
+    """Update a site's configuration. Supports shared users with full access."""
+    # Verify access first (ownership or sharing)
+    site = await get_site(site_id, user)
+
     update = {k: v for k, v in body.dict().items() if v is not None}
     if not update:
         raise HTTPException(400, "No fields to update")
@@ -198,10 +350,12 @@ async def update_site(site_id: str, body: UpdateSite,
 
     update["updated_at"] = "now()"
 
+    # Use the site owner's user_id for the DB filter (shared users update owner's site)
+    owner_id = site["user_id"]
     async with httpx.AsyncClient(timeout=30) as client:
         url = f"{_sb_url('wp_sites')}?id=eq.{site_id}"
         if not user.is_admin:
-            url += f"&user_id=eq.{user.id}"
+            url += f"&user_id=eq.{owner_id}"
         resp = await client.patch(url, headers=_sb_headers_service(), json=update)
         if resp.status_code not in (200, 204):
             raise HTTPException(500, f"Failed to update site: {resp.text}")
@@ -213,9 +367,10 @@ async def update_site(site_id: str, body: UpdateSite,
 
 @router.delete("/sites/{site_id}")
 async def delete_site(site_id: str, user: AuthUser = Depends(get_current_user)):
-    """Remove a connected site."""
+    """Remove a connected site. Only the site owner or admin can delete."""
     from services.site_manager import remove_site
 
+    # Shared users cannot delete sites — only the owner can
     async with httpx.AsyncClient(timeout=30) as client:
         url = f"{_sb_url('wp_sites')}?id=eq.{site_id}"
         if not user.is_admin:
@@ -223,6 +378,10 @@ async def delete_site(site_id: str, user: AuthUser = Depends(get_current_user)):
         resp = await client.delete(url, headers=_sb_headers_service())
         if resp.status_code not in (200, 204):
             raise HTTPException(500, "Failed to delete site")
+        # If nothing was deleted (shared user), raise 403
+        deleted = resp.json() if resp.status_code == 200 else []
+        if not deleted and not user.is_admin:
+            raise HTTPException(403, "Only the site owner can delete this site")
 
     remove_site(site_id)
     return {"ok": True}
@@ -450,8 +609,8 @@ def _build_connector_zip() -> bytes:
 
 
 @router.get("/connector/download")
-async def download_connector(user: AuthUser = Depends(get_current_user)):
-    """Download the OPAI Connector plugin as a ZIP file."""
+async def download_connector():
+    """Download the OPAI Connector plugin as a ZIP file. No auth — it's just source code."""
     from fastapi.responses import Response
     zip_data = _build_connector_zip()
     return Response(

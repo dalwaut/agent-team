@@ -1,3 +1,3 @@
 # Report: security
 
-The full security audit report has been output above. The audit identified **47 vulnerabilities** across the OPAI platform, with the most critical being the massive secret exposure (27+ `.env` files with live production credentials committed to git), service key authentication bypass, shell command injection in SSH provisioning, missing Stripe webhook verification in BoutaCare, and broken RLS policies. The top 5 prioritized recommendations are listed at the end of the report.
+The full security audit report is above. The most urgent finding is **SEC-01** — `migrate_credentials.py` contains ~100 production credentials in plaintext and should be deleted and scrubbed from history immediately, followed by rotating every exposed credential. The second priority is completing the vault migration to eliminate the 30+ plaintext `.env` files.

@@ -1,0 +1,23 @@
+[Unit]
+Description=OPAI ElizaOS Runtime — managed autonomous agent runtime (port 8085)
+After=network.target
+
+[Service]
+Type=simple
+User=dallas
+Group=dallas
+WorkingDirectory=/workspace/synced/opai/tools/opai-eliza
+ExecStartPre=-/workspace/synced/opai/tools/opai-vault/scripts/vault-env.sh opai-eliza
+ExecStart=/home/dallas/.bun/bin/bun run src/index.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+Environment=NODE_ENV=production
+Environment=ELIZA_PORT=8085
+Environment=CHARACTERS_DIR=/workspace/synced/opai/tools/opai-eliza/characters
+Environment=PATH=/home/dallas/.bun/bin:/home/dallas/.nvm/versions/node/v20.19.5/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/workspace/synced/opai/tools/opai-eliza/.env
+EnvironmentFile=-%t/opai-vault/opai-eliza.env
+
+[Install]
+WantedBy=default.target

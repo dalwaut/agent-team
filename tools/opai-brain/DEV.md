@@ -1,6 +1,6 @@
 # 2nd Brain — Developer Reference
 
-> **Last updated**: 2026-02-22 (Phase 6)
+> **Last updated**: 2026-03-01 (Phase 9)
 > **For high-level docs** see: `Library/opai-wiki/brain.md`
 > **This file covers**: JS state, component wiring, data flow, backend internals, gotchas, and where to add things
 
@@ -41,7 +41,7 @@ tools/opai-brain/
 │   ├── snapshots.py  Version snapshot CRUD + write_snapshot() helper
 │   ├── inbox.py      Inbox capture/promote/dismiss
 │   ├── search.py     FTS via Supabase wfts
-│   ├── graph.py      D3-ready graph data
+│   ├── graph.py      D3-ready graph data + position CRUD + group derivation
 │   ├── canvas.py     Canvas positions + links + suggest-label
 │   ├── schedule.py   Admin scheduler API
 │   ├── ai.py         AI co-editor (tier-gated)
@@ -49,7 +49,7 @@ tools/opai-brain/
 │   └── tier.py       GET /api/me
 ├── static/
 │   ├── index.html    SPA shell — all HTML elements, CDN scripts
-│   ├── app.js        All frontend logic (~1700 lines)
+│   ├── app.js        All frontend logic (~2400 lines)
 │   └── style.css     Dark theme + all component styles
 └── data/             Created on startup; currently empty (future: embeddings cache)
 ```
@@ -270,6 +270,14 @@ let _aiAction = null;
 
 // Graph
 let _graphData = null;
+let _graphPanelNodeId = null;    // node shown in side panel
+let _graphPanelCache = {};       // { summary: html, original: html|null }
+let _graphPanelTags = [];        // current tags for open node
+let _graphPanelFullNode = null;  // full node data for editing
+let _graphPanelEditing = false;  // edit mode toggle
+let _graphSim = null;            // D3 simulation reference
+let _graphFrozen = false;        // freeze toggle
+let _graphGroupBy = 'none';      // 'none' | 'source' | 'type'
 
 // Canvas
 let _canvasData   = null;    // {nodes[], links[]}
@@ -579,9 +587,13 @@ body { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
 |-----|-------|---------|
 | `canvas_x` | 3 | Canvas X position (float) |
 | `canvas_y` | 3 | Canvas Y position (float) |
+| `graph_x` | 9 | Graph X position (float) — persistent drag position |
+| `graph_y` | 9 | Graph Y position (float) — persistent drag position |
 | `blocks` | 6 | Editor.js block array (JSON) |
 | `source` | 2 | "research" for AI-synthesized notes |
 | `research_id` | 2 | UUID linking to brain_research row |
+| `sync_dir` | sync | Source directory from library sync (e.g. "notes/plans", "Library/helm-playbooks") |
+| `sync_source_path` | sync | Relative path to original file on disk (e.g. "notes/plans/my-plan.md") |
 
 Never replace the entire metadata object — always merge:
 ```python
@@ -773,3 +785,125 @@ For reference when coming back to this codebase:
 - Systemd unit — no changes
 - Caddy config — no changes
 - Monitor — no changes
+
+---
+
+## Phase 9 — Obsidian-Style Graph (2026-03-01)
+
+Rewrote the Graph tab from a chaotic force-directed blob to an Obsidian-style knowledge graph with persistent positions, cluster grouping, and a full CRUD side panel.
+
+### Problem Solved
+
+With 60+ library-synced nodes and 233 links, the original D3 force graph was an unreadable tangle:
+- Nodes snapped back after dragging (`d.fx = null` on drag end)
+- No position persistence across page loads
+- All nodes pulled to center — no grouping by source
+- No way to view original source files (only AI summaries)
+- Graph2 (ExcaliBrain-style) experiment was tried and removed
+
+### Backend Changes — `routes/graph.py`
+
+**Existing endpoint enhanced**:
+- `GET /api/graph` — now extracts `graph_x`/`graph_y` from metadata and surfaces as `x`/`y` on each node; derives `group` from `metadata.sync_dir` using full path (not collapsed first segment)
+
+**New endpoints**:
+- `PATCH /api/graph/nodes/{id}/position` — save `{x, y}` → merged into `metadata.graph_x`/`graph_y`
+- `POST /api/graph/save-all-positions` — bulk save for Lock All button. Body: `{positions: [{id, x, y}, ...]}`
+- `POST /api/graph/reset-positions` — clear all `graph_x`/`graph_y` from metadata
+
+**Group derivation** — `_derive_group(meta, node_type)`:
+```python
+# Uses full sync_dir path for granular grouping:
+# "notes/plans" → "notes/plans" (NOT collapsed to "notes")
+# "Library/helm-playbooks" → "helm-playbooks" (Library/ prefix stripped)
+# No sync_dir → "manual:<type>"
+```
+This gives 5+ distinct groups instead of the original 2.
+
+### Backend Changes — `routes/nodes.py`
+
+**New endpoint**:
+- `GET /api/nodes/{id}/original` — reads original source file from disk using `metadata.sync_source_path`. Resolves against workspace root, path traversal protection, returns `{source_path, filename, content, size}`.
+
+### Frontend — Side Panel Architecture
+
+The graph side panel (double-click a node) is now a full CRUD interface:
+
+```
+.graph-side-panel (slide-in from right, resizable)
+├── resize handle (drag left edge, min 280px, max 70% viewport)
+├── header: title (double-click to edit inline) + close button
+├── meta: type badge, connection count, group label
+├── tags: add/remove with optimistic UI
+├── source path: sync_source_path when present
+├── view toggle: Summary | Original | Edit
+│   ├── Summary: rendered markdown (default)
+│   ├── Original: fetched from GET /api/nodes/{id}/original
+│   └── Edit: textarea with raw markdown, Save/Cancel buttons
+├── connections: list with navigate + delete per connection
+└── actions: Open in Library | Close
+```
+
+### Frontend — Graph Toolbar
+
+```
+Knowledge Graph | Auto-Suggest | Legend | Group By [None/Source Dir/Type] | Freeze | Lock All | Reset | [node count]
+```
+
+- **Group By**: adds `forceX`/`forceY` pulling nodes toward cluster centers
+- **Freeze/Unfreeze**: stops/restarts simulation
+- **Lock All**: pins all nodes + bulk-save positions to server
+- **Reset**: confirm → clears all saved positions → re-simulates
+
+### Key State Variables (app.js)
+
+```javascript
+let _graphPanelCache = {};       // { summary: html, original: html|null }
+let _graphPanelTags = [];        // current tags for open node
+let _graphPanelFullNode = null;  // full node data for editing
+let _graphPanelEditing = false;  // edit mode active
+let _graphSim = null;            // D3 simulation reference
+let _graphFrozen = false;        // freeze state
+let _graphGroupBy = 'none';      // grouping mode
+```
+
+### Key Functions Added
+
+| Function | Purpose |
+|----------|---------|
+| `openGraphPanel(nodeData)` | Fetches full node, renders side panel with tags, connections, content |
+| `graphPanelEditTitle()` | Double-click title → inline input, saves via PATCH |
+| `_graphPanelRenderTags()` | Renders tag chips with add/remove |
+| `graphPanelAddTagInput()` / `graphPanelRemoveTag(tag)` | Tag CRUD with optimistic UI |
+| `graphPanelDeleteConn(linkId)` | Delete connection, re-render |
+| `graphPanelShowSummary()` / `graphPanelShowOriginal()` | Toggle rendered views |
+| `graphPanelStartEdit()` | Swap body for textarea with raw markdown |
+| `graphPanelSaveEdit()` | PATCH content, refresh cache, return to summary view |
+| `graphPanelCancelEdit()` | Discard changes, return to summary view |
+| `saveGraphPosition(id, x, y)` | Debounced PATCH to `/api/graph/nodes/{id}/position` |
+| `onGraphGroupChange(value)` | Set grouping mode, re-render clusters |
+| `toggleGraphFreeze()` | Stop/restart simulation |
+| `graphLockAll()` | Pin all + bulk POST |
+| `graphResetLayout()` | Confirm + POST reset + re-render |
+| `initPanelResize()` | IIFE: mousedown/move/up for drag-to-resize |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `routes/graph.py` | Fixed `_derive_group()` for full path; added 3 new endpoints (position, bulk save, reset); added `_sb_patch`, `BaseModel`, `HTTPException` |
+| `routes/nodes.py` | Added `GET /api/nodes/{id}/original` endpoint |
+| `static/index.html` | Added resize handle, tags row, edit button + textarea area, removed Graph2 tab |
+| `static/app.js` | ~300 lines added: side panel CRUD, edit mode, resize handler, group/freeze/lock/reset toolbar handlers. ~500 lines removed: Graph2 code |
+| `static/style.css` | ~80 lines added: resize handle, tags, edit area, body spacing, connection delete. ~60 lines removed: all `.g2-*` styles |
+
+### Database Changes
+
+None — positions stored in existing `brain_nodes.metadata` JSONB column as `graph_x`/`graph_y`.
+
+### Not Changed
+
+- DB schema — no new tables or columns
+- Systemd unit — no changes
+- Caddy config — no changes
+- Mobile app — no changes

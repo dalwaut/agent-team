@@ -7,6 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="/auth/static/js/navbar.js" defer></script>
+    <link rel="stylesheet" href="css/cleanup.css">
     <style>
         :root {
             --bg: #0a0a0f;
@@ -294,6 +295,9 @@
             transition: border-color 0.2s, box-shadow 0.2s;
             overflow: hidden;
         }
+        .email-card.expanded {
+            overflow: visible;
+        }
         .email-card:hover {
             border-color: var(--border-light);
             box-shadow: var(--shadow);
@@ -372,8 +376,8 @@
             color: var(--text-dim);
         }
 
-        /* ── Tag Pills ───────────────────────── */
-        .tag-pill {
+        /* ── Label Pills ──────────────────────── */
+        .label-pill {
             display: inline-block;
             padding: 0.1rem 0.5rem;
             border-radius: 10px;
@@ -382,20 +386,20 @@
             text-transform: uppercase;
             letter-spacing: 0.03em;
         }
-        .tag-urgent { background: var(--red-dim); color: var(--red); }
-        .tag-priority { background: var(--red-dim); color: var(--red); }
-        .tag-client { background: var(--blue-dim); color: var(--blue); }
-        .tag-customer { background: var(--blue-dim); color: var(--blue); }
-        .tag-internal { background: var(--purple-dim); color: var(--accent-light); }
-        .tag-team { background: var(--purple-dim); color: var(--accent-light); }
-        .tag-invoice { background: var(--green-dim); color: var(--green); }
-        .tag-billing { background: var(--green-dim); color: var(--green); }
-        .tag-newsletter { background: #63636320; color: var(--text-muted); }
-        .tag-marketing { background: #63636320; color: var(--text-muted); }
-        .tag-task { background: var(--orange-dim); color: var(--orange); }
-        .tag-action { background: var(--orange-dim); color: var(--orange); }
-        .tag-informational { background: var(--teal-dim); color: var(--teal); }
-        .tag-default { background: #2a2a3a; color: var(--text-muted); }
+        .label-urgent { background: var(--red-dim); color: var(--red); }
+        .label-priority { background: var(--red-dim); color: var(--red); }
+        .label-client { background: var(--blue-dim); color: var(--blue); }
+        .label-customer { background: var(--blue-dim); color: var(--blue); }
+        .label-internal { background: var(--purple-dim); color: var(--accent-light); }
+        .label-team { background: var(--purple-dim); color: var(--accent-light); }
+        .label-invoice { background: var(--green-dim); color: var(--green); }
+        .label-billing { background: var(--green-dim); color: var(--green); }
+        .label-newsletter { background: #63636320; color: var(--text-muted); }
+        .label-marketing { background: #63636320; color: var(--text-muted); }
+        .label-task { background: var(--orange-dim); color: var(--orange); }
+        .label-action { background: var(--orange-dim); color: var(--orange); }
+        .label-informational { background: var(--teal-dim); color: var(--teal); }
+        .label-default { background: #2a2a3a; color: var(--text-muted); }
 
         /* ── Outcome Badges ──────────────────── */
         .outcome-badge {
@@ -410,7 +414,7 @@
         }
         .outcome-skipped { background: #63636320; color: var(--text-muted); }
         .outcome-classified { background: var(--blue-dim); color: var(--blue); }
-        .outcome-tagged { background: var(--purple-dim); color: var(--accent-light); }
+        .outcome-labeled { background: var(--purple-dim); color: var(--accent-light); }
         .outcome-draft { background: var(--yellow-dim); color: var(--yellow); }
         .outcome-sent { background: var(--green-dim); color: var(--green); }
         .outcome-error { background: var(--red-dim); color: var(--red); }
@@ -449,7 +453,7 @@
             margin-top: 3px;
         }
         .timeline-dot.classify { background: var(--blue); }
-        .timeline-dot.tag { background: var(--accent); }
+        .timeline-dot.label { background: var(--accent); }
         .timeline-dot.draft { background: var(--yellow); }
         .timeline-dot.queue { background: var(--orange); }
         .timeline-dot.send { background: var(--green); }
@@ -572,12 +576,58 @@
             color: var(--text);
             white-space: pre-wrap;
             line-height: 1.5;
-            max-height: 200px;
-            overflow-y: auto;
+            max-height: 120px;
+            overflow: hidden;
+            position: relative;
+        }
+        .queue-draft-text:not(.expanded)::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: linear-gradient(transparent, var(--surface));
+            pointer-events: none;
+        }
+        .queue-draft-text.expanded {
+            max-height: none;
+            overflow: visible;
+        }
+        .queue-draft-text.expanded::after {
+            display: none;
+        }
+        .queue-expand-btn {
+            background: none;
+            border: none;
+            color: var(--accent-light);
+            font-size: 0.75rem;
+            cursor: pointer;
+            padding: 0.25rem 0;
+            font-family: inherit;
+        }
+        .queue-expand-btn:hover { text-decoration: underline; }
+        .queue-reason {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            margin-top: 0.25rem;
+            font-style: italic;
+        }
+        .queue-edited-badge {
+            display: inline-block;
+            font-size: 0.65rem;
+            color: var(--yellow);
+            background: var(--yellow-dim);
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            text-transform: none;
+            font-weight: 500;
+            margin-left: 0.4rem;
+            vertical-align: middle;
         }
         .queue-draft-edit {
             width: 100%;
-            min-height: 120px;
+            min-height: 150px;
             padding: 0.6rem;
             background: var(--bg);
             border: 1px solid var(--accent);
@@ -595,6 +645,7 @@
             justify-content: flex-end;
             padding-top: 0.5rem;
             border-top: 1px solid var(--border);
+            flex-wrap: wrap;
         }
 
         /* ── Activity Timeline ───────────────── */
@@ -623,7 +674,7 @@
             flex-shrink: 0;
         }
         .action-dot.classify { background: var(--blue); }
-        .action-dot.tag { background: var(--accent); }
+        .action-dot.label { background: var(--accent); }
         .action-dot.draft { background: var(--yellow); }
         .action-dot.queue { background: var(--orange); }
         .action-dot.send { background: var(--green); }
@@ -1183,8 +1234,8 @@
         .btn-danger { color:var(--red); border-color:var(--red); }
         .btn-danger:hover { background:rgba(225,112,85,0.1); }
         .bl-chip { border-color:var(--red); color:var(--red); }
-        .classify-dropdown { position:relative; }
-        .classify-dropdown-menu { display:none; position:absolute; bottom:100%; left:0; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); min-width:220px; z-index:10; max-height:calc(100vh - 60px); overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+        .classify-dropdown { position:relative; z-index:20; }
+        .classify-dropdown-menu { display:none; position:absolute; bottom:100%; left:0; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius); min-width:220px; z-index:50; max-height:calc(100vh - 60px); overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border) transparent; box-shadow: 0 -4px 16px rgba(0,0,0,0.4); }
         .classify-dropdown-menu::-webkit-scrollbar { width:4px; }
         .classify-dropdown-menu::-webkit-scrollbar-track { background:transparent; }
         .classify-dropdown-menu::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
@@ -1279,6 +1330,32 @@
             .controls-sidebar { width: 100%; max-width: 100%; }
             .account-dropdown { min-width: 280px; }
         }
+        .queue-saved-badge {
+            display: inline-block; font-size: 0.72rem; color: var(--green);
+            margin-top: 0.3rem; font-weight: 500;
+        }
+
+        /* ── Regenerate Options ─────────────── */
+        .regen-options { display: flex; gap: 1rem; margin-top: 0.5rem; }
+        .regen-row { flex: 1; display: flex; flex-direction: column; gap: 0.3rem; }
+        .regen-row label { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; }
+        .regen-select {
+            background: var(--surface); color: var(--text); border: 1px solid var(--border);
+            border-radius: 6px; padding: 0.45rem 0.6rem; font-size: 0.82rem;
+            cursor: pointer; outline: none;
+        }
+        .regen-select:focus { border-color: var(--green); }
+
+        /* ── Toast Notifications ────────────── */
+        .toast {
+            position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(100px);
+            background: var(--green); color: #fff; padding: 0.75rem 1.5rem; border-radius: 8px;
+            font-size: 0.85rem; font-weight: 500; z-index: 9999; opacity: 0;
+            transition: transform 0.3s ease, opacity 0.3s ease; pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .toast.toast-error { background: var(--red, #e74c3c); }
     </style>
 </head>
 <body>
@@ -1301,17 +1378,25 @@
             </div>
         </div>
 
-        <div class="header-center">
+        <div class="header-center" style="gap:12px">
+            <div class="view-toggle">
+                <button class="view-toggle-btn active" id="view-live-btn" onclick="cuSwitchView('live')">
+                    <span class="toggle-dot"></span> Live
+                </button>
+                <button class="view-toggle-btn" id="view-cleanup-btn" onclick="cuSwitchView('cleanup')">
+                    <span class="toggle-dot"></span> Cleanup
+                </button>
+            </div>
             <div class="segmented-control" id="mode-control">
-                <button class="seg-btn" data-mode="suggestion" onclick="setMode('suggestion')" title="Suggestion: classify + tag only. No drafting or sending.">
+                <button class="seg-btn" data-mode="suggestion" onclick="setMode('suggestion')" title="Suggestion: classify + label only. No drafting or sending.">
                     Suggestion
                     <span class="seg-caps"><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap"></span><span class="seg-cap"></span><span class="seg-cap"></span></span>
                 </button>
-                <button class="seg-btn" data-mode="internal" onclick="setMode('internal')" title="Internal: classify + tag + draft. Drafts queued for admin approval.">
+                <button class="seg-btn" data-mode="internal" onclick="setMode('internal')" title="Internal: classify + label + draft. Drafts queued for admin approval.">
                     Internal
                     <span class="seg-caps"><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap"></span></span>
                 </button>
-                <button class="seg-btn" data-mode="auto" onclick="setMode('auto')" title="Auto: classify + tag + draft + auto-send (rate limited). Use with caution.">
+                <button class="seg-btn" data-mode="auto" onclick="setMode('auto')" title="Auto: classify + label + draft + auto-send (rate limited). Use with caution.">
                     Auto
                     <span class="seg-caps"><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap on"></span><span class="seg-cap on"></span></span>
                 </button>
@@ -1356,6 +1441,119 @@
         </div>
     </div>
 
+    <!-- ═══ Inbox Cleanup View ═══════════════════════════════════ -->
+    <div id="cleanup-view">
+        <!-- Cleanup Stats Bar -->
+        <div class="cu-stats-bar">
+            <div class="cu-stat">
+                <span class="cu-stat-dot purple"></span>
+                <strong id="cu-stat-total">0</strong> total
+            </div>
+            <div class="cu-stat">
+                <span class="cu-stat-dot green"></span>
+                <strong id="cu-stat-cleaned">0</strong> cleaned
+            </div>
+            <div class="cu-stat">
+                <span class="cu-stat-dot yellow"></span>
+                <strong id="cu-stat-flagged">0</strong> flagged
+            </div>
+            <div class="cu-progress-wrap" id="cu-progress-wrap" style="display:none">
+                <div class="cu-progress-track">
+                    <div class="cu-progress-fill" id="cu-progress-fill"></div>
+                </div>
+                <span class="cu-progress-text" id="cu-progress-text">0%</span>
+            </div>
+            <button class="cu-scan-btn" onclick="cuStartScan()" title="Rescan inbox">&#128260; Rescan</button>
+        </div>
+
+        <!-- 3-Panel Layout (hidden until scan data exists) -->
+        <div class="cu-layout" style="display:none">
+            <!-- Sidebar -->
+            <div class="cu-sidebar" id="cu-sidebar"></div>
+
+            <!-- Email list panel -->
+            <div class="cu-email-panel">
+                <!-- Bulk action bar -->
+                <div class="cu-bulk-bar" id="cu-bulk-bar">
+                    <span class="cu-bulk-count" id="cu-bulk-count">0 selected</span>
+                    <div class="cu-bulk-actions">
+                        <button class="cu-bulk-btn danger" onclick="cuBulkTrash()">&#128465; Trash</button>
+                        <button class="cu-bulk-btn" onclick="cuBulkArchive()">&#128230; Archive</button>
+                        <button class="cu-bulk-btn" onclick="cuBulkFlag()">&#9873; Flag</button>
+                        <button class="cu-bulk-btn" onclick="cuSelectAll()">Select All</button>
+                    </div>
+                    <button class="cu-bulk-clear" onclick="cuDeselectAll()">Clear selection</button>
+                </div>
+
+                <!-- Search bar -->
+                <div class="cu-search-bar">
+                    <div class="cu-search-input-wrap">
+                        <span class="cu-search-icon">&#128269;</span>
+                        <input type="text" class="cu-search-input" id="cu-search-input"
+                            placeholder="Search with AI... e.g. &quot;subscription emails I never open&quot;"
+                            onkeydown="cuSearchKeydown(event)"
+                            autocomplete="off" spellcheck="false">
+                    </div>
+                    <button class="cu-search-btn" id="cu-search-btn" onclick="cuSearch()">Search</button>
+                </div>
+                <div class="cu-quick-filters">
+                    <button class="cu-quick-chip" onclick="cuQuickSearch('junk emails I can safely delete')">Junk I can delete</button>
+                    <button class="cu-quick-chip" onclick="cuQuickSearch('old promotional emails')">Old promos</button>
+                    <button class="cu-quick-chip" onclick="cuQuickSearch('newsletters I never read')">Dead newsletters</button>
+                    <button class="cu-quick-chip" onclick="cuQuickSearch('emails that need a reply')">Needs reply</button>
+                    <button class="cu-quick-chip" onclick="cuQuickSearch('automated notifications older than 6 months')">Stale notifications</button>
+                </div>
+
+                <!-- List header -->
+                <div class="cu-list-header">
+                    <div class="cu-list-header-check">
+                        <input type="checkbox" onchange="cuToggleSelectAll()" title="Select all" style="accent-color:var(--cu-accent)">
+                    </div>
+                    <div></div>
+                    <div>Sender / Subject</div>
+                    <div style="text-align:right">Date</div>
+                    <div style="text-align:right">Category</div>
+                </div>
+
+                <!-- Email rows -->
+                <div class="cu-email-list" id="cu-email-list"></div>
+
+                <!-- Pagination -->
+                <div class="cu-pagination" id="cu-pagination"></div>
+            </div>
+
+            <!-- Preview panel -->
+            <div class="cu-preview-panel" id="cu-preview">
+                <div class="cu-preview-empty">
+                    <div class="cu-preview-empty-icon">&#128236;</div>
+                    <div class="cu-preview-empty-text">Click an email to preview</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main content area (for scan empty/scanning states) -->
+        <div id="cu-main-content" style="display:flex;flex:1"></div>
+    </div>
+
+    <!-- Cleanup Confirm Modal -->
+    <div class="cu-modal-overlay" id="cu-modal-overlay">
+        <div class="cu-modal">
+            <div class="cu-modal-icon" id="cu-modal-icon">&#128465;</div>
+            <div class="cu-modal-title" id="cu-modal-title">Confirm</div>
+            <div class="cu-modal-body" id="cu-modal-body">Are you sure?</div>
+            <label class="cu-modal-check">
+                <input type="checkbox" id="cu-modal-skip"> Don't ask again this session
+            </label>
+            <div class="cu-modal-actions">
+                <button class="cu-modal-btn cancel" onclick="cuCloseModal()">Cancel</button>
+                <button class="cu-modal-btn confirm-trash" id="cu-modal-confirm" onclick="cuConfirmModal()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Live View (existing daily monitor) ═══ -->
+    <div id="live-view">
+
     <!-- Alert Banner (hidden when empty) -->
     <div id="alert-banner" style="display:none"></div>
 
@@ -1385,7 +1583,7 @@
                         <select id="inbox-filter" onchange="loadEmails()">
                             <option value="">All emails</option>
                             <option value="classify">Classified</option>
-                            <option value="tag">Tagged</option>
+                            <option value="label">Labeled</option>
                             <option value="draft">Drafted</option>
                             <option value="send">Sent</option>
                             <option value="skip">Skipped</option>
@@ -1420,7 +1618,7 @@
                 <select id="activity-filter" onchange="loadActivity()">
                     <option value="">All actions</option>
                     <option value="classify">Classify</option>
-                    <option value="tag">Tag</option>
+                    <option value="label">Label</option>
                     <option value="draft">Draft</option>
                     <option value="send">Send</option>
                     <option value="skip">Skip</option>
@@ -1458,6 +1656,8 @@
             </div>
         </div>
     </div>
+
+    </div><!-- /live-view -->
 
     <!-- Controls Sidebar -->
     <div class="controls-overlay" id="controls-overlay" onclick="closeControls()"></div>
@@ -1550,7 +1750,7 @@
                         Auto
                     </button>
                 </div>
-                <div class="ctrl-mode-desc" id="ctrl-mode-desc">Classify and tag only. No drafting or sending.</div>
+                <div class="ctrl-mode-desc" id="ctrl-mode-desc">Classify and label only. No drafting or sending.</div>
             </div>
 
             <!-- Autonomy Controls -->
@@ -1670,7 +1870,7 @@
                         </li>
                         <li>
                             <span class="ob-guide-icon">&#128736;</span>
-                            <div class="ob-guide-text"><strong>Granular Controls</strong> &#8212; Toggle individual permissions (tag, draft, send, move) in the Controls sidebar.</div>
+                            <div class="ob-guide-text"><strong>Granular Controls</strong> &#8212; Toggle individual permissions (label, draft, send, move) in the Controls sidebar.</div>
                         </li>
                     </ul>
                 </div>
@@ -1749,7 +1949,7 @@
                     <p class="ob-subtitle">Review your settings and create the account. You can adjust permissions anytime in the Controls sidebar.</p>
                     <div id="ob-review" style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:0.75rem 1rem;font-size:0.82rem;line-height:1.6"></div>
                     <div style="margin-top:1rem;padding:0.75rem;background:var(--blue-dim);border-radius:var(--radius);font-size:0.78rem;color:var(--blue)">
-                        New accounts start in <strong>Suggestion Mode</strong> with classify + tag only. Upgrade to Internal or Auto mode in Controls when ready.
+                        New accounts start in <strong>Suggestion Mode</strong> with classify + label only. Upgrade to Internal or Auto mode in Controls when ready.
                     </div>
                 </div>
             </div>
@@ -1817,5 +2017,6 @@
     </div>
 
     <script src="js/app.js"></script>
+    <script src="js/cleanup.js"></script>
 </body>
 </html>

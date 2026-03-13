@@ -59,12 +59,25 @@ class CreateBackup(BaseModel):
 
 @router.get("/schedules")
 async def list_schedules(site_id: str = None, user: AuthUser = Depends(get_current_user)):
-    """List schedules, optionally filtered by site_id."""
+    """List schedules, optionally filtered by site_id. Supports shared sites."""
     params = "?select=*,wp_sites(name,url)&order=created_at.desc"
     if site_id:
         params += f"&site_id=eq.{site_id}"
+
     if not user.is_admin:
-        params += f"&user_id=eq.{user.id}"
+        # Collect all user IDs whose schedules this user can see (own + shared)
+        from routes_sites import _get_shared_site_owner_ids
+        owner_ids = [user.id]
+        async with httpx.AsyncClient(timeout=10) as client:
+            shared = await _get_shared_site_owner_ids(client, user.id)
+            for e in shared:
+                oid = e.get("shared_by")
+                if oid and oid not in owner_ids:
+                    owner_ids.append(oid)
+        if len(owner_ids) == 1:
+            params += f"&user_id=eq.{user.id}"
+        else:
+            params += f"&user_id=in.({','.join(owner_ids)})"
 
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(f"{_sb_url('wp_schedules')}{params}", headers=_sb_headers())
@@ -75,8 +88,13 @@ async def list_schedules(site_id: str = None, user: AuthUser = Depends(get_curre
 
 @router.post("/schedules")
 async def create_schedule(body: CreateSchedule, user: AuthUser = Depends(get_current_user)):
-    """Create a new schedule."""
+    """Create a new schedule. Shared users create under site owner."""
     from services.scheduler import _compute_next_run
+    from routes_sites import get_site
+
+    # Verify access and get site owner
+    site = await get_site(body.site_id, user)
+    owner_id = site["user_id"]
 
     # Validate cron
     try:
@@ -89,7 +107,7 @@ async def create_schedule(body: CreateSchedule, user: AuthUser = Depends(get_cur
 
     row = {
         "site_id": body.site_id,
-        "user_id": user.id,
+        "user_id": owner_id,
         "name": body.name,
         "task_type": body.task_type,
         "cron_expression": body.cron_expression,
@@ -108,10 +126,25 @@ async def create_schedule(body: CreateSchedule, user: AuthUser = Depends(get_cur
         return resp.json()[0]
 
 
+async def _resolve_schedule_owner_ids(user: AuthUser) -> list:
+    """Get all user IDs whose schedules this user can access (own + shared)."""
+    if user.is_admin:
+        return []  # Admin sees all, no filter needed
+    from routes_sites import _get_shared_site_owner_ids
+    owner_ids = [user.id]
+    async with httpx.AsyncClient(timeout=10) as client:
+        shared = await _get_shared_site_owner_ids(client, user.id)
+        for e in shared:
+            oid = e.get("shared_by")
+            if oid and oid not in owner_ids:
+                owner_ids.append(oid)
+    return owner_ids
+
+
 @router.put("/schedules/{schedule_id}")
 async def update_schedule(schedule_id: str, body: UpdateSchedule,
                           user: AuthUser = Depends(get_current_user)):
-    """Update a schedule."""
+    """Update a schedule. Supports shared users."""
     update = {k: v for k, v in body.dict().items() if v is not None}
     if not update:
         raise HTTPException(400, "No fields to update")
@@ -133,9 +166,14 @@ async def update_schedule(schedule_id: str, body: UpdateSchedule,
 
     update["updated_at"] = "now()"
 
+    # Resolve accessible user IDs (own + shared owners)
+    owner_ids = await _resolve_schedule_owner_ids(user)
     url = f"{_sb_url('wp_schedules')}?id=eq.{schedule_id}"
-    if not user.is_admin:
-        url += f"&user_id=eq.{user.id}"
+    if owner_ids:
+        if len(owner_ids) == 1:
+            url += f"&user_id=eq.{owner_ids[0]}"
+        else:
+            url += f"&user_id=in.({','.join(owner_ids)})"
 
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.patch(url, headers=_sb_headers(), json=update)
@@ -149,10 +187,14 @@ async def update_schedule(schedule_id: str, body: UpdateSchedule,
 
 @router.delete("/schedules/{schedule_id}")
 async def delete_schedule(schedule_id: str, user: AuthUser = Depends(get_current_user)):
-    """Delete a schedule."""
+    """Delete a schedule. Supports shared users."""
+    owner_ids = await _resolve_schedule_owner_ids(user)
     url = f"{_sb_url('wp_schedules')}?id=eq.{schedule_id}"
-    if not user.is_admin:
-        url += f"&user_id=eq.{user.id}"
+    if owner_ids:
+        if len(owner_ids) == 1:
+            url += f"&user_id=eq.{owner_ids[0]}"
+        else:
+            url += f"&user_id=in.({','.join(owner_ids)})"
 
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.delete(url, headers=_sb_headers())
@@ -163,12 +205,18 @@ async def delete_schedule(schedule_id: str, user: AuthUser = Depends(get_current
 
 @router.post("/schedules/{schedule_id}/toggle")
 async def toggle_schedule(schedule_id: str, user: AuthUser = Depends(get_current_user)):
-    """Toggle a schedule enabled/disabled."""
+    """Toggle a schedule enabled/disabled. Supports shared users."""
+    # Resolve accessible user IDs
+    owner_ids = await _resolve_schedule_owner_ids(user)
+
     # Fetch current state
     async with httpx.AsyncClient(timeout=10) as client:
         url = f"{_sb_url('wp_schedules')}?id=eq.{schedule_id}&select=enabled"
-        if not user.is_admin:
-            url += f"&user_id=eq.{user.id}"
+        if owner_ids:
+            if len(owner_ids) == 1:
+                url += f"&user_id=eq.{owner_ids[0]}"
+            else:
+                url += f"&user_id=in.({','.join(owner_ids)})"
         resp = await client.get(url, headers=_sb_headers())
         if resp.status_code != 200 or not resp.json():
             raise HTTPException(404, "Schedule not found")

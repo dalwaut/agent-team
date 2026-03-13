@@ -703,7 +703,7 @@ WP.Dashboard = {
         const steps = {
             host_blocks_upload: [
                 'Download the OPAI Connector ZIP using the button below.',
-                'Log in to your WordPress admin at <a href="' + adminUrl + '" target="_blank" style="color:var(--primary)">' + (siteUrl || 'your-site') + '/wp-admin</a>.',
+                'Log in to your WordPress admin: <a href="#" onclick="event.preventDefault();WP.wpAdminOpen(\'/wp-admin/plugin-install.php?tab=upload\')" style="color:var(--primary)">' + (siteUrl || 'your-site') + '/wp-admin</a> (auto-login).',
                 'Go to <strong>Plugins &rsaquo; Add New Plugin &rsaquo; Upload Plugin</strong>.',
                 'Click <strong>Choose File</strong>, select <code>opai-connector.zip</code>, then click <strong>Install Now</strong>.',
                 'If prompted to replace the existing version, click <strong>Replace current with uploaded</strong>.',
@@ -712,7 +712,7 @@ WP.Dashboard = {
             ],
             no_credentials: [
                 'Download the OPAI Connector ZIP using the button below.',
-                'Log in to your WordPress admin at <a href="' + adminUrl + '" target="_blank" style="color:var(--primary)">' + (siteUrl || 'your-site') + '/wp-admin</a>.',
+                'Log in to your WordPress admin: <a href="#" onclick="event.preventDefault();WP.wpAdminOpen(\'/wp-admin/plugin-install.php?tab=upload\')" style="color:var(--primary)">' + (siteUrl || 'your-site') + '/wp-admin</a> (auto-login).',
                 'Go to <strong>Plugins &rsaquo; Add New Plugin &rsaquo; Upload Plugin</strong>.',
                 'Upload <code>opai-connector.zip</code> and click <strong>Install Now</strong>, then <strong>Activate</strong>.',
                 '<em>Optional — to enable future auto-push:</em> Go to <strong>Site Settings</strong> here and add your WP admin password.',
@@ -880,6 +880,19 @@ WP.Dashboard = {
             if (result.status === 'need_password') {
                 WP.toast(result.message, 'error');
                 if (el) WP.Dashboard._renderConnectorInstall(el, siteId, false);
+                return;
+            }
+            if (result.status === 'manual_required') {
+                WP.toast('Auto-install failed — manual install required', 'error');
+                if (el) {
+                    el.innerHTML =
+                        '<span class="badge badge-orange">Manual install needed</span>' +
+                        '<div style="font-size:11px;color:var(--text-muted);margin-top:6px">' +
+                        (result.message || 'Automatic installation could not be completed.') + '<br>' +
+                        '<a href="' + (result.download_url || '/wordpress/api/connector/download') + '" style="color:var(--primary)">Download ZIP</a>' +
+                        ' and install via WP Admin &rsaquo; Plugins &rsaquo; Add New &rsaquo; Upload.' +
+                        '</div>';
+                }
                 return;
             }
             WP.toast('OPAI Connector installed!');

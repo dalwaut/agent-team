@@ -1,5 +1,5 @@
 # Shared Navigation Bar
-> Last updated: 2026-02-22 | Source: `tools/opai-portal/static/js/navbar.js`
+> Last updated: 2026-03-04 | Source: `tools/opai-portal/static/js/navbar.js`
 
 ## Overview
 
@@ -62,6 +62,11 @@ No Caddy or backend config changes required — the file is served by the existi
 | `email-agent` | EA | `#0984e3` (blue) | `/email-agent/` |
 | `brain` | BR | `#8b5cf6` (violet) | `/brain/` |
 | `bx4` | B4 | `#10b981` (green) | `/bx4/` |
+| `helm` | HM | `#d4a017` (gold) | `/helm/` |
+| `marq` | MQ | `#f43f5e` (rose) | `/marq/` |
+| `dam` | DM | `#6366f1` (indigo) | `/dam/` |
+| `studio` | ST | `#ec4899` (pink) | `/studio/` |
+| `vault` | VT | `#22c55e` (green) | `/vault/` |
 
 ## Recent Tools Tracking
 
@@ -101,7 +106,7 @@ body { display: flex !important; flex-direction: column !important; }
 .opai-navbar { flex-shrink: 0; }
 ```
 
-**Current `FULL_HEIGHT_TOOLS`**: `terminal`, `claude`, `chat`, `bx4`, `brain`, `bot-space`, `orchestra`
+**Current `FULL_HEIGHT_TOOLS`**: `terminal`, `claude`, `chat`, `bx4`, `brain`, `bot-space`, `orchestra`, `helm`, `marq`, `dam`, `studio`
 
 This ensures the app root container fills `calc(100vh - 44px)` (full viewport minus navbar). Without it, `flex: 1` has no effect (parent not flex) and `overflow-y: auto` on inner scroll containers never triggers.
 
@@ -149,6 +154,13 @@ Pages with full-viewport overlays (e.g., OPAI Files knowledge graph) should posi
 | Bot Space | `tools/opai-bot-space/static/index.html` |
 | Email Agent | `tools/opai-email-agent/static/index.html` |
 | Orchestra | `tools/opai-orchestra/static/index.html` |
+| Brain | `tools/opai-brain/static/index.html` |
+| HELM | `tools/opai-helm/static/index.html` |
+| Bx4 | `tools/opai-bx4/static/index.html` |
+| Marq | `tools/opai-marq/static/index.html` |
+| DAM | `tools/opai-dam/static/index.html` |
+| Studio | `tools/opai-studio/static/index.html` |
+| Vault | `tools/opai-vault/static/index.html` |
 
 **Not included**: Portal dashboard (`tools/opai-portal/static/index.html`) — it's the hub, no navbar needed.
 

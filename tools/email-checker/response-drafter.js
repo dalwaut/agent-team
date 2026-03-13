@@ -102,13 +102,14 @@ function loadVoice(profileName) {
 // Claude CLI Helper
 // ──────────────────────────────────────────────────────────
 
-function callHaiku(prompt, timeoutMs = 90000) {
+function callModel(prompt, timeoutMs = 90000, model = 'haiku') {
+  const modelName = model === 'sonnet' ? 'sonnet' : 'haiku';
   return new Promise((resolve) => {
     const tmpFile = path.join(os.tmpdir(), `opai-draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.txt`);
     fs.writeFileSync(tmpFile, prompt, 'utf8');
 
     let stdout = '';
-    const proc = spawn('claude', ['-p', '--model', 'haiku', '--output-format', 'text'], {
+    const proc = spawn('claude', ['-p', '--model', modelName, '--output-format', 'text'], {
       cwd: OPAI_ROOT,
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: true,
@@ -124,7 +125,7 @@ function callHaiku(prompt, timeoutMs = 90000) {
     const timer = setTimeout(() => {
       proc.kill('SIGTERM');
       try { fs.unlinkSync(tmpFile); } catch {}
-      console.error('[DRAFTER] Haiku call timed out');
+      console.error('[DRAFTER] ' + modelName + ' call timed out');
       resolve('');
     }, timeoutMs);
 
@@ -154,16 +155,17 @@ function callHaiku(prompt, timeoutMs = 90000) {
  * @param {string} voiceProfile — Voice profile name (without .txt)
  * @returns {Promise<string|null>} — Response ID if draft created, null on failure
  */
-async function draftResponse(email, accountName, voiceProfile = 'boutabyte-professional') {
+async function draftResponse(email, accountName, voiceProfile = 'boutabyte-professional', opts = {}) {
   const voice = loadVoice(voiceProfile);
+  const model = opts.model || 'haiku';
 
-  console.log(`[DRAFTER] Step 1/3: Generating initial draft for "${email.subject}"`);
+  console.log(`[DRAFTER] Step 1/3: Generating initial draft for "${email.subject}" (model=${model})`);
 
   // STEP 1: Initial Draft
   const draftPrompt = [
     voice,
     ``,
-    `Write a professional email response to the following email. Output ONLY the email body text (no subject line, no metadata). Do NOT include a signature block or sign-off (e.g. "Best regards, Dallas") — the email client appends the signature automatically.`,
+    `Write a professional email response to the following email. Output ONLY the email body text (no subject line, no metadata). Do NOT include a signature block or sign-off (e.g. "Best regards, Dallas") — the email client appends the signature automatically. IMPORTANT: Write PLAIN TEXT only — absolutely NO markdown (no **bold**, no *italics*, no bullet points, no numbered lists, no headers). It must read like a real person typed it in Gmail.`,
     ``,
     `From: ${email.fromName || email.from} <${email.from}>`,
     `Subject: ${email.subject}`,
@@ -174,7 +176,7 @@ async function draftResponse(email, accountName, voiceProfile = 'boutabyte-profe
     `--- END ---`,
   ].join('\n');
 
-  const initialDraft = await callHaiku(draftPrompt);
+  const initialDraft = await callModel(draftPrompt, 90000, model);
   if (!initialDraft) {
     console.error('[DRAFTER] Failed to generate initial draft');
     return null;
@@ -204,7 +206,7 @@ async function draftResponse(email, accountName, voiceProfile = 'boutabyte-profe
     initialDraft,
   ].join('\n');
 
-  const critique = await callHaiku(critiquePrompt);
+  const critique = await callModel(critiquePrompt, 90000, model);
 
   console.log(`[DRAFTER] Step 3/3: Refining based on critique...`);
 
@@ -214,7 +216,7 @@ async function draftResponse(email, accountName, voiceProfile = 'boutabyte-profe
     ``,
     `Improve the following email draft based on the review feedback below.`,
     `Address every point in the critique. Maintain the same overall structure but improve clarity, tone, and completeness.`,
-    `Output ONLY the improved email body text (no subject line, no metadata, no explanation of changes). Do NOT include a signature block or sign-off — Gmail auto-appends the signature.`,
+    `Output ONLY the improved email body text (no subject line, no metadata, no explanation of changes). Do NOT include a signature block or sign-off — Gmail auto-appends the signature. IMPORTANT: Write PLAIN TEXT only — absolutely NO markdown (no **bold**, no *italics*, no bullet points, no numbered lists, no headers). It must read like a real person typed it in Gmail.`,
     ``,
     `ORIGINAL EMAIL:`,
     `From: ${email.from}`,
@@ -228,7 +230,7 @@ async function draftResponse(email, accountName, voiceProfile = 'boutabyte-profe
     critique || 'No critique available — improve the draft independently.',
   ].join('\n');
 
-  const refinedDraft = await callHaiku(refinePrompt);
+  const refinedDraft = await callModel(refinePrompt, 90000, model);
 
   // Store all three outputs
   const responseId = `resp-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;

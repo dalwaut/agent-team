@@ -4,9 +4,35 @@
   "plannerModel": "haiku",
   "maxSkillsPerRequest": 5,
   "globalTimeout": 300,
-  "replyWindowMinutes": 10,
+  "replyWindowMinutes": 30,
   "fastPollSeconds": 30,
   "skills": [
+    {
+      "id": "prd-intake",
+      "name": "PRD / Idea Intake",
+      "description": "Detects project ideas, PRDs, or technical specs. Classifies, saves to Research/, and submits to PRD Pipeline.",
+      "enabled": true,
+      "type": "structured",
+      "builtIn": true,
+      "intentPatterns": [
+        "project idea",
+        "PRD",
+        "technical spec",
+        "build this",
+        "app idea",
+        "here's an idea",
+        "business idea",
+        "product idea",
+        "spec document",
+        "requirements doc",
+        "build request",
+        "I have an idea",
+        "new project",
+        "project proposal",
+        "feature spec"
+      ],
+      "timeout": 120
+    },
     {
       "id": "create-task",
       "name": "Create TeamHub Task",
@@ -233,6 +259,127 @@
       ],
       "command": "journalctl --user --since '1 hour ago' --no-pager --priority=err 2>/dev/null | tail -50; echo '---WARN---'; journalctl --user --since '1 hour ago' --no-pager --priority=warning 2>/dev/null | tail -30",
       "timeout": 15
+    },
+    {
+      "id": "process-transcript",
+      "name": "Process Transcript",
+      "description": "Analyzes meeting transcripts, extracts actionable items, checks TH for client spaces, sends approval summary",
+      "enabled": true,
+      "type": "structured",
+      "builtIn": true,
+      "intentPatterns": [
+        "transcript",
+        "meeting notes",
+        "call notes",
+        "voice memo",
+        "recording",
+        "meeting summary",
+        "action items from",
+        "process this recording",
+        "here are the notes",
+        "meeting recap"
+      ],
+      "timeout": 180
+    },
+    {
+      "id": "approve-transcript",
+      "name": "Approve Transcript Items",
+      "description": "Processes approval/rejection of extracted transcript action items, creates TH tasks",
+      "enabled": true,
+      "type": "structured",
+      "builtIn": true,
+      "intentPatterns": [
+        "approve all",
+        "approve \\d",
+        "reject all",
+        "reject items"
+      ],
+      "timeout": 120
+    },
+    {
+      "id": "send-proposal",
+      "name": "Send Client Proposal",
+      "description": "Draft and send a client proposal email using the proposal template. Requires project name, scope details, timeline, and pricing.",
+      "enabled": true,
+      "type": "structured",
+      "builtIn": true,
+      "intentPatterns": [
+        "send.*proposal",
+        "draft.*proposal",
+        "write.*proposal",
+        "proposal for",
+        "client proposal",
+        "project proposal",
+        "send.*quote",
+        "prepare.*proposal"
+      ],
+      "template": "proposal",
+      "voiceProfile": "boutabyte-professional",
+      "timeout": 120
+    },
+    {
+      "id": "send-follow-up",
+      "name": "Send Follow-Up Email",
+      "description": "Send a follow-up email (1st, 2nd, or 3rd touch) to a client who hasn't responded. Tracks which touch was last sent.",
+      "enabled": true,
+      "type": "structured",
+      "builtIn": true,
+      "intentPatterns": [
+        "send.*follow.?up",
+        "follow up with",
+        "chase.*up",
+        "nudge",
+        "check in with",
+        "haven't heard back",
+        "no response from",
+        "follow.?up.*email"
+      ],
+      "template": "follow-up-sequence",
+      "voiceProfile": "boutabyte-professional",
+      "timeout": 60
+    },
+    {
+      "id": "send-status-update",
+      "name": "Send Project Status Update",
+      "description": "Send a weekly project status update to a client. Summarizes completed work, upcoming tasks, blockers, and timeline status.",
+      "enabled": true,
+      "type": "structured",
+      "builtIn": true,
+      "intentPatterns": [
+        "send.*status.*update",
+        "send.*project.*update",
+        "weekly.*update",
+        "client.*update",
+        "progress.*update",
+        "update.*client",
+        "status.*email",
+        "send.*update.*to"
+      ],
+      "template": "project-status-update",
+      "voiceProfile": "client-update",
+      "timeout": 90
+    },
+    {
+      "id": "send-meeting-request",
+      "name": "Schedule a Meeting",
+      "description": "Send a meeting request email with proposed times, duration, and agenda preview.",
+      "enabled": true,
+      "type": "structured",
+      "builtIn": true,
+      "intentPatterns": [
+        "schedule.*meeting",
+        "set up.*call",
+        "set up.*meeting",
+        "book.*meeting",
+        "arrange.*call",
+        "meeting request",
+        "let's.*meet",
+        "request.*meeting",
+        "schedule.*call"
+      ],
+      "template": "meeting-request",
+      "voiceProfile": "boutabyte-professional",
+      "timeout": 60
     }
   ]
 }

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPAI Billing</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="/auth/static/js/auth-v3.js" defer></script>
+    <script src="/auth/static/js/navbar.js" defer></script>
+</head>
+<body>
+    <nav class="topnav">
+        <div class="topnav-inner">
+            <div class="topnav-left">
+                <span style="font-size:20px;">&#128179;</span>
+                <span class="logo-text">OPAI Billing</span>
+            </div>
+            <div class="topnav-right">
+                <span class="user-chip" id="user-display"></span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="tab-bar">
+            <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+            <button class="tab-btn" data-tab="products">Products</button>
+            <button class="tab-btn" data-tab="subscriptions">Subscriptions</button>
+            <button class="tab-btn" data-tab="transactions">Transactions</button>
+        </div>
+
+        <!-- Dashboard Tab -->
+        <div class="tab-content active" id="tab-dashboard">
+            <div class="stats-grid" id="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Monthly Recurring Revenue</div>
+                    <div class="stat-value green" id="stat-mrr">$0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Active Subscriptions</div>
+                    <div class="stat-value blue" id="stat-subs">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Products</div>
+                    <div class="stat-value purple" id="stat-products">0</div>
+                </div>
+            </div>
+
+            <h3 style="margin-bottom:16px;">Recent Transactions</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="recent-transactions">
+                    <tr><td colspan="4" class="text-muted" style="text-align:center;padding:40px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Products Tab -->
+        <div class="tab-content" id="tab-products">
+            <div class="flex-between mb-16">
+                <h3>Products</h3>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-outline" onclick="importFromStripe()">Import from Stripe</button>
+                    <button class="btn btn-accent" onclick="openProductModal()">+ New Product</button>
+                </div>
+            </div>
+            <div class="product-grid" id="product-grid">
+                <div class="loading-state"><div class="spinner"></div><span>Loading products...</span></div>
+            </div>
+        </div>
+
+        <!-- Subscriptions Tab -->
+        <div class="tab-content" id="tab-subscriptions">
+            <h3 class="mb-16">Subscriptions</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Plan</th>
+                        <th>Status</th>
+                        <th>Amount</th>
+                        <th>Period End</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="subscriptions-tbody">
+                    <tr><td colspan="6" class="text-muted" style="text-align:center;padding:40px;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Transactions Tab -->
+        <div class="tab-content" id="tab-transactions">
+            <h3 class="mb-16">Transaction History</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Customer</th>
+                        <th>Description</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="transactions-tbody">
+                    <tr><td colspan="5" class="text-muted" style="text-align:center;padding:40px;">Loading...</td></tr>
+                </tbody>
+            </table>
+            <div style="text-align:center;margin-top:16px;">
+                <button class="btn btn-outline" id="load-more-btn" onclick="loadMoreTransactions()" style="display:none;">Load More</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Product Modal -->
+    <div class="modal-overlay" id="product-modal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeProductModal()">&times;</button>
+            <h3 id="product-modal-title">New Product</h3>
+            <form id="product-form" onsubmit="saveProduct(event)">
+                <input type="hidden" id="pf-id">
+                <div class="form-group">
+                    <label class="form-label">Product Name</label>
+                    <input class="form-input" id="pf-name" required placeholder="e.g., OPAI Starter Plan">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-textarea" id="pf-desc" placeholder="What does this product include?"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Category</label>
+                        <select class="form-select" id="pf-category">
+                            <option value="opai">OPAI</option>
+                            <option value="addon">Add-on</option>
+                            <option value="service">Service</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tier Mapping</label>
+                        <select class="form-select" id="pf-tier">
+                            <option value="starter">Starter</option>
+                            <option value="pro">Pro</option>
+                            <option value="ultimate">Ultimate</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Price (cents)</label>
+                        <input class="form-input" id="pf-price" type="number" min="0" placeholder="2900 = $29.00">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Billing Type</label>
+                        <select class="form-select" id="pf-type">
+                            <option value="recurring">Recurring</option>
+                            <option value="one_time">One-time</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="pf-interval-group">
+                        <label class="form-label">Interval</label>
+                        <select class="form-select" id="pf-interval">
+                            <option value="month">Monthly</option>
+                            <option value="year">Yearly</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Image URL (optional)</label>
+                    <input class="form-input" id="pf-image" type="url" placeholder="https://...">
+                </div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">
+                    <button type="button" class="btn btn-ghost" onclick="closeProductModal()">Cancel</button>
+                    <button type="submit" class="btn btn-accent" id="pf-submit">Create Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="static/js/app.js" defer></script>
+</body>
+</html>

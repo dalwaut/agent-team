@@ -1,6 +1,6 @@
 {
   "schedules": {
-    "email_check": "*/30 * * * *",
+    "email_check": "DISABLED",
     "workspace_audit": "0 9 * * 1",
     "knowledge_sync": "0 18 * * *",
     "health_check": "*/5 * * * *",
@@ -13,8 +13,13 @@
     "security_quick": "0 8 * * 1",
     "incident_check": "0 */4 * * *",
     "a11y_weekly": "0 10 * * 2",
-    "self_assessment": "0 2 * * *",
-    "evolution": "0 3 * * *"
+    "daily_evolve": "0 2 * * *",
+    "context_harvest": "0 */4 * * *",
+    "workspace_folder_audit": "0 23 * * *",
+    "workspace_mention_poll": "*/2 * * * *",
+    "coedit_activity_check": "*/2 * * * *",
+    "daily_agent_newsletter": "0 7 * * *",
+    "knowledge_refresh": "30 2 * * *"
   },
   "resources": {
     "max_cpu_percent": 80,
@@ -28,14 +33,14 @@
       "critical": true,
       "restart_on_failure": true,
       "service_name": "opai-discord-bot",
-      "note": "Old opai-discord.service is DISABLED \u2014 do not re-enable"
+      "note": "Old opai-discord.service is DISABLED — do not re-enable"
     },
     "email": {
-      "enabled": true,
+      "enabled": false,
       "critical": false,
       "restart_on_failure": false,
       "type": "timer",
-      "note": "Timer-triggered oneshot \u2014 do NOT restart the service, check the timer instead"
+      "note": "DISABLED 2026-03-06 — all email services stopped per owner request"
     },
     "task_processor": {
       "enabled": true,
@@ -43,6 +48,26 @@
       "restart_on_failure": false,
       "type": "internal",
       "note": "Built-in orchestrator function, not a systemd service"
+    },
+    "studio": {
+      "enabled": true,
+      "critical": false,
+      "restart_on_failure": true,
+      "service_name": "opai-studio"
+    },
+    "eliza": {
+      "enabled": true,
+      "critical": false,
+      "restart_on_failure": true,
+      "service_name": "opai-eliza",
+      "note": "ElizaOS autonomous agent runtime (port 8085)"
+    },
+    "eliza-hub": {
+      "enabled": true,
+      "critical": false,
+      "restart_on_failure": true,
+      "service_name": "opai-eliza-hub",
+      "note": "ElizaOS management dashboard (port 8083)"
     }
   },
   "task_processor": {
@@ -50,7 +75,7 @@
     "queue_enabled": true,
     "max_squad_runs_per_cycle": 2,
     "cooldown_minutes": 30,
-    "max_parallel_jobs": 3,
+    "max_parallel_jobs": 4,
     "feedback_fixer_model": "sonnet",
     "feedback_fixer_max_turns": 10,
     "daily_token_budget_enabled": false,
@@ -72,32 +97,35 @@
   },
   "api": {
     "enabled": true,
-    "port": 3737,
+    "port": 8080,
     "host": "localhost"
   },
   "evolve": {
     "enabled": true,
-    "self_assessment": {
+    "daily_evolve": {
       "frequency_type": "daily",
       "frequency_value": 1,
       "time_hour": 2,
-      "time_minute": 0
-    },
-    "evolution": {
-      "frequency_type": "daily",
-      "frequency_value": 1,
-      "time_hour": 3,
-      "time_minute": 0
+      "time_minute": 0,
+      "phases": [
+        "auto_safe",
+        "apply_fixes",
+        "evolve",
+        "meta_assess"
+      ],
+      "report_retention_days": 14
     }
   },
   "heartbeat": {
     "interval_minutes": 30,
     "stall_threshold_minutes": 60,
     "daily_note_hour": 23,
-    "daily_note_minute": 55,
+    "daily_note_minute": 0,
     "notifications_enabled": true,
     "ai_summary_enabled": true,
-    "max_notifications_per_cycle": 5
+    "max_notifications_per_cycle": 5,
+    "hitl_thread_id": 112,
+    "digest_interval_cycles": 6
   },
   "consolidator": {
     "enabled": true,
@@ -162,10 +190,79 @@
     "routing": {
       "code_review": "project-reviewer",
       "code_build": "project-builder",
+      "spec_generation": "project-lead",
       "research": "researcher",
       "security": "security-scanner",
       "wiki_update": "wiki-librarian",
       "default": "self-assessor"
+    },
+    "delegation": {
+      "enabled": true,
+      "max_delegation_depth": 2,
+      "lead_workers": [
+        "project-lead"
+      ],
+      "sub_worker_timeout_minutes": 20
+    },
+    "review_pipeline": {
+      "enabled": true,
+      "auto_review_workers": [
+        "project-builder"
+      ],
+      "reviewer_worker": "project-reviewer"
+    }
+  },
+  "proactive_intelligence": {
+    "enabled": true,
+    "check_interval_cycles": 3,
+    "overdue_threshold_minutes": 60,
+    "assigned_stall_minutes": 120,
+    "idle_worker_minutes": 60,
+    "pattern_detection_min_count": 3,
+    "auto_act_enabled": false,
+    "max_suggestions_per_cycle": 5
+  },
+  "nfs_dispatcher": {
+    "enabled": true,
+    "poll_interval_seconds": 30,
+    "base_path": "/workspace/users/_clawbots",
+    "admin_hitl_path": "/workspace/users/_admin/hitl",
+    "max_concurrent_nfs_tasks": 5,
+    "heartbeat_stale_minutes": 10,
+    "hitl_sync_enabled": true,
+    "admin_response_poll": true
+  },
+  "process_sweeper": {
+    "enabled": true,
+    "interval_seconds": 300,
+    "min_age_seconds": 600,
+    "max_kills_per_cycle": 10,
+    "sigterm_wait_seconds": 5,
+    "dry_run": false,
+    "notify_on_kill": true
+  },
+  "coedit": {
+    "enabled": true,
+    "timeout_minutes": 10,
+    "max_concurrent_sessions": 5,
+    "activity_check_interval": "*/2 * * * *"
+  },
+  "assembly": {
+    "enabled": true,
+    "max_concurrent_runs": 2,
+    "max_review_iterations": 3,
+    "auto_ship": false,
+    "spec_generator_model": "sonnet",
+    "fix_generator_model": "sonnet",
+    "delivery_packager_model": "sonnet",
+    "screenshot_timeout_seconds": 30,
+    "phase_timeout_minutes": {
+      "intake": 10,
+      "plan": 15,
+      "build": 30,
+      "review": 15,
+      "iterate": 30,
+      "ship": 15
     }
   }
 }

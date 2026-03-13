@@ -1,9 +1,10 @@
 # Playbook: AI Operating System Consulting & Vertical Packages
 
-**Status:** Idea
+**Status:** Draft
 **Category:** Consulting
 **Source:** [I Built an AI Operating System in Claude Code (Here's How to Sell It) — Mansel Scheffel](https://www.youtube.com/watch?v=-GV1MRNB4hQ)
 **Date Added:** 2026-02-28
+**Last Updated:** 2026-03-05
 
 ---
 
@@ -206,3 +207,64 @@ Each vertical is a HELM playbook within this playbook — a pre-configured skill
 - **AI consulting firms** (McKinsey, Accenture, Deloitte) — Enterprise-focused, $500K+ engagements. We target the SMB/mid-market they ignore.
 - **Freelance prompt engineers** — Sell prompts, not systems. No infrastructure, no maintenance, no ongoing relationship.
 - **OPAI advantage:** We have a production-grade AI operating system already running. We're not building from scratch per client — we're deploying a proven platform with customization. That's a massive time and quality advantage.
+
+---
+
+## Implementation Timeline
+
+### Pre-Launch (Before First Client)
+
+| Step | Owner | Duration | Status |
+|------|-------|----------|--------|
+| 1. Package audit as a repeatable process | HELM + Dallas | 3 days | Not started |
+| 2. Build audit report template (PDF/HTML) | Builder agent | 2 days | Not started |
+| 3. Create client onboarding wizard in Portal | Builder agent | 3 days | Not started |
+| 4. Build 1 vertical skill pack (Marketing Agency) | HELM + Builder | 5 days | Not started |
+| 5. Set up per-client Vault isolation | Builder agent | 1 day | Not started |
+| 6. Write service agreement template | Dallas | 1 day | Not started |
+| 7. Create pricing calculator (input: audit results -> scope -> price) | Builder agent | 2 days | Not started |
+| 8. Build ROI tracking dashboard | Builder agent | 2 days | Not started |
+| 9. First pilot client identified and approached | Dallas | 1 week | Not started |
+| 10. Pilot engagement completed + case study | HELM + Dallas | 4 weeks | Not started |
+
+**Estimated total pre-launch:** 6-8 weeks from start
+
+### Per-Client Deployment (After System is Ready)
+
+| Phase | Duration | Effort (hours) |
+|-------|----------|----------------|
+| Audit | 1-2 days | 4-8 hrs consulting + HELM automation |
+| Build | 5-10 days | 8-16 hrs consulting + HELM builds autonomously |
+| Train | 2-3 days | 6-10 hrs consulting |
+| Handoff | 1 day | 2-4 hrs |
+| **Total per client** | **2-3 weeks** | **20-38 hrs human time** |
+
+---
+
+## Concrete Next Steps (Priority Order)
+
+1. **Validate pricing with 3 prospect conversations** — Share the audit concept with businesses Dallas already knows. Confirm willingness to pay $2K-3K for an audit alone.
+2. **Build the audit squad** — Create an agent squad that scans a business website, identifies tools (via script tags, meta, etc.), and produces a scored report.
+3. **Create the Marketing Agency vertical pack** — Most natural fit (Paradise Web already serves this market). 5-7 skills: content calendar, competitor alerts, client reporting, social scheduling, email triage.
+4. **Run a pilot** — Offer a free or discounted audit to one real business. Use the results to refine the process and build the case study.
+5. **Write the landing page** — GEO-optimized page explaining AIOS consulting. Deploy via Portal Pages Manager to opai.boutabyte.com.
+
+---
+
+## Ready for Review Checklist
+
+- [x] Market opportunity validated (growing market, low competition at SMB level)
+- [x] Revenue model defined with margins
+- [x] Phase-by-phase delivery process documented
+- [x] Tools mapped to OPAI capabilities
+- [x] Risks identified with mitigations
+- [x] Sales motion defined
+- [x] Vertical packages identified (6 verticals)
+- [x] Competitive landscape analyzed
+- [x] Implementation timeline estimated
+- [x] Concrete next steps prioritized
+- [ ] Pricing validated with real prospects (needs Dallas)
+- [ ] Legal: service agreement template drafted
+- [ ] First pilot client identified
+- [ ] Audit squad built and tested
+- [ ] 1 vertical skill pack completed

@@ -1,6 +1,6 @@
 # Telegram Bridge — OPAI Communication Hub
 
-> **Status**: Phases 1-5 Complete (2026-03-02, v3.5 HITL buttons + escalation)
+> **Status**: Phases 1-6 Complete (2026-03-07, v3.5 + voice recognition + document access)
 > **Port**: 8110
 > **Path**: `tools/opai-telegram/`
 > **Service**: `opai-telegram`
@@ -24,6 +24,8 @@ grammY-based Telegram bot serving as the primary OPAI communication channel. Web
 - Multi-step Team Hub task creation with inline keyboards
 - Morning briefing (8 AM) with visual bars, phone formatting, per-site WordPress
 - Proactive service/WordPress health alerts (state-change only)
+- Voice recognition: Groq Whisper transcription → same Claude pipeline as text
+- Document access: Claude-triggered `<<SEND_FILE:>>` markers → validated file delivery as Telegram documents
 - Secure file delivery (/file command with directory whitelist + blocked patterns)
 - Mini Apps: embedded web apps inside Telegram (WordPress Manager live)
 - Mini App auth bridge: initData HMAC validation + tdesktop fallback + session tokens
@@ -56,17 +58,24 @@ Handler Router (order matters)
     |
     +-- Commands (/start, /help, /wp, /hub, /topic, etc.)
     +-- Callback queries (inline keyboard buttons)
+    +-- Voice messages:
+    |     1. Download OGG from Telegram CDN
+    |     2. Transcribe via Groq Whisper (whisper-large-v3)
+    |     3. Show "You said: {transcript}" ack
+    |     4. Same fast-path/Claude pipeline as text
     +-- Free-text messages:
     |     0. Pending task input? -> multi-step creation flow
     |     1. Assistant mode ON? -> selective coordinator (own routing)
     |     2. YouTube URL? -> transcript + action buttons
-    |     3. Team Hub intent? -> direct API (sub-second)
-    |     4. WordPress intent? -> direct API (sub-second)
-    |     5. Claude CLI (fire-and-forget background processing)
+    |     3. Instagram URL? -> metadata + action buttons
+    |     4. Team Hub intent? -> direct API (sub-second)
+    |     5. WordPress intent? -> direct API (sub-second)
+    |     6. Claude CLI (fire-and-forget background processing)
     |
     v
 Response Router
     +-- Edit ack message with result
+    +-- Extract <<SEND_FILE:>> markers -> send as Telegram documents
     +-- Chunk if > 4,096 chars
     +-- Markdown with plain-text fallback
 ```
@@ -100,7 +109,8 @@ tools/opai-telegram/
   conversation-state.js     # Tiered memory: 5-state machine, ring buffer, digests
   claude-handler.js         # Claude CLI invocation, prompt building, session resume, dangerous mode
   alerts.js                 # Proactive alerts: service health, WordPress, morning briefing
-  file-sender.js            # Secure file delivery: whitelisted directories, blocked patterns
+  file-sender.js            # Secure file delivery: whitelisted directories, blocked patterns, conversation file validation
+  voice-transcriber.js      # Groq Whisper STT: transcribeVoice(buffer) -> { text, language, duration }
   job-manager.js            # Async job tracking, restart recovery
   engine-api.js             # Shared HTTP helpers for Engine (8080) and Brain (8101) APIs
   teamhub-fast.js           # Direct Team Hub API for instant task/note/idea queries
@@ -111,7 +121,7 @@ tools/opai-telegram/
   package.json              # Dependencies
   handlers/
     commands.js             # All slash commands (27+), /apps Mini App launcher
-    messages.js             # Free-text routing: pending tasks, YouTube, fast paths, Claude
+    messages.js             # Voice + free-text routing: voice transcription, pending tasks, YouTube, Instagram, fast paths, Claude, file marker extraction
     callbacks.js            # Inline keyboard handlers: confirm, YouTube, WordPress, email, hub tasks, danger runs, approvals, HITL
     utils.js                # logAudit(), logDangerousRun() helpers
   mini-apps/
@@ -150,8 +160,13 @@ tools/opai-telegram/
 | `OPAI_ROOT` | `/workspace/synced/opai` | Workspace root |
 | `CLAUDE_TIMEOUT` | `300000` | Claude CLI timeout (ms, default 5 min) |
 | `OWNER_USER_ID` | `1666403499` | Auto-owner role (Dallas) |
-| `ADMIN_GROUP_ID` | `-5111777503` | WautersEdge supergroup |
-| `ALERT_THREAD_ID` | (numeric) | Forum topic for alerts/briefings (optional — defaults to General if unset). Use `/topicid` in the target topic to get the ID. |
+| `ADMIN_GROUP_ID` | `-1003761890007` | Admin supergroup (forum topics for alerts/status/HITL) |
+| `ALERT_THREAD_ID` | `106` | Forum topic for alerts (optional — defaults to General if unset) |
+| `SERVER_STATUS_THREAD_ID` | `107` | Forum topic for status/system briefing |
+| `HITL_THREAD_ID` | `112` | Forum topic for HITL decisions |
+| `PERSONAL_CHAT_ID` | `1666403499` | DM chat ID for personal morning briefing (owner user ID) |
+| `WAUTERSEDGE_GROUP_ID` | `-5111777503` | WautersEdge team group (legacy — migrated to admin supergroup topic thread 5). Still used as team briefing target in alerts.js |
+| `GROQ_API_KEY` | `gsk_...` | Groq Whisper API key (voice transcription) |
 | `SUPABASE_SERVICE_KEY` | `eyJ...` | For WordPress API auth |
 
 ---
@@ -169,10 +184,38 @@ tools/opai-telegram/
 
 **Owner privilege**: `OWNER_USER_ID` from env gets automatic `owner` role with no DB entry needed.
 
+### Adding Team Members
+
+Team members **must** have a role entry in `data/roles.json` before they can interact with the bot in workspace-bound topics. Without a role, `hasWorkspaceAccess()` returns `false` and the user's messages are silently blocked.
+
+**Via Telegram** (owner/admin only):
+```
+/role set <userId> member [name]     # Add member with name
+/role set <userId> admin [name]      # Promote to admin
+/role list                            # Show all registered users
+/role remove <userId>                # Revoke access
+```
+
+**Via roles.json** (direct edit):
+```json
+{
+  "users": {
+    "1689373643": {
+      "role": "member",
+      "name": "Jane Smith",
+      "workspaces": ["*"],
+      "addedAt": "2026-03-04T12:15:00.000Z"
+    }
+  }
+}
+```
+
+**Workspace access**: Set `workspaces: ["*"]` for all workspaces, or list specific workspace IDs. Members can only interact in topics bound to workspaces they have access to.
+
 ### Workspace Scoping
 
 Forum topics can be bound to Team Hub workspaces via `/topic bind <wsId> [name]`. When a topic is bound:
-- Members with workspace access can chat in that topic
+- Members with workspace access can chat in that topic (requires role in `data/roles.json`)
 - Claude prompts prioritize Team Hub context
 - Fast-path queries scope to that workspace
 
@@ -296,10 +339,12 @@ spawn(CLAUDE_BIN, [
 
 | Scenario | Primary Context | Secondary |
 |----------|----------------|-----------|
-| Admin + workspace topic | Team Hub (workspace) | Full OPAI system |
-| Admin + DM/unbound | Full OPAI system | - |
+| Admin + workspace topic | Team Hub (workspace) | Full OPAI system + document access |
+| Admin + DM/unbound | Full OPAI system + document access | - |
 | Member + workspace topic | Team Hub only | - |
 | Member + DM | Team Hub (general) | - |
+
+**Document access** (admin only): Prompt instructs Claude to include `<<SEND_FILE:/absolute/path>>` markers when the user explicitly asks to receive a file. The bot extracts markers post-response, validates paths (security checks), and sends files as Telegram documents. Refuses `.env`, credential, and secret files.
 
 ---
 
@@ -356,6 +401,31 @@ Site names support partial matching (e.g., "wauters" matches "WautersEdge").
 
 ## Message Handler Flow (handlers/messages.js)
 
+### Voice Messages (registerVoiceHandler)
+
+```
+User sends voice message
+    |
+    v
+1. Download OGG/Opus from Telegram CDN (ctx.api.getFile → fetch)
+    |
+    v
+2. Send "Transcribing..." ack
+    |
+    v
+3. transcribeVoice(buffer) → Groq Whisper API (whisper-large-v3)
+    |
+    v
+4. Edit ack → "You said [lang]: {transcript}"
+    |
+    v
+5. Same pipeline as text: fast-path detection → Claude slow path
+```
+
+**Error handling**: Transcription failure → user-friendly message, no crash. Empty transcription → "no speech detected".
+
+### Text Messages (registerMessageHandler)
+
 ```
 User sends text message (not a / command)
     |
@@ -374,6 +444,9 @@ User sends text message (not a / command)
 2. YouTube URL detected? -> handleYouTubeUrl() (transcript + buttons) -> return
     |
     v
+2b. Instagram URL detected? -> handleInstagramUrl() (metadata + buttons) -> return
+    |
+    v
 3. Resolve workspace ID from topic binding (for fast-path scoping)
     |
     v
@@ -388,7 +461,7 @@ User sends text message (not a / command)
 6. Claude slow path:
    a. getContextStrategy(scopeKey) -> state, contextBlock, useResume, sessionId
    b. recordMessage()
-   c. Send ack message (content-aware: "Checking tasks...", "Hey there...", etc.)
+   c. Send ack message (state-aware: "On it...", "Picking up where we left off...", etc.)
    d. Fire-and-forget: processClaude(bot, {...}) -> runs in background
    e. Return immediately (webhook responds)
 ```
@@ -398,19 +471,30 @@ User sends text message (not a / command)
 ```
 1. Create job (job-manager)
 2. Start progress interval (every 15s):
-   - "Working on it..."
-   - "Still working... (30s)"
-   - "Deeper analysis in progress... (45s)"
-   - "This one's taking a bit... (75s)"
-   - "Almost there... (105s)"
+   - "Working on it..."                                    (< 15s)
+   - "Still working... (30s)"                              (15-30s)
+   - "Deeper analysis in progress... (45s)"                (30-60s)
+   - "This one's taking a bit — hang tight. (90s)"         (60-120s)
+   - "Complex task — still running. I'll update you        (120-180s)
+      when complete."
+   - "Still working on this — will notify you when done."  (180s+)
 3. Build prompt via buildPrompt()
 4. Call askClaude({ prompt, scopeKey, useResume, sessionId })
 5. Clear progress interval
-6. Record bot response in ring buffer
-7. Split message into chunks (4096 char limit)
-8. Edit ack message with first chunk
-9. Send remaining chunks as new messages
+6. Extract <<SEND_FILE:/path>> markers from response text
+7. Strip markers from display text
+8. Record bot response in ring buffer
+9. Split message into chunks (4096 char limit)
+10. Edit ack message with first chunk
+11. Send remaining chunks as new messages
+12. For each extracted file path:
+    a. Resolve to absolute path
+    b. Validate via isFileAllowedForConversation() (blocks secrets, bad extensions, outside workspace)
+    c. Check exists + size < 50MB
+    d. Send as Telegram document via bot.api.sendDocument()
 ```
+
+**Progress messaging philosophy**: Messages set honest expectations instead of falsely optimistic "Almost there..." After 2 minutes, messages commit to delivering the result when complete rather than suggesting imminent completion. Same pattern applies in `assistant-mode.js` for coordinator Claude.
 
 Uses `bot.api` (not `ctx`) because `ctx` is gone after the webhook returns.
 
@@ -439,6 +523,20 @@ The full Claude response is cached in `dangerResponseCache` Map (30-min TTL) key
 
 An admin toggle (`/topic assistant on`) that transforms the bot from "respond to everything" into a **selective project coordinator** for workspace-bound forum topics.
 
+### Prerequisites
+
+1. **Topic must be bound** to a workspace (`/topic bind <wsId> [name]` or `*` for all)
+2. **Users must have a role** in `data/roles.json` — unregistered users are silently blocked by `hasWorkspaceAccess()` before reaching the assistant classifier
+3. **User's workspace list** must include the bound workspace (or `*`)
+
+### Active Topic Bindings
+
+| Topic | Thread ID | Group | Workspace | Assistant |
+|-------|-----------|-------|-----------|-----------|
+| WautersEdge | 5 | `-1003761890007` (admin supergroup) | `*` (All Workspaces) | ON |
+
+> **Note**: The WautersEdge group (`-5111777503`) was upgraded/migrated by Telegram into the admin supergroup as forum topic thread 5. The old group ID is retained in `WAUTERSEDGE_GROUP_ID` for outbound team briefings via `alerts.js`, but all interactive conversations happen in the supergroup topic.
+
 ### Activation
 
 ```
@@ -449,15 +547,16 @@ An admin toggle (`/topic assistant on`) that transforms the bot from "respond to
 /topic assistant               # Show current status
 ```
 
-### Message Classification (5-Tier, Regex-Only)
+### Message Classification (6-Tier, Regex-Only)
 
 | Tier | Trigger | Bot Action |
 |------|---------|------------|
 | `op` | `OP ...`, `hey op`, `yo op`, or @bot mention | Full response (fast-path then Claude) |
 | `work` | Work keywords (task, deadline, blocker, sprint, etc.) | Full response (fast-path then Claude) |
 | `quick` | Greetings, thanks, farewells | Instant canned response (random pick) |
-| `unsure` | Short (<4 words) with `?`, no work keywords | Nudge response (rate-limited: 1/user/5min) |
-| `silent` | Everything else | No response (absorbed into buffer) |
+| `work` | Any message containing `?` | Full response (treats questions as work) |
+| `work` | 5+ words (longer messages) | Full response (likely conversational/substantive) |
+| `silent` | Short ambiguous messages (< 5 words, no `?`, no keywords) | No response (absorbed into buffer) |
 
 **OP trigger**: Start-of-message only (`/^OP[\s,:!]/i`) — avoids false positives on words like "OPTION", "OPERATOR".
 
@@ -532,68 +631,99 @@ recoverJobs()       // Marks running -> interrupted, returns them
 
 ## Proactive Alerts (alerts.js)
 
-Three alert sources run on independent intervals. All alerts go to `ADMIN_GROUP_ID`. When `ALERT_THREAD_ID` is set in `.env`, alerts route to that specific forum topic instead of General — keeps status noise out of the main conversation.
+### Scheduling Role: Independent Watchdog
+
+Telegram's alert system serves as an **independent watchdog** for the Engine. Per-service health monitoring (individual service up/down transitions) is handled by the Engine's heartbeat + notifier (`tools/opai-engine/background/`). Telegram only checks if the Engine *itself* is reachable — the one thing the Engine can't self-report about its own death.
+
+WordPress site health monitoring remains in Telegram because the Engine monitors the WP *service process*, not individual *site* statuses.
+
+See [Scheduling Architecture](../infra/scheduling-architecture.md) for the full 6-layer model and overlap analysis.
 
 ### Alert Types
 
 | Source | Interval | Trigger |
 |--------|----------|---------|
-| Service Health | 5 min | State-change only (healthy↔unreachable) |
+| Engine Watchdog | 5 min | Engine `/health` ping — 10min grace before alert |
 | WordPress Health | 10 min | State-change only (healthy↔degraded↔offline) |
-| Morning Briefing | 1 min check | Once daily at 8 AM local time |
+| Morning Briefings | 1 min check | Once daily at 8 AM local time (3 briefings) |
 
-**Design**: Service/WordPress alerts are **state-change detectors**, not periodic reports. They only fire when a service transitions between states (e.g., healthy → unreachable, offline → recovered). No hourly deadline alerts — task deadlines are exclusively in the morning briefing.
+**Design**: Alerts are **state-change detectors**, not periodic reports. They only fire when a service transitions between states (e.g., reachable → unreachable, offline → recovered).
 
 ### Restart-Safe Briefing
 
 On service restart, if `hour >= BRIEFING_HOUR` (8 AM), `lastBriefingDate` is pre-set to today so the briefing isn't re-sent mid-day. Only a fresh start before 8 AM will queue the briefing.
 
-### Morning Briefing Format
+### Three Morning Briefings (8 AM)
 
-Phone-optimized visual format with 4 sections:
+At 8 AM, three independent briefings are generated and sent to different destinations:
+
+| Briefing | Destination | Generator | Content |
+|----------|------------|-----------|---------|
+| **System** | Server Status topic (admin group) | `generateBriefing()` | Services, WordPress updates, task count (no details), CPU/mem/disk/uptime |
+| **Personal** | DM to owner (`PERSONAL_CHAT_ID`) | `generatePersonalBriefing()` | Overdue tasks (with priority), due today, this week, needs-decision items, total open count |
+| **Team** | WautersEdge group (`WAUTERSEDGE_GROUP_ID`). Note: group migrated to admin supergroup topic 5; briefing still targets the legacy group ID via `alerts.js` — may need update to target thread 5 instead | `generateTeamBriefing()` | Workspace overview (open/overdue/stuck counts), overdue, stuck/waiting, due today, coming up, in-progress |
+
+### System Briefing Format
 
 ```
 ☀️ Morning Briefing
-Feb 26, 2026
+Mar 3, 2026
 ━━━━━━━━━━━━━━━━━━
-
-🖥 Services  ✅ All 10 healthy
-
+🖥 Services  ✅ All 11 healthy
 ━━━━━━━━━━━━━━━━━━
-
 🌐 WordPress
   🟢 WautersEdge
      └ 📦 3 plugin updates
-  ✅ BoutaByte
-
 ━━━━━━━━━━━━━━━━━━
-
 📋 Tasks  12 open
-
-🔴 Overdue (2)
-  ⏰ Fix login bug on portal…
-       Feb 12 · 14d late
-  ⏰ Deploy staging build…
-       Feb 20 · 6d late
-
-🟡 Due Today (1)
-  📌 Review PR #42
-
-🔵 This Week (3)
-  📅 Update wiki docs
-       Feb 28
-
+  🔴 2 overdue
 ━━━━━━━━━━━━━━━━━━
-
 ⚙️ System
 🟢 CPU    12%  ▰▱▱▱▱▱▱▱▱▱
-🟢 Mem    45%  ▰▰▰▰▱▱▱▱▱▱
-       7.2 / 15.6 GB
-🟡 Disk   72%  ▰▰▰▰▰▰▰▱▱▱
-       350G / 490G
+🟢 Mem    40%  ▰▰▰▰▱▱▱▱▱▱
+       9.4 / 23.4 GB
+🟢 Disk   54%  ▰▰▰▰▰▱▱▱▱▱
+📊 Load  1.10 1.26 1.34
+⏱ Up 2 days, 20 hours
+```
 
-📊 Load  0.42 0.38 0.35
-⏱ Up 12 days, 3 hours
+### Personal Briefing Format
+
+```
+☀️ Good morning, Dallas
+Monday, Mar 3, 2026
+━━━━━━━━━━━━━━━━━━
+🔴 Overdue (1)
+  🔺 logo design to Denise — emai…
+       Feb 12 · 19d late
+━━━━━━━━━━━━━━━━━━
+⚡ Needs Your Decision (2)
+  🔔 Update TeamHub Task Statuses
+       Status: Manager Review
+━━━━━━━━━━━━━━━━━━
+📊 6 open items total
+```
+
+### Team Briefing Format
+
+```
+📋 Team Briefing
+Monday, Mar 3, 2026
+━━━━━━━━━━━━━━━━━━
+📊 Workspace Overview
+  12 open · 2 overdue · 1 stuck
+  3 in progress
+━━━━━━━━━━━━━━━━━━
+🔴 Overdue (2)
+  🔺 Fix login bug on portal…
+       Feb 12 · 19d late
+━━━━━━━━━━━━━━━━━━
+🟠 Stuck / Waiting (1)
+  🚧 Client logo review
+       Status: Waiting on Client
+━━━━━━━━━━━━━━━━━━
+🟢 In Progress (3)
+  🔨 Build Team Hub calendar view
 ```
 
 **Helpers**: `bar(pct)` → `▰▱` progress bar, `lvlIcon(pct)` → 🟢/🟡/🔴 at <60%/60-85%/85%+, `trunc(str, len)` → phone-width truncation, `fmtDate(iso)` → `Feb 12` format, `daysAgo(iso)` → integer days overdue.
@@ -603,10 +733,12 @@ Feb 26, 2026
 ### Key Functions
 
 ```javascript
-startAlerts(bot, chatId, alertThreadId)  // Initialize alert system
+startAlerts(bot, chatId, opts)            // Initialize alert system (opts: alertThreadId, serverStatusThreadId, personalChatId, teamGroupId)
 stopAlerts()                              // Clear all timers
-generateBriefing()                        // -> formatted briefing string (also used by /briefing command)
-checkServiceHealth()                      // Poll engine /health/summary
+generateBriefing()                        // System briefing (services, WP, task count, system stats)
+generatePersonalBriefing()                // Personal briefing (tasks, deadlines, decisions)
+generateTeamBriefing()                    // Team briefing (workspace overview, overdue, stuck, coming up)
+checkServiceHealth()                      // Poll engine /api/health/summary
 checkWordPressHealth()                    // Poll WP API /api/sites
 ```
 
@@ -692,11 +824,20 @@ Tasks are created via Team Hub internal API: `POST /api/internal/create-item?wor
 
 Secure file delivery via Telegram with directory whitelist and blocked patterns.
 
-**Allowed directories** (relative to OPAI_ROOT): `reports/latest`, `reports/HITL`, `notes/Improvements`, `notes/Posts`, `notes/YouTube`, `Library/opai-wiki`, `Templates`, `tasks`
+### Two Validation Modes
 
-**Blocked patterns**: `.env`, `.key`, `.pem`, `credential`, `secret`, `password`, `token`, `.ssh`, `vault.key`, `node_modules`, `.git`
+| Mode | Function | Used By | Directory Restriction |
+|------|----------|---------|----------------------|
+| Strict | `isFileSafe()` | `/file` command | Must be in `ALLOWED_DIRS` whitelist |
+| Conversation | `isFileAllowedForConversation()` | `<<SEND_FILE:>>` markers from Claude | Any path under OPAI_ROOT |
 
-**Safe extensions**: `.md`, `.txt`, `.json`, `.csv`, `.log`, `.html`, `.css`, `.js`, `.ts`, `.py`, `.sh`, `.yaml`, `.yml`, `.xml`, `.sql`, `.toml`, `.cfg`, `.ini`, `.pdf`, `.png`, `.jpg`
+Both modes share the same blocked patterns and safe extension lists. The conversation mode is broader because admin users may request any non-sensitive workspace file during conversation — not just files from the curated `/file` command directories.
+
+**Allowed directories** (strict mode, relative to OPAI_ROOT): `reports/latest`, `reports/HITL`, `notes/Improvements`, `notes/Posts`, `notes/YouTube`, `Library/opai-wiki`, `Templates`, `tasks`
+
+**Blocked patterns** (both modes): `.env`, `.key`, `.pem`, `credential`, `secret`, `password`, `token`, `.ssh`, `vault.key`, `node_modules`, `.git`
+
+**Safe extensions** (both modes): `.md`, `.txt`, `.json`, `.csv`, `.log`, `.html`, `.css`, `.js`, `.ts`, `.py`, `.sh`, `.yaml`, `.yml`, `.xml`, `.pdf`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.zip`, `.gz`, `.tar`
 
 **Commands** (`/file`): `reports`, `report <name>`, `logs <service>`, `notes`, `note <path>`, `wiki`, `wiki <name>`, `tasks`, `get <path>`
 
@@ -966,7 +1107,7 @@ See [Team Hub Task Creation](#team-hub-task-creation-callbacksjs) section above 
 | `/hub idea <text>` | All | Log Team Hub idea (via internal API) |
 | `/hub search <q>` | All | Search workspace |
 | `/wp` | Admin | WordPress site management (see Fast Paths) |
-| `/briefing` | Admin | On-demand morning briefing (services, sites, tasks, system) |
+| `/briefing [type]` | Admin | On-demand morning briefing — `system`, `personal`, `team`, or all three if no arg |
 | `/file <sub>` | Admin | File manager (reports, logs, notes, wiki, tasks) |
 | `/apps` | Admin | Launch Mini Apps (WordPress Manager; DM-only web_app buttons) |
 
@@ -1004,7 +1145,7 @@ HITL escalation: Unacknowledged notifications get reminder messages after 15 min
 
 | Command | Access | Description |
 |---------|--------|-------------|
-| `/usage` | Admin | Claude plan utilization with visual progress bars (▰▱) |
+| `/usage` | Admin | Claude plan utilization with visual progress bars (▰▱). Uses 15s Engine API timeout (Anthropic OAuth API needs up to 10s) |
 | `/brain search <q>` | Admin | Search 2nd Brain nodes |
 | `/brain save <text>` | Admin | Quick-capture text to Brain inbox |
 | `/brain inbox` | Admin | List pending inbox items |
@@ -1088,6 +1229,7 @@ node set-webhook.js   # Registers webhook URL + bot commands with Telegram
 ## Gotchas
 
 - **grammY webhook 10-second timeout**: Middleware that blocks longer than 10s crashes Node. Claude CLI takes 10-60+ seconds. MUST use fire-and-forget pattern (send ack, return immediately, process in background).
+- **Engine API timeout vs upstream timeout**: When Telegram calls an Engine endpoint that itself calls an external API (e.g., `/claude/plan-usage` → Anthropic OAuth), the Telegram-side timeout must exceed the Engine's upstream timeout. Example: Anthropic OAuth has 10s timeout, so `engineGet('/claude/plan-usage', 15000)` uses 15s. Default 5s `engineGet` will timeout before Engine gets the response.
 - **Telegram bot privacy mode**: Bots in groups only receive `/commands` by default. Must be group admin OR disable privacy via BotFather to receive free text.
 - **`bot.api` vs `ctx`**: After the webhook handler returns, `ctx` is gone. Background processing must use `bot.api.editMessageText(chatId, msgId, ...)` instead.
 - **Team Hub API prefix**: Team Hub FastAPI has `prefix="/api"` on its router. Internal endpoints are at `/api/internal/*`, not `/internal/*`.
@@ -1207,16 +1349,25 @@ systemctl --user restart opai-telegram          # Restart
   - Fixed `/services` list: 10 → 13 services (added vault, brain, oc-broker, browser, files, users)
   - Fixed `/logs` service map: added vault, brain, oc/oc-broker/openclaw, browser aliases
   - `/approve` command: list pending worker approvals, HITL briefings with Run/Dismiss inline keyboards, detail view with Approve/Deny gate
-  - `/usage` command: Claude plan utilization with visual progress bars (▰▱), color-coded thresholds (🟢/🟡/🔴)
+  - `/usage` command: Claude plan utilization with visual progress bars (▰▱), color-coded thresholds (🟢/🟡/🔴). Fixed 2026-03-05: timeout increased 5s → 15s (was timing out before Anthropic OAuth API could respond)
   - `/brain` command: search nodes, quick-capture to inbox, list inbox items, pending suggestions
   - `/tasks` command: task registry summary by status, list pending, complete/cancel tasks
   - `/review [service]` command: AI-powered log analysis — fetches 100 journal lines, fire-and-forget Claude diagnostic, edits ack with results
-  - `engine-api.js`: shared HTTP helpers for Engine (port 8080) and Brain (port 8101) APIs (`engineGet`, `enginePost`, `brainGet`, `brainPost`)
+  - `engine-api.js`: shared HTTP helpers for Engine (port 8080) and Brain (port 8101) APIs (`engineGet`, `enginePost`, `brainGet`, `brainPost`). Default timeouts: GET 5s, POST/DELETE 10s. Commands calling upstream-heavy endpoints override with longer timeouts (e.g., `/usage` → 15s, `/newsletter send` → 30s, `/demos deploy` → 120s)
   - `appr:*` and `hitl:*` callback handlers in callbacks.js
   - Updated `/help` with 3 new sections (Approvals, Intelligence, Task Registry)
   - Registered 5 new commands with Telegram API (25 → 27 total)
 
+- **Phase 6** (2026-03-07): Voice Recognition + Document Access
+  - Voice-to-text: `voice-transcriber.js` — Groq Whisper API (`whisper-large-v3`), native fetch (no new npm deps)
+  - `registerVoiceHandler(bot)` in `handlers/messages.js` — downloads OGG from Telegram CDN, transcribes, shows transcript, feeds into same fast-path/Claude pipeline as text
+  - Voice handler registered in `index.js` before text catch-all, with logging middleware
+  - Document access: `<<SEND_FILE:/path>>` marker system — Claude includes markers when user asks for a file, bot extracts markers, strips from display text, validates path, sends as Telegram document
+  - `buildPrompt()` updated with document access instructions (admin-only contexts)
+  - `isFileAllowedForConversation()` in `file-sender.js` — broader validation (same blocked patterns/extensions, but no `ALLOWED_DIRS` restriction for conversation-triggered sends)
+  - `GROQ_API_KEY` stored in vault under `services.opai-telegram` (account: dalwaut@gmail.com)
+
 ### Planned
 
-- **Phase 6**: Team Hub Mini App (task board, quick add, workspace selector)
-- **Phase 7**: Discord deprecation (feature parity audit, user migration)
+- **Phase 7**: Team Hub Mini App (task board, quick add, workspace selector)
+- **Phase 8**: Discord deprecation (feature parity audit, user migration)

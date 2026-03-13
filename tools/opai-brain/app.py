@@ -21,7 +21,7 @@ load_dotenv()
 
 import config
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -38,8 +38,10 @@ from routes.snapshots import router as snapshots_router
 from routes.schedule import router as schedule_router
 from routes.suggestions import router as suggestions_router
 from routes.youtube import router as youtube_router
+from routes.instagram import router as instagram_router
 from routes.relationships import router as relationships_router
 from routes.library_sync import router as library_sync_router
+from routes.notebooklm import router as notebooklm_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -82,15 +84,19 @@ app.include_router(snapshots_router)
 app.include_router(schedule_router)
 app.include_router(suggestions_router)
 app.include_router(youtube_router)
+app.include_router(instagram_router)
 app.include_router(relationships_router)
 app.include_router(library_sync_router)
+app.include_router(notebooklm_router)
 
 
 @app.get("/api/auth/config")
-def auth_config():
+def auth_config(request: Request):
+    from_local = request.client and request.client.host in ("127.0.0.1", "::1", "localhost")
     return {
         "supabase_url": config.SUPABASE_URL,
         "supabase_anon_key": config.SUPABASE_ANON_KEY,
+        "auth_disabled": from_local,
     }
 
 
@@ -105,4 +111,4 @@ app.mount("/", StaticFiles(directory=str(config.STATIC_DIR), html=True), name="s
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app:app", host=config.HOST, port=config.PORT, reload=True)
+    uvicorn.run("app:app", host=config.HOST, port=config.PORT, reload=False)
